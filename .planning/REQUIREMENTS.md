@@ -102,6 +102,8 @@ Deferred to future release. Tracked but not in current roadmap.
 - **RIO-01**: Application detects riocore framework presence
 - **RIO-02**: Application reads and displays riocore configuration context (view-only)
 - **RIO-03**: Application warns when runtime HAL differs from riocore source config
+- **RIO-04**: User can trace HAL parameter/signal back to its originating configuration file (.ini, .hal, or riocore config)
+- **RIO-05**: Application displays which configuration file defines each HAL item (reverse mapping)
 
 ### Advanced Features
 
