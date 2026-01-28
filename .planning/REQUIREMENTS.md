@@ -32,12 +32,12 @@ Thread-safe caching and synchronization between HAL and TUI.
 Primary user-facing feature - browse and manipulate HAL components.
 
 - [ ] **CORE-01**: User can view all loaded HAL components in tree structure
-- [ ] **CORE-02**: Tree view supports collapse/expand navigation
+- [ ] **CORE-02**: Tree view supports collapse/expand navigation and item selection (checkboxes to add to data table view)
 - [ ] **CORE-03**: User can view all HAL pins with type (bit/s32/u32/float), direction (IN/OUT/I/O), and current value
 - [ ] **CORE-04**: User can view all HAL signals with type, value, and connected pins
-- [ ] **CORE-05**: User can view all HAL parameters with distinction between read-only and writable
+- [ ] **CORE-05**: User can view all HAL parameters with visual distinction between read-only and writable (color or icon indicators)
 - [ ] **CORE-06**: Values update in real-time (configurable refresh rate)
-- [ ] **CORE-07**: User can edit writable parameter values (setp equivalent)
+- [ ] **CORE-07**: User can edit writable parameter values in data table (setp equivalent); only writable items are editable, visual indicators show editability
 - [ ] **CORE-08**: User can create new signals and link pins to them (net equivalent)
 - [ ] **CORE-09**: User can search pins/signals/params by name with glob pattern matching
 - [ ] **CORE-10**: User can filter view by pin type (bit/s32/u32/float)
@@ -62,8 +62,13 @@ Terminal user interface built on Vaxis.
 - [ ] **TUI-03**: User can navigate tree view with keyboard (arrow keys, enter, collapse/expand)
 - [ ] **TUI-04**: TUI updates display in response to state changes (reactive rendering)
 - [ ] **TUI-05**: TUI handles user input for editing values without blocking HAL refresh
-- [ ] **TUI-06**: TUI displays error messages for invalid operations (type mismatches, read-only writes)
+- [ ] **TUI-05-1**: Input validation prevents type errors (numeric fields only accept numbers, boolean fields only accept toggle)
+- [ ] **TUI-05-2**: Boolean/bit pins: pressing Enter toggles value (True ↔ False) without opening edit dialog; cell shows unsaved color while waiting for HAL refresh
+- [ ] **TUI-05-3**: Numeric pins: pressing Enter enables in-place editing in data table cell with validation (only valid numeric input accepted, Enter confirms, Escape cancels); cell shows unsaved color during editing
+- [ ] **TUI-05-4**: After edit confirmation (Enter): clear cell immediately and wait for next HAL refresh to display actual value (confirms write succeeded)
+- [ ] **TUI-06**: TUI displays error messages for invalid operations (type mismatches, attempting to edit read-only items)
 - [ ] **TUI-07**: TUI performs smoothly on Pi 5 hardware (no lag or stutter during refresh)
+- [ ] **TUI-08**: Data table uses color or icon indicators to show which items are editable vs read-only
 
 ### Plugin Foundation (PLUGIN)
 
@@ -175,9 +180,17 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 **Coverage:**
 - v1 requirements: 33 total
-- Mapped to phases: 0 (roadmap not created yet)
-- Unmapped: 33 ⚠️
+- Mapped to phases: 33 (100%)
+- Unmapped: 0 ✓
+
+**Phase Distribution:**
+- Phase 1 (FFI Foundation): 5 requirements
+- Phase 2 (State Management): 5 requirements
+- Phase 3 (TUI Core): 16 requirements
+- Phase 4 (Configuration & Editing): 3 requirements
+- Phase 5 (Bookmarks & Plugins): 8 requirements
+- Phase 6 (Polish & Optimization): 0 requirements (polish phase)
 
 ---
 *Requirements defined: 2025-01-28*
-*Last updated: 2025-01-28 after initial definition*
+*Last updated: 2026-01-28 after roadmap creation*
