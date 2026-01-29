@@ -268,12 +268,35 @@ pub const Model = struct {
                 }
 
                 // 'n' to open signal creation dialog
-                if (key.matches('n', .{}) and !self.signal_dialog.visible) {
+                if (key.matches('n', .{}) and !self.signal_dialog.visible and !self.save_dialog_visible) {
                     self.openSignalDialog() catch |err| {
                         std.log.err("Failed to open signal dialog: {}", .{err});
                     };
                     ctx.consumeAndRedraw();
                     return;
+                }
+
+                // 's' to open save configuration dialog
+                if (key.matches('s', .{}) and !self.save_dialog_visible and !self.signal_dialog.visible) {
+                    self.openSaveDialog() catch |err| {
+                        self.setError("Failed to open save dialog") catch {};
+                        std.log.err("Failed to open save dialog: {}", .{err});
+                    };
+                    ctx.consumeAndRedraw();
+                    return;
+                }
+
+                // Handle save dialog input
+                if (self.save_dialog_visible) {
+                    const handled = self.handleSaveDialogKey(key) catch |err| {
+                        self.setError("Save dialog error") catch {};
+                        std.log.err("Save dialog error: {}", .{err});
+                        return false;
+                    };
+                    if (handled) {
+                        ctx.consumeAndRedraw();
+                        return;
+                    }
                 }
 
                 // Pass key to signal dialog if visible
@@ -318,6 +341,58 @@ pub const Model = struct {
                 std.log.err("Failed to subscribe to '{s}': {}", .{ item_name, err });
             };
         }
+    }
+
+    /// Handle key press in save dialog
+    fn handleSaveDialogKey(self: *Model, key: vxfw.Key) !bool {
+        // Alphanumeric input for filename
+        if (key == .Char) {
+            const c = key.Char;
+            if (std.ascii.isPrint(c) and c != '/') {
+                try self.save_filename.append(c);
+            }
+            return true;
+        }
+
+        // Backspace
+        if (key.matches(vxfw.Key.Backspace, .{})) {
+            if (self.save_filename.items.len > 0) {
+                _ = self.save_filename.pop();
+            }
+            return true;
+        }
+
+        // Enter to save
+        if (key == .Enter) {
+            if (self.save_filename.items.len == 0) {
+                try self.setError("Filename cannot be empty");
+                return true;
+            }
+
+            // Null-terminate for file API
+            const filename_terminated = try self.allocator.dupeZ(u8, self.save_filename.items);
+            defer self.allocator.free(filename_terminated);
+
+            // Save configuration
+            self.saveConfiguration(filename_terminated) catch |err| {
+                try self.setError("Save failed");
+                std.log.err("Failed to save configuration: {}", .{err});
+                return true;
+            };
+
+            // Success
+            try self.setError("Configuration saved successfully");
+            self.closeSaveDialog();
+            return true;
+        }
+
+        // Escape to cancel
+        if (key == .Escape) {
+            self.closeSaveDialog();
+            return true;
+        }
+
+        return true;
     }
 
     /// Draw function - renders the two-panel layout
