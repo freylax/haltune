@@ -132,6 +132,31 @@ pub fn halSignalNew(name: [:0]const u8, hal_type: hal_type_t) !void {
     if (rc != 0) return HalError.InitFailed;
 }
 
+/// Link a pin to a signal
+///
+/// This function links an existing pin to an existing signal.
+/// The pin and signal must have the same type (bit, float, s32, or u32).
+///
+/// Parameters:
+///   - pin_name: Null-terminated pin name to link
+///   - signal_name: Null-terminated signal name to link to
+///
+/// Returns:
+///   - void on success
+///   - error.LinkFailed if pin/signal not found or types don't match
+///   - error.AlreadyLinked if pin is already linked to a signal
+///
+/// Thread safety:
+///   - Acquires HAL mutex before linking
+///   - Safe to call from multiple threads
+pub fn halLink(pin_name: [:0]const u8, signal_name: [:0]const u8) !void {
+    _ = c.hal_mutex_lock(c.hal_mutex.ptr);
+    defer c.hal_mutex_unlock(c.hal_mutex.ptr);
+
+    const rc = c.hal_link(pin_name, signal_name);
+    if (rc != 0) return HalError.LinkFailed;
+}
+
 /// Create a new HAL float pin
 ///
 /// This function creates a new float pin in the HAL with the specified name and direction.
