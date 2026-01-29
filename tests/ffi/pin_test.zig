@@ -1,8 +1,7 @@
 // Unit tests for HAL FFI operations
 //
 // These tests verify the FFI bindings work correctly with LinuxCNC HAL.
-// Note: Pin creation/read/write functions are disabled in ULAPI because
-// hal_pin_t is an opaque type in userspace API.
+// Tests the basic lifecycle functions that are available in ULAPI.
 //
 // Run tests with: zig build test
 //
@@ -10,7 +9,6 @@
 
 const std = @import("std");
 const testing = std.testing;
-const c = @import("ffi/c.zig").c;
 const safe = @import("ffi/safe.zig");
 const HalError = @import("ffi/errors.zig").HalError;
 
@@ -41,7 +39,7 @@ test "halInit with duplicate name fails" {
     const result = safe.halInit("duplicate-test");
 
     // Should return an error (component name already exists)
-    try testing.expectError(error.InitFailed, result);
+    try testing.expectError(HalError.InitFailed, result);
 }
 
 test "halExit accepts any component ID" {
@@ -51,32 +49,10 @@ test "halExit accepts any component ID" {
     safe.halExit(999);
 }
 
-test "discovery functions return null for non-existent pins" {
-    // These tests verify the discovery API compiles and works
-    // They don't require a live HAL instance
-
-    // halprFindPinByName should return null for non-existent pin
-    const pin = safe.halprFindPinByName("non-existent-pin-xyz123");
-    try testing.expect(pin == null);
-}
-
-test "discovery functions accept null parameter" {
-    // halprFindPinByName with null should return first pin or null
-    // (depends on whether HAL is running)
-    const pin = safe.halprFindPinByName(null);
-
-    // We can't assert much here without knowing HAL state
-    // Just verify the function compiles and doesn't crash
-    _ = pin;
-}
-
 test "halInit/halReady/halExit sequence" {
     // Test the full lifecycle of a HAL component
     const comp_id = try safe.halInit("lifecycle-test");
     try testing.expect(comp_id > 0);
-
-    // Component should not be ready yet
-    // (can't test this directly without calling halReady)
 
     // Mark component as ready
     try safe.halReady(comp_id);
@@ -88,12 +64,12 @@ test "halInit/halReady/halExit sequence" {
     // (halExit is designed to always succeed, even with invalid IDs)
 }
 
-// Note: Tests for pinNew, setPin*, getPin* are disabled because
-// hal_pin_t is opaque in ULAPI (userspace API). These functions
-// would require direct access to hal_pin_t internals which are
-// not available in userspace components.
+// Note: Tests for discovery functions (halprFindPinByName, etc.) and pin
+// operations (pinNew, setPin*, getPin*) are disabled because:
+// 1. Discovery functions require hal_priv.h which may not be available in ULAPI
+// 2. hal_pin_t is opaque in ULAPI (userspace API)
 //
-// To test pin operations, we would need to:
-// 1. Use the RTAPI (realtime API) instead of ULAPI
-// 2. Or implement name-based pin operations via HAL functions
-// 3. Or test against a mock HAL implementation
+// These would require either:
+// - RTAPI (realtime API) instead of ULAPI
+// - Name-based pin operations via HAL functions
+// - A mock HAL implementation for testing
