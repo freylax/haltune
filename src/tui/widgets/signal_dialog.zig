@@ -361,5 +361,70 @@ pub const SignalDialog = struct {
         }
     }
 
-    // TODO: Add draw() in subsequent task
+    /// Draw dialog widget
+    pub fn draw(self: *const SignalDialog, ctx: vxfw.DrawContext) !void {
+        if (!self.visible) return;
+
+        const width = @min(60, ctx.max.width - 4);
+        const height = @min(20, ctx.max.height - 4);
+        const x = @max(2, (ctx.max.width - width) / 2);
+        const y = @max(2, (ctx.max.height - height) / 2);
+
+        // Create modal subsurface
+        const modal = try ctx.subSurface(.{
+            .x_off = x,
+            .y_off = y,
+            .width = width,
+            .height = height,
+        });
+        defer modal.deinit();
+
+        // Draw border box (simple implementation)
+        // TODO: Enhance with proper border drawing using vxfw.Text
+
+        switch (self.current_step) {
+            .input_name => try self.drawStepInputName(modal, width, height),
+            .select_type => try self.drawStepSelectType(modal, width, height),
+            .select_pins => try self.drawStepSelectPins(modal, width, height),
+            .confirm => try self.drawStepConfirm(modal, width, height),
+        }
+
+        // Draw error message if present
+        if (self.error_message) |msg| {
+            // TODO: Render error at bottom of dialog with red color
+            _ = msg;
+        }
+    }
+
+    fn drawStepInputName(self: *const SignalDialog, surface: vxfw.Surface, width: usize, height: usize) !void {
+        _ = self;
+        _ = surface;
+        _ = width;
+        _ = height;
+        // TODO: Draw name input prompt and current input buffer
+    }
+
+    fn drawStepSelectType(self: *const SignalDialog, surface: vxfw.Surface, width: usize, height: usize) !void {
+        _ = self;
+        _ = surface;
+        _ = width;
+        _ = height;
+        // TODO: Draw type selection list with cursor
+    }
+
+    fn drawStepSelectPins(self: *const SignalDialog, surface: vxfw.Surface, width: usize, height: usize) !void {
+        _ = self;
+        _ = surface;
+        _ = width;
+        _ = height;
+        // TODO: Draw pin list with selection checkboxes and cursor
+    }
+
+    fn drawStepConfirm(self: *const SignalDialog, surface: vxfw.Surface, width: usize, height: usize) !void {
+        _ = self;
+        _ = surface;
+        _ = width;
+        _ = height;
+        // TODO: Draw summary: signal name, type, selected pins
+    }
 };
