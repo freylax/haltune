@@ -40,12 +40,11 @@ pub fn build(b: *std.Build) void {
     // Skip if building on dev machine without LinuxCNC installed
     if (!skip_hal_link) {
         exe.addLibraryPath(.{ .cwd_relative = "/lib" }); // Search /lib for liblinuxcnchal.so
+
+        // Link glibc first to provide GLIBC symbols needed by liblinuxcnchal.so
+        exe.linkSystemLibrary("glibc");
         exe.linkSystemLibrary("linuxcnchal"); // Library is liblinuxcnchal.so on Debian/Ubuntu
         exe.linkSystemLibrary("rt"); // LinuxCNC HAL requires librt
-
-        // FIXME: Zig 0.15.2 uses LLD which has GLIBC compatibility issues
-        // Try using system linker by setting an environment variable
-        // This requires a workaround or Zig upgrade to 0.14.0+
     }
 
     // Install the executable
@@ -82,6 +81,9 @@ pub fn build(b: *std.Build) void {
     // Link test against LinuxCNC HAL library
     if (!skip_hal_link) {
         test_exe.addLibraryPath(.{ .cwd_relative = "/lib" }); // Search /lib for liblinuxcnchal.so
+
+        // Link glibc first to provide GLIBC symbols
+        test_exe.linkSystemLibrary("glibc");
         test_exe.linkSystemLibrary("linuxcnchal"); // Library is liblinuxcnchal.so on Debian/Ubuntu
         test_exe.linkSystemLibrary("rt");
     }
