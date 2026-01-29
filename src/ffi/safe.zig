@@ -41,10 +41,10 @@ const hal_pin_dir_t = @import("types.zig").hal_pin_dir_t;
 /// _ = try halReady(comp_id);
 /// ```
 pub fn halInit(comp_name: [:0]const u8) !c_int {
-    // Call hal_init - returns null on failure, or component ID on success
-    const comp_id = c.hal_init(comp_name) orelse return HalError.InitFailed;
+    // Call hal_init - returns component ID (positive) on success, negative on error
+    const comp_id = c.hal_init(comp_name);
 
-    // hal_init returns negative value on some error conditions
+    // hal_init returns negative value on failure
     if (comp_id < 0) return HalError.InitFailed;
 
     return comp_id;
