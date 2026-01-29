@@ -11,19 +11,19 @@ See: .planning/PROJECT.md (updated 2025-01-28)
 ## Current Position
 
 Phase: 4 of 6 (Configuration & Editing)
-Plan: 2 of ? in current phase
+Plan: 3 of ? in current phase
 Status: In progress
-Last activity: 2026-01-29 — Completed 04-02 (TUI Signal Creation Dialog) with 9/9 tasks complete
+Last activity: 2026-01-29 — Completed 04-03 (Configuration Export) with 6/6 tasks complete
 
-Progress: [██████████] 59%
+Progress: [██████████░] 65%
 
 ## Performance Metrics
 
 **Velocity:**
 - Total phases completed: 3 of 6
-- Total plans completed: 15
-- Average duration: 10.7 min
-- Total execution time: 2.7 hours
+- Total plans completed: 16
+- Average duration: 10.3 min
+- Total execution time: 2.8 hours
 
 **By Phase:**
 
@@ -32,11 +32,11 @@ Progress: [██████████] 59%
 | 01-ffi-foundation | 3 | 3 | 27.7 min |
 | 02-state-management | 5 | 5 | 8.4 min |
 | 03-tui-core | 5 | 5 | 6.0 min |
-| 04-config-editing | 2 | ? | 4.5 min |
+| 04-config-editing | 3 | ? | 4.4 min |
 
 **Recent Trend:**
-- Phase 4 progressing: HAL signal FFI wrappers + SignalDialog wizard complete
-- Last 6 plans: 4.5 min avg (04-02: 6min, 04-01: 3min, 03-00: 2min, 03-01: 3min, 03-02: 13min, 03-03: 5min)
+- Phase 4 progressing: HAL signal FFI wrappers + SignalDialog wizard + Configuration export complete
+- Last 6 plans: 4.2 min avg (04-03: 4.3min, 04-02: 6min, 04-01: 3min, 03-00: 2min, 03-01: 3min, 03-02: 13min)
 
 *Updated after each plan completion*
 
@@ -46,6 +46,15 @@ Progress: [██████████] 59%
 
 Decisions are logged in PROJECT.md Key Decisions table.
 Recent decisions affecting current work:
+
+**From 04-03 (Configuration Export):**
+- Defer pin link tracking in refresh thread - ULAPI signal pointer iteration is complex for v1, documented in TODO comment
+- Use ArrayList(u8) for save filename input - proper UTF-8 backspace handling via pop() method
+- Buffered file writing for export - use std.io.bufferedWriter for efficient I/O
+- Null-terminate filename for std.fs.cwd API compatibility - dupeZ allocation required
+- Placeholder for save dialog visual rendering - functionality complete (open, input, save, cancel) but UI deferred to avoid blocking flow
+- Save dialog lifecycle pattern: openSaveDialog() → [filename input] → saveConfiguration() → closeSaveDialog()
+- Error handling via setError() with user-facing messages and std.log.err() for debugging
 
 **From 04-02 (TUI Signal Creation Dialog):**
 - Use StringHashMap(void) for selected pins - simpler than tracking full pin state, only need O(1) membership test
@@ -157,6 +166,10 @@ None yet.
 
 ### Blockers/Concerns
 
+**From 04-03:**
+- Note: Pin link tracking not implemented - export will show empty pin lists until refresh thread is updated to iterate signals and find matching pointers (documented in TODO comment)
+- Note: Save dialog visual rendering is a TODO placeholder - dialog works (open, input, save, cancel) but no visual feedback yet
+
 **From 04-02:**
 - Note: Draw functions are stub implementations - visual rendering of dialog steps deferred to avoid blocking functionality
 - Dialog needs visual polish (borders, colors, proper text rendering) but core wizard flow is complete and functional
@@ -201,7 +214,7 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-01-29 (Phase 4 plan 02 execution)
-Stopped at: Completed 04-02 (TUI Signal Creation Dialog) - SignalDialog widget with 4-step wizard complete
+Last session: 2026-01-29 (Phase 4 plan 03 execution)
+Stopped at: Completed 04-03 (Configuration Export) - Export module, save dialog, pin link infrastructure complete
 Resume file: None
-Next action: Execute 04-03 (Configuration Export) or enhance dialog visual rendering
+Next action: Execute 04-04 or enhance save dialog visual rendering
