@@ -322,6 +322,116 @@ pub const RefreshThread = struct {
             else => return error.TypeMismatch,
         }
     }
+
+    /// Refresh all signals from HAL
+    ///
+    /// This function:
+    /// 1. Enumerates all signals from HAL via halprFindSigByName(null) iteration
+    /// 2. Compares with cache to find new signals
+    /// 3. Adds new signals to cache
+    /// 4. Updates all signal values
+    ///
+    /// Thread safety:
+    ///   - Reads HAL signals without holding cache lock
+    ///   - Collects all values in temporary ArrayList
+    ///   - Acquires cache lock only for final update
+    fn refreshSignals(self: *RefreshThread) !void {
+        // Discovery phase: Walk HAL's linked list of all signals
+        var hal_signals = std.ArrayList(*c.hal_sig_t).init(self.allocator);
+        defer hal_signals.deinit();
+
+        var maybe_sig = ffi.halprFindSigByName(null); // null = first signal
+        while (maybe_sig) |sig| {
+            try hal_signals.append(sig);
+            maybe_sig = sig.*.next; // Walk linked list via next pointer
+        }
+
+        // Snapshot phase: Get current cache keys for comparison
+        const cached_names = try self.store.listSignals(self.allocator);
+        defer self.allocator.free(cached_names);
+
+        // Comparison phase: Find new signals (in HAL but not cache)
+        for (hal_signals.items) |sig| {
+            const name = std.mem.span(sig.*.name);
+
+            // Check if this signal is already in cache
+            var found = false;
+            for (cached_names) |cached_name| {
+                if (std.mem.eql(u8, name, cached_name)) {
+                    found = true;
+                    break;
+                }
+            }
+
+            // If not in cache, add it (newly discovered signal)
+            if (!found) {
+                const value = try ffi.getSignalValue(sig);
+                try self.store.addSignal(name, value);
+            }
+        }
+
+        // Update phase: Read all current values from HAL and update cache
+        for (hal_signals.items) |sig| {
+            const name = std.mem.span(sig.*.name);
+            const value = try ffi.getSignalValue(sig);
+            try self.store.updateSignal(name, value);
+        }
+    }
+
+    /// Refresh all parameters from HAL
+    ///
+    /// This function:
+    /// 1. Enumerates all parameters from HAL via halprFindParamByName(null) iteration
+    /// 2. Compares with cache to find new parameters
+    /// 3. Adds new parameters to cache
+    /// 4. Updates all parameter values
+    ///
+    /// Thread safety:
+    ///   - Reads HAL parameters without holding cache lock
+    ///   - Collects all values in temporary ArrayList
+    ///   - Acquires cache lock only for final update
+    fn refreshParams(self: *RefreshThread) !void {
+        // Discovery phase: Walk HAL's linked list of all parameters
+        var hal_params = std.ArrayList(*c.hal_param_t).init(self.allocator);
+        defer hal_params.deinit();
+
+        var maybe_param = ffi.halprFindParamByName(null); // null = first param
+        while (maybe_param) |param| {
+            try hal_params.append(param);
+            maybe_param = param.*.next; // Walk linked list via next pointer
+        }
+
+        // Snapshot phase: Get current cache keys for comparison
+        const cached_names = try self.store.listParams(self.allocator);
+        defer self.allocator.free(cached_names);
+
+        // Comparison phase: Find new parameters (in HAL but not cache)
+        for (hal_params.items) |param| {
+            const name = std.mem.span(param.*.name);
+
+            // Check if this parameter is already in cache
+            var found = false;
+            for (cached_names) |cached_name| {
+                if (std.mem.eql(u8, name, cached_name)) {
+                    found = true;
+                    break;
+                }
+            }
+
+            // If not in cache, add it (newly discovered parameter)
+            if (!found) {
+                const value = try ffi.getParamValue(param);
+                try self.store.addParam(name, value);
+            }
+        }
+
+        // Update phase: Read all current values from HAL and update cache
+        for (hal_params.items) |param| {
+            const name = std.mem.span(param.*.name);
+            const value = try ffi.getParamValue(param);
+            try self.store.updateParam(name, value);
+        }
+    }
 };
 
 // Compile-time tests to verify API surface
