@@ -210,6 +210,76 @@ pub const SubscriptionManager = struct {
             list.deinit();
         }
     }
+
+    /// Notify all subscribers of a value change
+    ///
+    /// Calls all callbacks registered for the specified item with the old and new values.
+    /// Also broadcasts to condition variable to wake any threads waiting in waitForChange().
+    ///
+    /// Parameters:
+    ///   - item_name: Name of the pin/signal/param that changed
+    ///   - old_value: Previous value (null if this is the first value)
+    ///   - new_value: New value after the change
+    ///
+    /// Thread safety:
+    ///   - Acquires mutex exclusively
+    ///   - Callbacks are invoked while holding mutex (keep them fast!)
+    ///   - Safe to call concurrently from multiple threads
+    ///
+    /// Example:
+    /// ```
+    /// manager.notify("motion.digital-in-00", null, .{.bit = true});
+    /// ```
+    pub fn notify(self: *SubscriptionManager, item_name: []const u8, old_value: ?HalValue, new_value: HalValue) void {
+        self.mutex.lock();
+        defer self.mutex.unlock();
+
+        // Find subscriber list for this item
+        if (self.subscribers.get(item_name)) |list| {
+            // Call all registered callbacks
+            for (list.items) |callback| {
+                callback(item_name, old_value, new_value);
+            }
+        }
+
+        // Set predicate flag and wake all waiting threads
+        self.has_changes = true;
+        self.condition.broadcast();
+    }
+
+    /// Wait for any value change notification
+    ///
+    /// Blocks the current thread until notify() is called on any item.
+    /// Uses a condition variable for efficient blocking (no CPU spinning).
+    ///
+    /// Thread safety:
+    ///   - Acquires mutex exclusively
+    ///   - Releases mutex while waiting (allows other threads to call notify)
+    ///   - Reacquires mutex before returning
+    ///   - Multiple threads can wait concurrently
+    ///
+    /// Spurious wakeup handling:
+    ///   - Uses while loop (not if) to guard against spurious wakeups
+    ///   - See RESEARCH.md Pitfall 2 for details
+    ///
+    /// Example:
+    /// ```
+    /// // In TUI thread:
+    /// manager.waitForChange();  // Blocks until notify() is called
+    /// // Now redraw UI with updated data
+    /// ```
+    pub fn waitForChange(self: *SubscriptionManager) void {
+        self.mutex.lock();
+        defer self.mutex.unlock();
+
+        // Loop handles spurious wakeups (RESEARCH.md Pitfall 2)
+        while (!self.has_changes) {
+            self.condition.wait(&self.mutex);
+        }
+
+        // Clear predicate flag for next wait
+        self.has_changes = false;
+    }
 };
 
 // Compile-time tests to verify API surface
@@ -223,6 +293,10 @@ comptime {
     // Verify subscribe/unsubscribe operations exist
     _ = SubscriptionManager.subscribe;
     _ = SubscriptionManager.unsubscribe;
+
+    // Verify notify/waitForChange operations exist
+    _ = SubscriptionManager.notify;
+    _ = SubscriptionManager.waitForChange;
 
     // Verify Callback type is a function pointer
     _ = Callback;
