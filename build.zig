@@ -1,0 +1,50 @@
+const std = @import("std");
+
+pub fn build(b: *std.Build) void {
+    const target = b.standardTargetOptions(.{
+        .default_target = .{
+            // Target aarch64-linux for Raspberry Pi 5 compatibility
+            .cpu_arch = .aarch64,
+            .os_tag = .linux,
+        },
+    });
+
+    const optimize = b.standardOptimizeOption(.{});
+
+    // LinuxCNC include path - system option for dev vs production environments
+    const linuxcnc_include = b.option([]const u8, "linuxcnc-include", "Path to LinuxCNC headers (default: /usr/include/linuxcnc)") orelse "/usr/include/linuxcnc";
+
+    // Create root module
+    const root_module = b.createModule(.{
+        .root_source_file = b.path("src/root.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+
+    // Add LinuxCNC HAL include path for @cImport
+    root_module.addIncludePath(.{ .cwd_relative = linuxcnc_include });
+
+    // Create the haltune executable
+    const exe = b.addExecutable(.{
+        .name = "haltune",
+        .root_module = root_module,
+    });
+
+    // Link against LinuxCNC HAL library (system library search path)
+    exe.linkSystemLibrary("hal");
+    exe.linkSystemLibrary("rt"); // LinuxCNC HAL requires librt
+
+    // Install the executable
+    b.installArtifact(exe);
+
+    // Run step
+    const run_cmd = b.addRunArtifact(exe);
+    run_cmd.step.dependOn(b.getInstallStep());
+
+    if (b.args) |args| {
+        run_cmd.addArgs(args);
+    }
+
+    const run_step = b.step("run", "Run the app");
+    run_step.dependOn(&run_cmd.step);
+}
