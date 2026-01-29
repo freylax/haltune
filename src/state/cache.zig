@@ -254,6 +254,129 @@ pub const StateStore = struct {
 
         try self.params.put(name, value);
     }
+
+    /// List all pin names in the cache
+    ///
+    /// Returns a snapshot of all pin names. Used by TUI to enumerate
+    /// available pins for display and selection.
+    ///
+    /// Parameters:
+    ///   - allocator: Memory allocator for the returned string slice
+    ///
+    /// Returns:
+    ///   - Slice of pin names (caller owns memory)
+    ///   - error.OutOfMemory if allocation fails
+    ///
+    /// Thread safety:
+    ///   - Acquires shared lock while copying keys
+    ///   - Returns owned slice (safe to iterate after lock release)
+    ///
+    /// IMPORTANT: Caller must free returned slice with allocator.free()
+    ///
+    /// Example:
+    /// ```
+    /// const pin_names = try store.listPins(allocator);
+    /// defer allocator.free(pin_names);  // Free outer slice
+    /// for (pin_names) |name| {
+    ///     std.debug.print("{s}\n", .{name});
+    /// }
+    /// ```
+    pub fn listPins(self: *StateStore, allocator: std.mem.Allocator) ![][]const u8 {
+        self.rwlock.lockShared();
+        defer self.rwlock.unlockShared();
+
+        // Snapshot keys while holding lock
+        var keys = std.ArrayList([]const u8).init(allocator);
+        var iter = self.pins.iterator();
+        while (iter.next()) |entry| {
+            try keys.append(entry.key_ptr.*);
+        }
+
+        // Return owned slice (iterator no longer needed)
+        return keys.toOwnedSlice();
+    }
+
+    /// List all signal names in the cache
+    ///
+    /// Returns a snapshot of all signal names. Used by TUI to enumerate
+    /// available signals for display and selection.
+    ///
+    /// Parameters:
+    ///   - allocator: Memory allocator for the returned string slice
+    ///
+    /// Returns:
+    ///   - Slice of signal names (caller owns memory)
+    ///   - error.OutOfMemory if allocation fails
+    ///
+    /// Thread safety:
+    ///   - Acquires shared lock while copying keys
+    ///   - Returns owned slice (safe to iterate after lock release)
+    ///
+    /// IMPORTANT: Caller must free returned slice with allocator.free()
+    ///
+    /// Example:
+    /// ```
+    /// const signal_names = try store.listSignals(allocator);
+    /// defer allocator.free(signal_names);  // Free outer slice
+    /// for (signal_names) |name| {
+    ///     std.debug.print("{s}\n", .{name});
+    /// }
+    /// ```
+    pub fn listSignals(self: *StateStore, allocator: std.mem.Allocator) ![][]const u8 {
+        self.rwlock.lockShared();
+        defer self.rwlock.unlockShared();
+
+        // Snapshot keys while holding lock
+        var keys = std.ArrayList([]const u8).init(allocator);
+        var iter = self.signals.iterator();
+        while (iter.next()) |entry| {
+            try keys.append(entry.key_ptr.*);
+        }
+
+        // Return owned slice (iterator no longer needed)
+        return keys.toOwnedSlice();
+    }
+
+    /// List all parameter names in the cache
+    ///
+    /// Returns a snapshot of all parameter names. Used by TUI to enumerate
+    /// available parameters for display and selection.
+    ///
+    /// Parameters:
+    ///   - allocator: Memory allocator for the returned string slice
+    ///
+    /// Returns:
+    ///   - Slice of parameter names (caller owns memory)
+    ///   - error.OutOfMemory if allocation fails
+    ///
+    /// Thread safety:
+    ///   - Acquires shared lock while copying keys
+    ///   - Returns owned slice (safe to iterate after lock release)
+    ///
+    /// IMPORTANT: Caller must free returned slice with allocator.free()
+    ///
+    /// Example:
+    /// ```
+    /// const param_names = try store.listParams(allocator);
+    /// defer allocator.free(param_names);  // Free outer slice
+    /// for (param_names) |name| {
+    ///     std.debug.print("{s}\n", .{name});
+    /// }
+    /// ```
+    pub fn listParams(self: *StateStore, allocator: std.mem.Allocator) ![][]const u8 {
+        self.rwlock.lockShared();
+        defer self.rwlock.unlockShared();
+
+        // Snapshot keys while holding lock
+        var keys = std.ArrayList([]const u8).init(allocator);
+        var iter = self.params.iterator();
+        while (iter.next()) |entry| {
+            try keys.append(entry.key_ptr.*);
+        }
+
+        // Return owned slice (iterator no longer needed)
+        return keys.toOwnedSlice();
+    }
 };
 
 // Compile-time tests to verify API surface
@@ -271,6 +394,11 @@ comptime {
     _ = StateStore.updateSignal;
     _ = StateStore.getParam;
     _ = StateStore.updateParam;
+
+    // Verify list operations exist
+    _ = StateStore.listPins;
+    _ = StateStore.listSignals;
+    _ = StateStore.listParams;
 
     // Verify HalValue union has all expected fields
     _ = HalValue.bit;
