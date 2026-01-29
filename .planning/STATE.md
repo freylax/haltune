@@ -11,19 +11,19 @@ See: .planning/PROJECT.md (updated 2025-01-28)
 ## Current Position
 
 Phase: 3 of 6 (TUI Core)
-Plan: 3 of 5 in current phase
+Plan: 4 of 5 in current phase
 Status: In progress
-Last activity: 2026-01-29 — Completed 03-03 (Data Table with Real-Time Updates)
+Last activity: 2026-01-29 — Completed 03-04 (Search, Filter, and In-Place Editing)
 
-Progress: [████░░░░░░] 30%
+Progress: [████████░░░] 40%
 
 ## Performance Metrics
 
 **Velocity:**
 - Total phases completed: 2 of 6
-- Total plans completed: 12
-- Average duration: 12.8 min
-- Total execution time: 3.1 hours
+- Total plans completed: 13
+- Average duration: 12.2 min
+- Total execution time: 3.3 hours
 
 **By Phase:**
 
@@ -31,11 +31,11 @@ Progress: [████░░░░░░] 30%
 |-------|-------|-------|----------|
 | 01-ffi-foundation | 3 | 3 | 27.7 min |
 | 02-state-management | 5 | 5 | 8.4 min |
-| 03-tui-core | 4 | 5 | 5.3 min |
+| 03-tui-core | 5 | 5 | 5.4 min |
 
 **Recent Trend:**
-- Phase 3 progressing quickly: TUI foundation (2 min), tree navigation (13 min), data table (5 min)
-- Last 5 plans: 6.8 min avg (02-02: 19min, 02-03: 4min, 02-04: 6min, 02-05: 11min, 03-03: 5min)
+- Phase 3 progressing quickly: TUI foundation (2 min), tree navigation (13 min), data table (5 min), search/filter/edit (8 min)
+- Last 5 plans: 7.8 min avg (02-02: 19min, 02-03: 4min, 02-04: 6min, 02-05: 11min, 03-04: 8min)
 
 *Updated after each plan completion*
 
@@ -46,11 +46,81 @@ Progress: [████░░░░░░] 30%
 Decisions are logged in PROJECT.md Key Decisions table.
 Recent decisions affecting current work:
 
-**From 01-01 (Project Scaffolding):**
-- Added `-Dskip-hal-link` build option for development on machines without LinuxCNC
-- Use `std.debug.print` instead of non-existent `std.io.getStdOut()` (Zig 0.15.1 API)
-- Lazy @cImport allows development without hal.h present
-- Target aarch64-linux for Raspberry Pi 5 deployment
+**From 03-04 (Search, Filter, and In-Place Editing):**
+- glob.zig library used for pattern matching (simpler than custom implementation)
+- Search buffer managed via ArrayList(u8) for proper UTF-8 backspace handling
+- Edit buffer is ArrayList with edit_mode flag controlling display
+- Pending edits tracked in StringHashMap, displays "..." until refresh
+- Error messages auto-clear after 5 seconds (balance between visibility and annoyance)
+- Read-only detection via name heuristics (-out/-io suffix) for now
+- Cursor selection not implemented (edits first item), deferred to future
+- Help text displayed at bottom in dim style showing all key bindings
+
+**From 03-03 (Data Table with Real-Time Updates):**
+- Use global variable (GLOBAL_REDRAW_FLAG) for pubsub callback access
+- Determine editability via name heuristics for now (direction not in cache yet)
+- Read values from StateStore cache (lock-free) instead of calling HAL FFI directly
+- Pubsub-driven redraws - SubscriptionManager callbacks set redraw_flag, key_press handler checks flag and calls ctx.consumeAndRedraw()
+- Color-coded editability indicators - green (index 2) for editable, dim gray (index 8) for read-only
+
+**From 03-02 (Tree Navigation):**
+- Component hierarchy extracted from HAL item names using dot delimiter
+- Widget state stored in TreeView HashMaps (expanded_nodes, checked_items)
+- visible_nodes rebuilt on each draw from root nodes - simpler code, trivial performance cost
+- Cursor tracks position in visible_nodes list (not global tree) - prevents jumping when tree structure changes
+
+**From 03-01 (TUI Foundation):**
+- Use vxfw framework (not low-level Vaxis API) - automatic redraw optimization
+- Delegate layout logic to separate module (layout.zig) - keeps model.zig focused
+- Use ctx.withConstraints for panel sizing - responsive layout at different terminal sizes
+- Arena allocation pattern - use ctx.arena for temporary allocations (freed automatically each frame)
+- Two-panel layout uses SubSurface children with origin offsets - left panel (30%), right panel (70%)
+
+**From 03-00 (FFI Write Functions):**
+- Pin write functions use HAL mutex locking for thread safety
+- Parameter write functions include type validation
+- getPinValue handles both linked pins (delegate to getSignalValue) and unlinked pins (read from dummysig)
+- Write functions follow Phase 1 pattern: acquire mutex, write value, release mutex
+- Read functions remain lock-free across all FFI (pins, signals, parameters)
+- TUI layer responsible for checking pin direction/param writability before calling write functions
+
+**From 02-05 (Stale Entry Cleanup):**
+- Use HashMap.remove() which returns bool - ignore return value with _ since stale entries may or may not exist
+- Log stale removal errors but don't fail refresh cycle - prevents one bad removal from stopping all updates
+- Compare cached names to HAL snapshot (not reverse) - ensures we catch all stale entries
+- Cache size invariant now maintained (no unbounded growth as components load/unload)
+
+**From 02-04 (Signal and Parameter Refresh):**
+- Read signal/param values directly from hal_sig_t/hal_param_t structures (same as pins)
+- Follow exact same 4-phase refresh pattern as refreshPins() for consistency
+- Use @import to avoid circular dependency between safe.zig and cache.zig
+
+**From 02-03 (Pubsub Notifications):**
+- Mutex protects entire subscriber HashMap (not per-item locks) - simpler lock hierarchy
+- Callbacks invoked while holding mutex - documented to keep them fast
+- Condition variable with has_changes predicate - prevents spurious wakeup bugs (RESEARCH.md Pitfall 2)
+- waitForChange() uses while loop (not if) - correct spurious wakeup handling per RESEARCH
+
+**From 02-02 (Refresh Thread):**
+- Use .acquire/.release memory ordering for atomic running flag - ensures visibility across threads (RESEARCH.md Pitfall 4)
+- Read HAL values before acquiring cache lock - prevents deadlock with HAL mutex (RESEARCH.md Pitfall 1)
+- Enumerate ALL pins from HAL each cycle via halpr_find_pin_by_name(null) - supports dynamic component load/unload
+- Sleep loop with atomic flag for clean thread shutdown - thread exits within one refresh interval
+- Stale pin cleanup deferred - new pins added immediately, old pins detected but removal TODO
+
+**From 02-01 (State Cache):**
+- Single RwLock per StateStore (not per HashMap) - simpler lock hierarchy, prevents deadlock
+- Read operations use lockShared() - allows concurrent TUI access without blocking
+- Write operations use lock() - blocks all readers during atomic updates
+- List functions snapshot keys while holding lock, return owned slice - prevents iterator invalidation (RESEARCH.md Pitfall 3)
+- Never call HAL functions while holding rwlock - prevents deadlock with HAL mutex (RESEARCH.md Pitfall 1)
+
+**From 01-03 (Safe Pin Operations):**
+- Write operations use HAL mutex lock/unlock for thread safety
+- Read operations are lock-free (HAL real-time thread owns writes)
+- Type checking on all operations returns TypeMismatch error (not crash)
+- HAL-allocated pin memory is never freed by Zig
+- C types used directly via @cImport wrappers (simpler than extern struct)
 
 **From 01-02 (Type-Safe FFI Layer):**
 - Use extern struct (not packed) for C ABI compatibility on ARM64
@@ -60,74 +130,11 @@ Recent decisions affecting current work:
 - Version-specific struct size verification for LinuxCNC 2.9.7 and 2.10
 - Document memory ownership explicitly at FFI boundaries (HAL owns HAL memory, Zig owns Zig memory)
 
-**From 01-03 (Safe Pin Operations):**
-- Write operations use HAL mutex lock/unlock for thread safety
-- Read operations are lock-free (HAL real-time thread owns writes)
-- Type checking on all operations returns TypeMismatch error (not crash)
-- HAL-allocated pin memory is never freed by Zig
-- C types used directly via @cImport wrappers (simpler than extern struct)
-
-**From 02-01 (State Cache):**
-- Single RwLock per StateStore (not per HashMap) - simpler lock hierarchy, prevents deadlock
-- Read operations use lockShared() - allows concurrent TUI access without blocking
-- Write operations use lock() - blocks all readers during atomic updates
-- List functions snapshot keys while holding lock, return owned slice - prevents iterator invalidation (RESEARCH.md Pitfall 3)
-- Never call HAL functions while holding rwlock - prevents deadlock with HAL mutex (RESEARCH.md Pitfall 1)
-
-**From 02-02 (Refresh Thread):**
-- Use .acquire/.release memory ordering for atomic running flag - ensures visibility across threads (RESEARCH.md Pitfall 4)
-- Read HAL values before acquiring cache lock - prevents deadlock with HAL mutex (RESEARCH.md Pitfall 1)
-- Enumerate ALL pins from HAL each cycle via halpr_find_pin_by_name(null) - supports dynamic component load/unload
-- Sleep loop with atomic flag for clean thread shutdown - thread exits within one refresh interval
-- Stale pin cleanup deferred - new pins added immediately, old pins detected but removal TODO
-
-**From 02-03 (Pubsub Notifications):**
-- Mutex protects entire subscriber HashMap (not per-item locks) - simpler lock hierarchy prevents deadlock
-- Callbacks invoked while holding mutex - documented to keep them fast to avoid blocking notifications
-- Condition variable with has_changes predicate - prevents spurious wakeup bugs (RESEARCH.md Pitfall 2)
-- waitForChange() uses while loop (not if) - correct spurious wakeup handling per RESEARCH.md
-- Unsubscribe removes empty lists from HashMap - prevents memory bloat from zombie items
-
-**From 02-04 (Signal and Parameter Refresh):**
-- Read signal/param values directly from hal_sig_t/hal_param_t structures (same as pins)
-- Follow exact same 4-phase refresh pattern as refreshPins() for consistency (discovery, snapshot, comparison, update)
-- Use @import to avoid circular dependency between safe.zig and cache.zig
-- All HAL data types (pins, signals, params) now refreshed at configured interval
-
-**From 02-05 (Stale Entry Cleanup):**
-- Use HashMap.remove() which returns bool - ignore return value with _ since stale entries may or may not exist
-- Log stale removal errors but don't fail refresh cycle - prevents one bad removal from stopping all updates
-- Compare cached names to HAL snapshot (not reverse) - ensures we catch all stale entries even if HAL has duplicates
-- Cache size invariant now maintained (no unbounded growth as components load/unload)
-- STATE-03 requirement fully satisfied: dynamic HAL changes handled with stale cleanup
-
-**From 03-00 (FFI Write Functions):**
-- Pin write functions (pinBitSet, pinFloatSet, pinS32Set, pinU32Set) use HAL mutex locking for thread safety
-- Parameter write functions (setParamBit, setParamFloat, setParamS32, setParamU32) include type validation
-- getPinValue handles both linked pins (delegate to getSignalValue) and unlinked pins (read from dummysig)
-- Write functions follow Phase 1 pattern: acquire mutex, write value, release mutex
-- Read functions remain lock-free across all FFI (pins, signals, parameters)
-- TUI layer responsible for checking pin direction/param writability before calling write functions
-
-**From 03-01 (TUI Foundation):**
-- Use vxfw framework (not low-level Vaxis API) - provides automatic redraw optimization via ctx.consumeAndRedraw()
-- Delegate layout logic to separate module (layout.zig) - keeps model.zig focused on state management
-- Use ctx.withConstraints for panel sizing - ensures responsive layout at different terminal sizes (TUI-02 requirement)
-- Arena allocation pattern - use ctx.arena for temporary allocations (freed automatically each frame)
-- Two-panel layout uses SubSurface children with origin offsets - left panel (30%), right panel (70%)
-
-**From 03-02 (Tree Navigation):**
-- Component hierarchy extracted from HAL item names using dot delimiter (e.g., 'motion.digital-in-00' → 'motion')
-- Widget state stored in TreeView HashMaps (expanded_nodes, checked_items) - draw renders state, event handlers modify state
-- visible_nodes rebuilt on each draw from root nodes - simpler code, trivial performance cost for < 1000 items
-- Cursor tracks position in visible_nodes list (not global tree) - prevents jumping when tree structure changes on expand/collapse
-
-**From 03-03 (Data Table with Real-Time Updates):**
-- Use global variable (GLOBAL_REDRAW_FLAG) for pubsub callback access - simpler than closure capture in Zig's function pointers
-- Determine editability via name heuristics for now (direction not in cache yet) - pins with "-out" or "-io" are OUT/I/O, all params assumed writable
-- Read values from StateStore cache (lock-free) instead of calling HAL FFI directly - prevents blocking TUI thread
-- Pubsub-driven redraws - SubscriptionManager callbacks set redraw_flag, key_press handler checks flag and calls ctx.consumeAndRedraw()
-- Color-coded editability indicators - green (index 2) for editable items, dim gray (index 8) for read-only items
+**From 01-01 (Project Scaffolding):**
+- Added `-Dskip-hal-link` build option for development on machines without LinuxCNC
+- Use `std.debug.print` instead of non-existent `std.io.getStdOut()` (Zig 0.15.1 API)
+- Lazy @cImport allows development without hal.h present
+- Target aarch64-linux for Raspberry Pi 5 deployment
 
 ### Pending Todos
 
@@ -135,80 +142,43 @@ None yet.
 
 ### Blockers/Concerns
 
-**From 01-01:**
-- None - build infrastructure is solid and ready for next phase
+**From 03-04:**
+- None - search, filter, and edit functionality complete and ready for testing
 
-**From 01-02:**
-- None - type-safe FFI foundation is complete and ready for pin/signal operations
+**From 03-03:**
+- None - Data table complete with real-time updates and color indicators
 
-**From 01-03:**
-- None - pin operations complete with thread-safe mutex locking and leak-free tests
+**From 03-02:**
+- None - Tree navigation complete with component hierarchy and keyboard navigation
+
+**From 03-01:**
+- Note: Build fails with -Dskip-hal-link due to missing hal.h on dev machine (expected, not a blocker)
+- Ready for plan 03-02 (Tree Navigation widget in left panel)
+
+**From 03-00:**
+- None - FFI write functions complete with mutex locking and type validation
+
+**From 02-05:**
+- None - stale entry cleanup complete for all HAL data types
+- All Phase 2 gaps now closed (STATE-02 and STATE-03 requirements satisfied)
+
+**From 02-04:**
+- None - signal and parameter refresh complete with full HAL enumeration
+
+**From 02-03:**
+- None - pubsub notification system complete with thread-safe subscriber management
+
+**From 02-02:**
+- None - refresh thread complete with HAL discovery and atomic lifecycle management
+- Stale pin removal deferred to future task (not blocking)
 
 **From 02-01:**
 - None - state cache complete with thread-safe RwLock and HashMap snapshot pattern
 - Ready for refresh thread (02-02) to poll HAL and update cache
 
-**From 02-02:**
-- None - refresh thread complete with HAL discovery and atomic lifecycle management
-- Stale pin removal deferred to future task (not blocking)
-- Unit tests written but not yet runnable due to missing HAL library in dev environment
-
-**From 02-03:**
-- None - pubsub notification system complete with thread-safe subscriber management
-- Ready for integration with StateStore to call notify() on value changes
-- Unit tests written but not yet runnable due to missing HAL library in dev environment
-
-**From 02-04:**
-- None - signal and parameter refresh complete with full HAL enumeration
-- STATE-02 requirement fully satisfied: all HAL data types refreshed at configured interval
-- Ready for next phase (02-05: stale entry removal or 03-01: UI foundation)
-- Unit tests written but not yet runnable due to missing HAL library in dev environment
-
-**From 02-05:**
-- None - stale entry cleanup complete for all HAL data types
-- STATE-03 requirement fully satisfied: dynamic HAL changes handled with stale removal
-- All Phase 2 gaps now closed (STATE-02 and STATE-03 requirements satisfied)
-- Cache maintains size invariant (no unbounded growth)
-- Ready for Phase 3 (TUI Foundation) - state management layer is production-ready
-- Unit tests written but not yet runnable due to missing HAL library in dev environment
-
-**From 03-00:**
-- None - FFI write functions complete with mutex locking and type validation
-- All HAL data types (pins, signals, parameters) now have complete read/write API
-- Ready for Phase 3 Plan 4 (Search, Filter, and In-Place Editing) to use write functions
-- TUI layer will check pin direction/param writability before calling write functions
-
-**From 03-01:**
-- None - TUI foundation complete with Vaxis vxfw integration and two-panel layout
-- Vaxis dependency successfully integrated (libvaxis 0.5.1)
-- Model struct implements vxfw.Widget interface with event handling and drawing
-- Two-panel layout (30%/70% split) ready for widget integration
-- Note: Build fails with -Dskip-hal-link due to missing hal.h on dev machine (expected, not a blocker)
-- Ready for plan 03-02 (Tree Navigation widget in left panel)
-
-**From 03-02:**
-- None - Tree navigation complete with component hierarchy, checkbox selection, and keyboard navigation
-- TreeView widget (469 lines) successfully integrated into left panel
-- Component grouping extracts prefix from dot-delimited HAL item names
-- State tracking via expanded_nodes and checked_items HashMaps
-- Navigation implemented: Arrow Up/Down for movement, Enter for expand/collapse, Space for checkbox toggle
-- Model.getCheckedItems() accessor provides read-only access for data table filtering
-- Note: riocore config-based hierarchy deferred to v2 (simple dot-prefix grouping sufficient for v1)
-- Ready for plan 03-03 (Data Table widget in right panel)
-
-**From 03-03:**
-- None - Data table complete with real-time updates, color indicators, and RefreshThread integration
-- DataTable widget (371 lines) displays checked items with Name, Type, Direction, Value columns
-- Real-time value updates via SubscriptionManager pubsub notifications trigger atomic redraw_flag
-- Color-coded editability: green (editable), dim gray (read-only) based on name heuristics
-- RefreshThread starts on .init event, stops cleanly on app shutdown
-- Table integrated into right panel (70% width) via createRightPanel()
-- Model.updateTable() method available for syncing when tree selection changes
-- Ready for plan 03-04 (Search, Filter, and In-Place Editing)
-
 ## Session Continuity
 
-Last session: 2026-01-29 (Phase 3 Plan 3 execution)
-Stopped at: Completed 03-03 (Data Table with Real-Time Updates), 4/4 tasks complete
+Last session: 2026-01-29 (Phase 3 Plan 4 execution)
+Stopped at: Completed 03-04 (Search, Filter, and In-Place Editing), 5/5 tasks complete
 Resume file: None
-Next action: Execute plan 03-04 (Search, Filter, and In-Place Editing) or continue phase planning
+Next action: Execute plan 03-05 (User Acceptance Testing) or continue phase planning
