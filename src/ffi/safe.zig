@@ -462,7 +462,7 @@ comptime {
     _ = halReady;
 
     // Verify pin functions return error unions
-    _ = pinNew;
+    // _ = pinNew; // DISABLED: hal_pin_t is opaque in ULAPI
     _ = setPinFloat;
     _ = setPinBit;
     _ = setPinS32;

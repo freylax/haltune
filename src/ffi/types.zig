@@ -64,11 +64,11 @@ pub const hal_sig_t = opaque {};
 /// HAL parameter structure (opaque in ULAPI)
 pub const hal_param_t = opaque {};
 
-/// HAL component ID (not a structure in ULAPI)
-///
-/// In userspace API, hal_init() returns an int component ID, not a pointer.
-/// We use c_int (alias for int) for component IDs.
-// pub const hal_comp_t = c.hal_comp_t;
+// HAL component ID (not a structure in ULAPI)
+//
+// In userspace API, hal_init() returns an int component ID, not a pointer.
+// We use c_int (alias for int) for component IDs.
+// pub const hal_comp_t = c.hal_comp_t; // DISABLED: not exposed in ULAPI
 
 // Compile-time verification disabled for ULAPI
 //
