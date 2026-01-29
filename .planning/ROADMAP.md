@@ -4,6 +4,15 @@
 
 Build a TUI-based LinuxCNC HAL manager by first establishing safe FFI bindings to the LinuxCNC HAL C API, then layering thread-safe state management, responsive Vaxis-based TUI for HAL inspection and manipulation, bookmark functionality, and extensible plugin architecture. The journey progresses from low-level foundations (FFI, state caching) to user-facing features (browser, editing) to extensibility (plugins), culminating in performance optimization and polish for Raspberry Pi 5 deployment.
 
+## Milestones
+
+- ✅ **v0.1 FFI Foundation** — Phase 1 (shipped 2026-01-29)
+- ✅ **v0.2 State Management** — Phase 2 (shipped 2026-01-29)
+- ✅ **v0.3 TUI Core** — Phase 3 (shipped 2026-01-29)
+- ✅ **v0.4 Configuration & Editing** — Phase 4 (shipped 2026-01-29)
+- 🚧 **v0.5 Bookmarks & Plugins** — Phase 5 (in progress)
+- 📋 **v0.6 Polish & Optimization** — Phase 6 (planned)
+
 ## Phases
 
 **Phase Numbering:**
@@ -12,112 +21,25 @@ Build a TUI-based LinuxCNC HAL manager by first establishing safe FFI bindings t
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [x] **Phase 1: FFI Foundation** - Safe Zig bindings to LinuxCNC HAL C API
-- [x] **Phase 2: State Management** - Thread-safe caching and synchronization
-- [x] **Phase 3: TUI Core** - Vaxis-based HAL inspection interface
-- [ ] **Phase 4: Configuration & Editing** - HAL manipulation and persistence
+<details>
+<summary>✅ v0.1-v0.4 Foundation & Core (Phases 1-4) — SHIPPED 2026-01-29</summary>
+
+- [x] Phase 1: FFI Foundation (3/3 plans) — completed 2026-01-29
+- [x] Phase 2: State Management (5/5 plans) — completed 2026-01-29
+- [x] Phase 3: TUI Core (5/5 plans) — completed 2026-01-29
+- [x] Phase 4: Configuration & Editing (3/3 plans) — completed 2026-01-29
+
+**Full details archived to:** `.planning/milestones/v0.4-ROADMAP.md`
+
+</details>
+
+### 🚧 v0.5 Bookmarks & Plugins (In Progress)
+
 - [ ] **Phase 5: Bookmarks & Plugins** - Quick access and extensibility
-- [ ] **Phase 6: Polish & Optimization** - Performance tuning and UX refinement
 
 ## Phase Details
 
-### Phase 1: FFI Foundation
-
-**Goal**: Safe Zig wrappers for LinuxCNC HAL C API functions with correct struct alignment, memory management, and version compatibility
-
-**Depends on**: Nothing (first phase)
-
-**Requirements**: FFI-01, FFI-02, FFI-03, FFI-04, FFI-05
-
-**Success Criteria** (what must be TRUE):
-1. Zig code successfully calls LinuxCNC HAL C API functions (hal_init, hal_comp_name, etc.) with proper type conversions between Zig and C types
-2. FFI layer compiles and runs on ARM64 (Raspberry Pi 5) without struct alignment errors or memory corruption
-3. All memory allocated by C functions is properly freed (verified by valgrind or Zig's general purpose allocator leak detection)
-4. HAL mutex lock/unlock is correctly paired for all write operations (no deadlocks or data races in multi-threaded scenarios)
-5. Code compiles against both LinuxCNC 2.9.7+ and 2.10 APIs without breaking changes
-
-**Plans:** 3 plans in 3 waves
-
-Plans:
-- [x] 01-01-PLAN.md — Create build.zig, src/root.zig, src/ffi/c.zig (project scaffolding and C header imports)
-- [x] 01-02-PLAN.md — Create src/ffi/types.zig, src/ffi/errors.zig, src/ffi/safe.zig (types, errors, and init/exit wrappers)
-- [x] 01-03-PLAN.md — Pin wrapper functions with mutex locking and unit tests with leak detection
-
-### Phase 2: State Management
-
-**Goal**: Thread-safe central state store that caches HAL data and provides reactive updates to the TUI
-
-**Depends on**: Phase 1
-
-**Requirements**: STATE-01, STATE-02, STATE-03, STATE-04, STATE-05
-
-**Success Criteria** (what must be TRUE):
-1. State cache successfully stores current values of all HAL pins, signals, and parameters and refreshes at configured rate (default 100ms)
-2. State manager handles dynamic HAL changes (components loading/unloading) without crashing or corrupting cache
-3. Multiple threads can read state concurrently while refresh thread writes without race conditions or data corruption
-4. TUI components receive state change notifications and can subscribe to specific items (e.g., "notify me when pid.0.P changes")
-5. Application runs smoothly without blocking HAL refresh or causing real-time thread starvation
-
-**Plans**: 5 plans in 3 waves
-
-Plans:
-- [x] 02-01-PLAN.md — Thread-safe state cache with RwLock and StringHashMap
-- [x] 02-02-PLAN.md — HAL refresh thread with configurable polling interval
-- [x] 02-03-PLAN.md — Change notification pubsub system for TUI updates
-- [x] 02-04-PLAN.md — Signal and parameter refresh implementation (gap closure)
-- [x] 02-05-PLAN.md — Stale entry removal for unloaded components (gap closure)
-
-### Phase 3: TUI Core
-
-**Goal**: Vaxis-based terminal interface with two-panel layout (tree navigation + data table) for browsing and viewing HAL components in real-time
-
-**Depends on**: Phase 2
-
-**Requirements**: TUI-01, TUI-02, TUI-03, TUI-04, TUI-05, TUI-06, TUI-07, TUI-08, CORE-01, CORE-02, CORE-03, CORE-04, CORE-05, CORE-06, CORE-09, CORE-10, CORE-12
-
-**Success Criteria** (what must be TRUE):
-1. TUI displays two-panel layout: left panel for tree navigation, right panel for data table view
-2. Tree view (left panel) shows component hierarchy with collapse/expand navigation and checkboxes to select items for display
-3. Data table view (right panel) displays selected items in tabular format with columns: Name, Type, Direction, Current Value
-4. Values update in real-time in data table cells at configured refresh rate without lag or stutter
-5. User can search tree for pins/signals/params by name with glob pattern matching (e.g., "*pid*" shows all PID-related items)
-6. User can filter table view by pin type (show only float pins, show only s32, etc.) and by component ownership (show all pins for pid.0)
-7. TUI renders correctly on Raspberry Pi 5 terminal at 80x24 minimum resolution (panels scale appropriately)
-8. Data table uses color or icon indicators to visually distinguish editable items from read-only items (only writable parameters and OUT/I/O pins are editable)
-9. Input validation prevents type errors (numeric fields only accept numbers, cannot type invalid input)
-10. Boolean/bit pins: pressing Enter toggles value (True ↔ False) without opening edit dialog; cell shows unsaved color while waiting for HAL refresh
-11. Numeric pins: pressing Enter enables in-place editing in data table cell with validation (only valid numeric input accepted, Enter confirms, Escape cancels); cell shows unsaved color during editing
-12. After edit confirmation (Enter): clear cell immediately and wait for next HAL refresh to display actual value (confirms write succeeded, applies to both numeric and boolean)
-13. TUI displays helpful error messages for non-input-related invalid operations (e.g., attempting to edit read-only items)
-
-**Plans**: 5 plans in 4 waves
-
-Plans:
-- [x] 03-00-PLAN.md — FFI write functions (pins and parameters)
-- [x] 03-01-PLAN.md — Vaxis integration and two-panel layout
-- [x] 03-02-PLAN.md — Tree view with component hierarchy
-- [x] 03-03-PLAN.md — Data table with real-time updates
-- [x] 03-04-PLAN.md — Search, filter, and in-place editing
-
-### Phase 4: Configuration & Editing
-
-**Goal**: Runtime HAL manipulation (edit parameters, create signals, link pins) and configuration persistence
-
-**Depends on**: Phase 3
-
-**Requirements**: CORE-07, CORE-08, CORE-11
-
-**Success Criteria** (what must be TRUE):
-1. User can edit writable parameter values in data table and changes are immediately reflected in HAL (equivalent to halcmd setp); only visually marked editable items can be edited
-2. User can create new signals and link pins to them (equivalent to halcmd net command)
-3. User can save current HAL configuration to file in halcmd-compatible format (can be loaded later or used as backup)
-
-**Plans**: 3 plans in 3 waves
-
-Plans:
-- [ ] 04-01-PLAN.md — FFI signal creation functions (halSignalNew, halLink, halUnlink)
-- [ ] 04-02-PLAN.md — TUI signal creation dialog with multi-step wizard
-- [ ] 04-03-PLAN.md — Configuration export module and save functionality
+*(Full details for Phases 1-4 archived to `.planning/milestones/v0.4-ROADMAP.md`)*
 
 ### Phase 5: Bookmarks & Plugins
 
@@ -171,6 +93,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | 1. FFI Foundation | 3/3 | Complete | 2026-01-29 |
 | 2. State Management | 5/5 | Complete | 2026-01-29 |
 | 3. TUI Core | 5/5 | Complete | 2026-01-29 |
-| 4. Configuration & Editing | 0/0 | Not started | - |
+| 4. Configuration & Editing | 3/3 | Complete | 2026-01-29 |
 | 5. Bookmarks & Plugins | 0/0 | Not started | - |
 | 6. Polish & Optimization | 0/0 | Not started | - |

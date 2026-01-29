@@ -2,20 +2,20 @@
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2025-01-28)
+See: .planning/PROJECT.md (updated 2026-01-29)
 
 **Core value:** Make LinuxCNC HAL manipulation and machine setup efficient through an intuitive TUI interface, replacing cryptic halcmd commands with structured workflows for machine configuration and tuning.
 
-**Current focus:** Phase 4: Configuration & Editing (ready to start)
+**Current focus:** Phase 5: Bookmarks & Plugins (ready to start)
 
 ## Current Position
 
-Phase: 4 of 6 (Configuration & Editing)
-Plan: 3 of ? in current phase
-Status: In progress
-Last activity: 2026-01-29 — Completed 04-03 (Configuration Export) with 6/6 tasks complete
+Phase: 5 of 6 (Bookmarks & Plugins)
+Plan: Not started
+Status: Ready to plan
+Last activity: 2026-01-29 — v0.4 milestone complete (Phases 1-4 shipped)
 
-Progress: [██████████░] 65%
+Progress: [████████░░] 67%
 
 ## Performance Metrics
 
@@ -32,11 +32,13 @@ Progress: [██████████░] 65%
 | 01-ffi-foundation | 3 | 3 | 27.7 min |
 | 02-state-management | 5 | 5 | 8.4 min |
 | 03-tui-core | 5 | 5 | 6.0 min |
-| 04-config-editing | 3 | ? | 4.4 min |
+| 04-config-editing | 3 | 3 | 4.3 min |
+| 05-bookmarks-plugins | 0 | ? | - |
 
 **Recent Trend:**
-- Phase 4 progressing: HAL signal FFI wrappers + SignalDialog wizard + Configuration export complete
-- Last 6 plans: 4.2 min avg (04-03: 4.3min, 04-02: 6min, 04-01: 3min, 03-00: 2min, 03-01: 3min, 03-02: 13min)
+- Phase 4 complete: HAL signal FFI wrappers + SignalDialog wizard + Configuration export
+- v0.4 milestone shipped: 16 plans across 4 phases, all complete
+- Last 3 plans: 4.3 min avg (04-03: 4.3min, 04-02: 6min, 04-01: 3min)
 
 *Updated after each plan completion*
 
@@ -166,6 +168,11 @@ None yet.
 
 ### Blockers/Concerns
 
+**v0.4 Milestone Complete:**
+- All 4 phases (1-4) complete with 16 plans shipped
+- FFI layer, state management, TUI core, and configuration editing all functional
+- Known v1 limitations documented (pin link tracking, dialog visual polish, config restore)
+
 **From 04-03:**
 - Note: Pin link tracking not implemented - export will show empty pin lists until refresh thread is updated to iterate signals and find matching pointers (documented in TODO comment)
 - Note: Save dialog visual rendering is a TODO placeholder - dialog works (open, input, save, cancel) but no visual feedback yet
@@ -173,48 +180,13 @@ None yet.
 **From 04-02:**
 - Note: Draw functions are stub implementations - visual rendering of dialog steps deferred to avoid blocking functionality
 - Dialog needs visual polish (borders, colors, proper text rendering) but core wizard flow is complete and functional
-- Ready for 04-03 (Configuration Export) or visual enhancement task
 
 **From 04-01:**
 - None - HAL signal FFI wrappers complete and ready for TUI integration
 
-**From 03-04:**
-- None - search, filter, and edit functionality complete and ready for testing
-
-**From 03-03:**
-- None - Data table complete with real-time updates and color indicators
-
-**From 03-02:**
-- None - Tree navigation complete with component hierarchy and keyboard navigation
-
-**From 03-01:**
-- Note: Build fails with -Dskip-hal-link due to missing hal.h on dev machine (expected, not a blocker)
-- Ready for plan 03-02 (Tree Navigation widget in left panel)
-
-**From 03-00:**
-- None - FFI write functions complete with mutex locking and type validation
-
-**From 02-05:**
-- None - stale entry cleanup complete for all HAL data types
-- All Phase 2 gaps now closed (STATE-02 and STATE-03 requirements satisfied)
-
-**From 02-04:**
-- None - signal and parameter refresh complete with full HAL enumeration
-
-**From 02-03:**
-- None - pubsub notification system complete with thread-safe subscriber management
-
-**From 02-02:**
-- None - refresh thread complete with HAL discovery and atomic lifecycle management
-- Stale pin removal deferred to future task (not blocking)
-
-**From 02-01:**
-- None - state cache complete with thread-safe RwLock and HashMap snapshot pattern
-- Ready for refresh thread (02-02) to poll HAL and update cache
-
 ## Session Continuity
 
-Last session: 2026-01-29 (Phase 4 plan 03 execution)
-Stopped at: Completed 04-03 (Configuration Export) - Export module, save dialog, pin link infrastructure complete
+Last session: 2026-01-29 (v0.4 milestone completion)
+Stopped at: v0.4 milestone complete - Phases 1-4 shipped, archived to milestones/
 Resume file: None
-Next action: Execute 04-04 or enhance save dialog visual rendering
+Next action: Start Phase 5 (Bookmarks & Plugins) or enhance v1 polish items
