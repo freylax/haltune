@@ -45,21 +45,13 @@ pub const hal_pin_dir_t = enum(c_int) {
 ///
 /// Memory: The pointers in this union point to memory owned by HAL.
 /// Do not free these pointers - HAL manages the memory.
-pub extern union hal_data_u {
-    /// Bit (boolean) value pointer
-    bit: *c_int,
-    /// Floating point value pointer
-    float: *f64,
-    /// Signed 32-bit integer value pointer
-    s32: *i32,
-    /// Unsigned 32-bit integer value pointer
-    u32: *u32,
-};
+///
+/// Note: This is a wrapper around the C union from hal.h
+pub const hal_data_u = c.hal_data_u;
 
 /// HAL pin structure
 ///
-/// This structure represents a pin in the HAL. It is defined here as an
-/// extern struct to guarantee C ABI compatibility on ARM64.
+/// This structure represents a pin in the HAL. It is imported from the C headers.
 ///
 /// Memory: hal_pin_t structures are owned by HAL and allocated via hal_malloc().
 /// Never free these pointers - HAL will clean them up on hal_exit().
@@ -69,33 +61,11 @@ pub extern union hal_data_u {
 /// - LinuxCNC 2.10: ~64 bytes (varies with architecture)
 ///
 /// The actual size is verified at compile time via assertions below.
-pub extern struct hal_pin_t {
-    /// Pin name (null-terminated string, owned by HAL)
-    name: [*:0]const u8,
-
-    /// Pin type (bit, float, s32, u32)
-    type: hal_type_t,
-
-    /// Pin direction (in, out, io)
-    dir: hal_pin_dir_t,
-
-    /// Pin data value (union of pointers to actual data)
-    data: hal_data_u,
-
-    /// Next pin in linked list (null if last)
-    next: ?*hal_pin_t,
-
-    /// Component ID that owns this pin
-    comp_id: c_int,
-
-    /// Handle for other users (e.g., Python bindings)
-    handle: *anyopaque,
-};
+pub const hal_pin_t = c.hal_pin_t;
 
 /// HAL component structure
 ///
-/// This structure represents a component in the HAL. It is defined here as an
-/// extern struct to guarantee C ABI compatibility on ARM64.
+/// This structure represents a component in the HAL. It is imported from C headers.
 ///
 /// Memory: hal_comp_t structures are owned by HAL and allocated via hal_malloc().
 /// Never free these pointers - HAL will clean them up on hal_exit().
@@ -105,29 +75,7 @@ pub extern struct hal_pin_t {
 /// - LinuxCNC 2.10: ~64 bytes (varies with architecture)
 ///
 /// The actual size is verified at compile time via assertions below.
-pub extern struct hal_comp_t {
-    /// Component name (null-terminated string, owned by HAL)
-    name: [*:0]const u8,
-
-    /// Component ID (integer handle)
-    comp_id: c_int,
-
-    /// Pointer to component state
-    state_ptr: *c_int,
-
-    /// Next component in linked list (null if last)
-    next: ?*hal_comp_t,
-
-    /// Type of component (RT or non-RT)
-    type: c_int,
-
-    /// Last update time (for RT components)
-    last_update: i64,
-
-    /// User data pointer (for component-specific data)
-    user_data1: *anyopaque,
-    user_data2: *anyopaque,
-};
+pub const hal_comp_t = c.hal_comp_t;
 
 // Compile-time verification that Zig extern structs match C ABI
 //

@@ -13,6 +13,8 @@
 const std = @import("std");
 const c = @import("c.zig").c;
 const HalError = @import("errors.zig").HalError;
+const hal_type_t = @import("types.zig").hal_type_t;
+const hal_pin_dir_t = @import("types.zig").hal_pin_dir_t;
 
 /// Initialize a HAL component
 ///
@@ -104,6 +106,220 @@ pub fn halReady(comp_id: c.hal_comp_t) !void {
     }
 }
 
+/// Create a new HAL pin
+///
+/// This function creates a new pin in the HAL with the specified name, type, and direction.
+/// Pins are the primary mechanism for HAL components to exchange data.
+///
+/// Parameters:
+///   - comp_id: Component ID from halInit()
+///   - name: Null-terminated pin name (must be unique within component)
+///   - type: Pin data type (HAL_BIT, HAL_FLOAT, HAL_S32, HAL_U32)
+///   - dir: Pin direction (HAL_IN, HAL_OUT, HAL_IO)
+///
+/// Returns:
+///   - Pointer to hal_pin_t on success
+///   - error.PinCreationFailed if pin creation fails
+///
+/// Memory ownership:
+///   - HAL allocates memory for the pin
+///   - Caller must NOT free the pin pointer - HAL owns it
+///   - Pin is automatically cleaned up when hal_exit() is called
+///
+/// Example:
+/// ```
+/// const comp_id = try halInit("mycomponent");
+/// defer halExit(comp_id);
+///
+/// const pin = try pinNew(comp_id, "my-pin", c.HAL_FLOAT, c.HAL_OUT);
+/// // pin is now ready to use
+/// ```
+pub fn pinNew(
+    comp_id: c.hal_comp_t,
+    name: [:0]const u8,
+    pin_type: hal_type_t,
+    dir: hal_pin_dir_t,
+) !*c.hal_pin_t {
+    var pin_ptr: ?*c.hal_pin_t = undefined;
+
+    // hal_pin_new_ff is the type-safe version that takes explicit type/dir
+    // Returns 0 on success, negative on error
+    const rc = c.hal_pin_new_ff(name, @intFromEnum(pin_type), @intFromEnum(dir), &pin_ptr, comp_id);
+
+    if (rc != 0) return HalError.PinCreationFailed;
+
+    return pin_ptr orelse HalError.PinCreationFailed;
+}
+
+/// Write to a float pin (thread-safe)
+///
+/// This function writes a floating-point value to a HAL pin.
+/// The HAL mutex is acquired before writing to prevent data races.
+///
+/// Parameters:
+///   - pin: Pointer to hal_pin_t from pinNew()
+///   - value: Float value to write
+///
+/// Returns:
+///   - void on success
+///   - error.TypeMismatch if pin is not a HAL_FLOAT pin
+///
+/// Thread safety:
+///   - Acquires HAL mutex before write
+///   - Automatically releases mutex when done (defer unlock)
+///
+/// Example:
+/// ```
+/// const pin = try pinNew(comp_id, "value", c.HAL_FLOAT, c.HAL_OUT);
+/// try setPinFloat(pin, 3.14159);
+/// ```
+pub fn setPinFloat(pin: *c.hal_pin_t, value: f64) !void {
+    // Acquire HAL mutex before write
+    _ = c.hl_mutex_lock(&c.hal_mutex);
+    defer c.hl_mutex_unlock(&c.hal_mutex);
+
+    // Verify pin type
+    if (pin.*.type != c.HAL_FLOAT) return HalError.TypeMismatch;
+
+    // Write value through pin's data pointer
+    pin.*.data.float.* = value;
+}
+
+/// Write to a bit pin (thread-safe)
+///
+/// This function writes a boolean value to a HAL bit pin.
+/// The HAL mutex is acquired before writing to prevent data races.
+///
+/// Parameters:
+///   - pin: Pointer to hal_pin_t from pinNew()
+///   - value: Boolean value to write
+///
+/// Returns:
+///   - void on success
+///   - error.TypeMismatch if pin is not a HAL_BIT pin
+pub fn setPinBit(pin: *c.hal_pin_t, value: bool) !void {
+    _ = c.hl_mutex_lock(&c.hal_mutex);
+    defer c.hl_mutex_unlock(&c.hal_mutex);
+
+    if (pin.*.type != c.HAL_BIT) return HalError.TypeMismatch;
+
+    pin.*.data.bit.* = @intFromBool(value);
+}
+
+/// Write to a signed 32-bit integer pin (thread-safe)
+///
+/// This function writes a signed integer value to a HAL s32 pin.
+/// The HAL mutex is acquired before writing to prevent data races.
+///
+/// Parameters:
+///   - pin: Pointer to hal_pin_t from pinNew()
+///   - value: Signed 32-bit integer value to write
+///
+/// Returns:
+///   - void on success
+///   - error.TypeMismatch if pin is not a HAL_S32 pin
+pub fn setPinS32(pin: *c.hal_pin_t, value: i32) !void {
+    _ = c.hl_mutex_lock(&c.hal_mutex);
+    defer c.hl_mutex_unlock(&c.hal_mutex);
+
+    if (pin.*.type != c.HAL_S32) return HalError.TypeMismatch;
+
+    pin.*.data.s32.* = value;
+}
+
+/// Write to an unsigned 32-bit integer pin (thread-safe)
+///
+/// This function writes an unsigned integer value to a HAL u32 pin.
+/// The HAL mutex is acquired before writing to prevent data races.
+///
+/// Parameters:
+///   - pin: Pointer to hal_pin_t from pinNew()
+///   - value: Unsigned 32-bit integer value to write
+///
+/// Returns:
+///   - void on success
+///   - error.TypeMismatch if pin is not a HAL_U32 pin
+pub fn setPinU32(pin: *c.hal_pin_t, value: u32) !void {
+    _ = c.hl_mutex_lock(&c.hal_mutex);
+    defer c.hl_mutex_unlock(&c.hal_mutex);
+
+    if (pin.*.type != c.HAL_U32) return HalError.TypeMismatch;
+
+    pin.*.data.u32.* = value;
+}
+
+/// Read from a float pin
+///
+/// This function reads the current value from a HAL float pin.
+/// No mutex is needed for read operations (HAL real-time thread owns writes).
+///
+/// Parameters:
+///   - pin: Pointer to hal_pin_t from pinNew()
+///
+/// Returns:
+///   - Float value on success
+///   - error.TypeMismatch if pin is not a HAL_FLOAT pin
+///
+/// Thread safety:
+///   - Does not acquire mutex (reads are lock-free)
+///   - Value may be updated concurrently by HAL real-time thread
+pub fn getPinFloat(pin: *const c.hal_pin_t) !f64 {
+    if (pin.*.type != c.HAL_FLOAT) return HalError.TypeMismatch;
+
+    return pin.*.data.float.*;
+}
+
+/// Read from a bit pin
+///
+/// This function reads the current value from a HAL bit pin.
+/// No mutex is needed for read operations.
+///
+/// Parameters:
+///   - pin: Pointer to hal_pin_t from pinNew()
+///
+/// Returns:
+///   - Boolean value on success
+///   - error.TypeMismatch if pin is not a HAL_BIT pin
+pub fn getPinBit(pin: *const c.hal_pin_t) !bool {
+    if (pin.*.type != c.HAL_BIT) return HalError.TypeMismatch;
+
+    return pin.*.data.bit.* != 0;
+}
+
+/// Read from a signed 32-bit integer pin
+///
+/// This function reads the current value from a HAL s32 pin.
+/// No mutex is needed for read operations.
+///
+/// Parameters:
+///   - pin: Pointer to hal_pin_t from pinNew()
+///
+/// Returns:
+///   - Signed 32-bit integer value on success
+///   - error.TypeMismatch if pin is not a HAL_S32 pin
+pub fn getPinS32(pin: *const c.hal_pin_t) !i32 {
+    if (pin.*.type != c.HAL_S32) return HalError.TypeMismatch;
+
+    return pin.*.data.s32.*;
+}
+
+/// Read from an unsigned 32-bit integer pin
+///
+/// This function reads the current value from a HAL u32 pin.
+/// No mutex is needed for read operations.
+///
+/// Parameters:
+///   - pin: Pointer to hal_pin_t from pinNew()
+///
+/// Returns:
+///   - Unsigned 32-bit integer value on success
+///   - error.TypeMismatch if pin is not a HAL_U32 pin
+pub fn getPinU32(pin: *const c.hal_pin_t) !u32 {
+    if (pin.*.type != c.HAL_U32) return HalError.TypeMismatch;
+
+    return pin.*.data.u32.*;
+}
+
 // Compile-time tests
 comptime {
     // Verify halInit returns error union
@@ -114,4 +330,15 @@ comptime {
 
     // Verify halReady returns error union
     _ = halReady;
+
+    // Verify pin functions return error unions
+    _ = pinNew;
+    _ = setPinFloat;
+    _ = setPinBit;
+    _ = setPinS32;
+    _ = setPinU32;
+    _ = getPinFloat;
+    _ = getPinBit;
+    _ = getPinS32;
+    _ = getPinU32;
 }
