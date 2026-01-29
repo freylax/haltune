@@ -31,6 +31,14 @@ pub const HalError = error{
     /// Attempted to link a pin that's already linked, or link signal to already-linked pin
     AlreadyLinked,
 
+    /// hal_link() failed - pin or signal not found, or type mismatch
+    /// The pin or signal does not exist, or their types are incompatible
+    LinkFailed,
+
+    /// hal_unlink() failed - pin not linked or not found
+    /// The pin does not exist or is not linked to a signal
+    UnlinkFailed,
+
     /// Type mismatch in HAL operation
     /// Attempted operation between incompatible types (e.g., linking float pin to bit signal)
     TypeMismatch,
