@@ -12,6 +12,8 @@ const testing = std.testing;
 const c = @import("ffi/c.zig").c;
 const safe = @import("ffi/safe.zig");
 const HalError = @import("ffi/errors.zig").HalError;
+const hal_type_t = @import("ffi/types.zig").hal_type_t;
+const hal_pin_dir_t = @import("ffi/types.zig").hal_pin_dir_t;
 
 // Helper function to initialize HAL for testing
 fn initTestComponent() !c_int {
@@ -29,7 +31,7 @@ test "pin creation and cleanup" {
     defer safe.halExit(comp_id);
 
     // Create a float pin (returns pin name, not pointer)
-    const pin_name = try safe.pinNew(comp_id, "test-float-pin", c.HAL_FLOAT, c.HAL_OUT);
+    const pin_name = try safe.pinNew(comp_id, "test-float-pin", hal_type_t.HAL_FLOAT, hal_pin_dir_t.HAL_OUT);
 
     // Verify pin name matches what we requested
     try testing.expectEqualStrings("test-float-pin", pin_name);
@@ -45,7 +47,7 @@ test "pin write and read - float" {
     defer safe.halExit(comp_id);
 
     // Create float pin (returns pin name)
-    const pin_name = try safe.pinNew(comp_id, "test-float-write", c.HAL_FLOAT, c.HAL_OUT);
+    const pin_name = try safe.pinNew(comp_id, "test-float-write", hal_type_t.HAL_FLOAT, hal_pin_dir_t.HAL_OUT);
 
     // Write value
     const test_value: f64 = 3.14159;
@@ -68,7 +70,7 @@ test "pin write and read - bit" {
     defer safe.halExit(comp_id);
 
     // Create bit pin (returns pin name)
-    const pin_name = try safe.pinNew(comp_id, "test-bit-write", c.HAL_BIT, c.HAL_OUT);
+    const pin_name = try safe.pinNew(comp_id, "test-bit-write", hal_type_t.HAL_BIT, hal_pin_dir_t.HAL_OUT);
 
     // Write true
     try safe.setPinBit(pin_name, true);
@@ -89,7 +91,7 @@ test "pin write and read - s32" {
     defer safe.halExit(comp_id);
 
     // Create s32 pin (returns pin name)
-    const pin_name = try safe.pinNew(comp_id, "test-s32-write", c.HAL_S32, c.HAL_OUT);
+    const pin_name = try safe.pinNew(comp_id, "test-s32-write", hal_type_t.HAL_S32, hal_pin_dir_t.HAL_OUT);
 
     // Write value
     const test_value: i32 = -12345;
@@ -112,7 +114,7 @@ test "pin write and read - u32" {
     defer safe.halExit(comp_id);
 
     // Create u32 pin (returns pin name)
-    const pin_name = try safe.pinNew(comp_id, "test-u32-write", c.HAL_U32, c.HAL_OUT);
+    const pin_name = try safe.pinNew(comp_id, "test-u32-write", hal_type_t.HAL_U32, hal_pin_dir_t.HAL_OUT);
 
     // Write value
     const test_value: u32 = 54321;
@@ -135,7 +137,7 @@ test "type mismatch error - float pin with bit operation" {
     defer safe.halExit(comp_id);
 
     // Create float pin (returns pin name)
-    const pin_name = try safe.pinNew(comp_id, "test-float-mismatch", c.HAL_FLOAT, c.HAL_OUT);
+    const pin_name = try safe.pinNew(comp_id, "test-float-mismatch", hal_type_t.HAL_FLOAT, hal_pin_dir_t.HAL_OUT);
 
     // Try to use bit operation on float pin - should return PinNotFound (wrong type)
     const result = safe.setPinBit(pin_name, true);
@@ -154,7 +156,7 @@ test "type mismatch error - bit pin with float operation" {
     defer safe.halExit(comp_id);
 
     // Create bit pin (returns pin name)
-    const pin_name = try safe.pinNew(comp_id, "test-bit-mismatch", c.HAL_BIT, c.HAL_OUT);
+    const pin_name = try safe.pinNew(comp_id, "test-bit-mismatch", hal_type_t.HAL_BIT, hal_pin_dir_t.HAL_OUT);
 
     // Try to use float operation on bit pin - should return PinNotFound (wrong type)
     const result = safe.setPinFloat(pin_name, 3.14);
@@ -173,7 +175,7 @@ test "type mismatch error - read wrong type" {
     defer safe.halExit(comp_id);
 
     // Create float pin (returns pin name)
-    const pin_name = try safe.pinNew(comp_id, "test-read-mismatch", c.HAL_FLOAT, c.HAL_OUT);
+    const pin_name = try safe.pinNew(comp_id, "test-read-mismatch", hal_type_t.HAL_FLOAT, hal_pin_dir_t.HAL_OUT);
 
     // Try to read as s32 - should return PinNotFound (wrong type)
     const result = safe.getPinS32(pin_name);
@@ -192,7 +194,7 @@ test "pin direction - input pin" {
     defer safe.halExit(comp_id);
 
     // Create input pin (returns pin name)
-    const pin_name = try safe.pinNew(comp_id, "test-input-pin", c.HAL_FLOAT, c.HAL_IN);
+    const pin_name = try safe.pinNew(comp_id, "test-input-pin", hal_type_t.HAL_FLOAT, hal_pin_dir_t.HAL_IN);
 
     // Should be able to write to it (component sets input pins)
     try safe.setPinFloat(pin_name, 1.23);
@@ -208,7 +210,7 @@ test "pin direction - IO pin" {
     defer safe.halExit(comp_id);
 
     // Create IO pin (returns pin name)
-    const pin_name = try safe.pinNew(comp_id, "test-io-pin", c.HAL_FLOAT, c.HAL_IO);
+    const pin_name = try safe.pinNew(comp_id, "test-io-pin", hal_type_t.HAL_FLOAT, hal_pin_dir_t.HAL_IO);
 
     // Should be able to write to it
     try safe.setPinFloat(pin_name, 4.56);
@@ -224,10 +226,10 @@ test "multiple pins same component" {
     defer safe.halExit(comp_id);
 
     // Create multiple pins of different types (returns pin names)
-    const float_pin = try safe.pinNew(comp_id, "multi-float", c.HAL_FLOAT, c.HAL_OUT);
-    const bit_pin = try safe.pinNew(comp_id, "multi-bit", c.HAL_BIT, c.HAL_OUT);
-    const s32_pin = try safe.pinNew(comp_id, "multi-s32", c.HAL_S32, c.HAL_OUT);
-    const u32_pin = try safe.pinNew(comp_id, "multi-u32", c.HAL_U32, c.HAL_OUT);
+    const float_pin = try safe.pinNew(comp_id, "multi-float", hal_type_t.HAL_FLOAT, hal_pin_dir_t.HAL_OUT);
+    const bit_pin = try safe.pinNew(comp_id, "multi-bit", hal_type_t.HAL_BIT, hal_pin_dir_t.HAL_OUT);
+    const s32_pin = try safe.pinNew(comp_id, "multi-s32", hal_type_t.HAL_S32, hal_pin_dir_t.HAL_OUT);
+    const u32_pin = try safe.pinNew(comp_id, "multi-u32", hal_type_t.HAL_U32, hal_pin_dir_t.HAL_OUT);
 
     // Write values to all pins
     try safe.setPinFloat(float_pin, 1.0);
@@ -252,9 +254,9 @@ test "concurrent pin writes - basic sanity check" {
     defer safe.halExit(comp_id);
 
     // Create multiple pins (returns pin names)
-    const pin1 = try safe.pinNew(comp_id, "concurrent-1", c.HAL_FLOAT, c.HAL_OUT);
-    const pin2 = try safe.pinNew(comp_id, "concurrent-2", c.HAL_FLOAT, c.HAL_OUT);
-    const pin3 = try safe.pinNew(comp_id, "concurrent-3", c.HAL_FLOAT, c.HAL_OUT);
+    const pin1 = try safe.pinNew(comp_id, "concurrent-1", hal_type_t.HAL_FLOAT, hal_pin_dir_t.HAL_OUT);
+    const pin2 = try safe.pinNew(comp_id, "concurrent-2", hal_type_t.HAL_FLOAT, hal_pin_dir_t.HAL_OUT);
+    const pin3 = try safe.pinNew(comp_id, "concurrent-3", hal_type_t.HAL_FLOAT, hal_pin_dir_t.HAL_OUT);
 
     // Write to all pins rapidly (simulates concurrent access)
     var i: usize = 0;
