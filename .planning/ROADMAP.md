@@ -112,11 +112,12 @@ Plans:
 2. User can create new signals and link pins to them (equivalent to halcmd net command)
 3. User can save current HAL configuration to file in halcmd-compatible format (can be loaded later or used as backup)
 
-**Plans**: TBD
+**Plans**: 3 plans in 3 waves
 
 Plans:
-- [ ] 04-01: TBD
-- [ ] 04-02: TBD
+- [ ] 04-01-PLAN.md — FFI signal creation functions (halSignalNew, halLink, halUnlink)
+- [ ] 04-02-PLAN.md — TUI signal creation dialog with multi-step wizard
+- [ ] 04-03-PLAN.md — Configuration export module and save functionality
 
 ### Phase 5: Bookmarks & Plugins
 
