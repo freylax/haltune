@@ -210,7 +210,35 @@ pub const SignalDialog = struct {
                 }
             },
             .select_type => {
-                // Handled in next task
+                // Arrow keys to cycle types
+                if (key.matches('k', .{}) or key.matchesChar('A', .{ .ctrl = true })) {
+                    // Up arrow (Ctrl+A or 'k')
+                    if (self.type_index == 0) {
+                        self.type_index = TYPES.len - 1;
+                    } else {
+                        self.type_index -= 1;
+                    }
+                    self.signal_type = TYPES[self.type_index];
+                    return true;
+                }
+                if (key.matches('j', .{}) or key.matchesChar('B', .{ .ctrl = true })) {
+                    // Down arrow (Ctrl+B or 'j')
+                    self.type_index = (self.type_index + 1) % TYPES.len;
+                    self.signal_type = TYPES[self.type_index];
+                    return true;
+                }
+                // Enter to advance
+                if (key == .Enter) {
+                    // Load available pins of this type
+                    try self.loadAvailablePins();
+                    self.current_step = .select_pins;
+                    return true;
+                }
+                // Escape to cancel
+                if (key == .Escape) {
+                    self.close();
+                    return true;
+                }
             },
             .select_pins => {
                 // Handled in next task
@@ -222,5 +250,32 @@ pub const SignalDialog = struct {
         return true;
     }
 
-    // TODO: Add draw(), createSignal(), loadAvailablePins() in subsequent tasks
+    /// Load pins that match selected signal type
+    fn loadAvailablePins(self: *SignalDialog) !void {
+        // Clear previous
+        for (self.available_pins.items) |pin| {
+            self.allocator.free(pin);
+        }
+        self.available_pins.clearRetainingCapacity();
+
+        // Get all pin names
+        const pin_names = try self.store.listPins(self.allocator);
+        defer self.allocator.free(pin_names);
+
+        // Filter by matching type
+        for (pin_names) |pin_name| {
+            const pin_value = self.store.getPin(pin_name) catch continue;
+            const pin_matches = switch (self.signal_type) {
+                .HAL_BIT => pin_value == .bit,
+                .HAL_FLOAT => pin_value == .float,
+                .HAL_S32 => pin_value == .s32,
+                .HAL_U32 => pin_value == .u32,
+            };
+            if (pin_matches) {
+                try self.available_pins.append(self.allocator.dupe(u8, pin_name));
+            }
+        }
+    }
+
+    // TODO: Add draw(), createSignal() in subsequent tasks
 };
