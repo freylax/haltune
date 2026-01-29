@@ -36,7 +36,8 @@ pub fn build(b: *std.Build) void {
     // Link against LinuxCNC HAL library (system library search path)
     // Skip if building on dev machine without LinuxCNC installed
     if (!skip_hal_link) {
-        exe.linkSystemLibrary("hal");
+        exe.addLibraryPath(.{ .cwd_relative = "/lib" }); // Search /lib for liblinuxcnchal.so
+        exe.linkSystemLibrary("linuxcnchal"); // Library is liblinuxcnchal.so on Debian/Ubuntu
         exe.linkSystemLibrary("rt"); // LinuxCNC HAL requires librt
     }
 
@@ -73,7 +74,8 @@ pub fn build(b: *std.Build) void {
 
     // Link test against LinuxCNC HAL library
     if (!skip_hal_link) {
-        test_exe.linkSystemLibrary("hal");
+        test_exe.addLibraryPath(.{ .cwd_relative = "/lib" }); // Search /lib for liblinuxcnchal.so
+        test_exe.linkSystemLibrary("linuxcnchal"); // Library is liblinuxcnchal.so on Debian/Ubuntu
         test_exe.linkSystemLibrary("rt");
     }
 

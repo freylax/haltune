@@ -7,5 +7,7 @@
 // Safe Zig wrappers will be provided in higher-level modules (pins.zig, signals.zig, etc.)
 
 pub const c = @cImport({
+    // Define ULAPI for userspace HAL API (not RTAPI realtime)
+    @cDefine("ULAPI", "");
     @cInclude("hal.h");
 });
