@@ -10,6 +10,7 @@ const std = @import("std");
 const testing = std.testing;
 const c = @import("ffi/c.zig").c;
 const safe = @import("ffi/safe.zig");
+const hal_pin_dir_t = @import("ffi/types.zig").hal_pin_dir_t;
 
 // Helper function to initialize HAL for testing
 fn initTestComponent() !c_int {
