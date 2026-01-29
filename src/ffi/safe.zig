@@ -142,11 +142,11 @@ pub fn pinNew(comp_id: c_int, name: [:0]const u8, pin_type: hal_type_t, dir: hal
     // Create the pin using typed functions
     var pin_ptr: ?*anyopaque = undefined;
 
-    const rc = switch (pin_type) {
-        c.HAL_BIT => c.hal_pin_bit_new(name, dir, &pin_ptr, comp_id),
-        c.HAL_FLOAT => c.hal_pin_float_new(name, dir, &pin_ptr, comp_id),
-        c.HAL_S32 => c.hal_pin_s32_new(name, dir, &pin_ptr, comp_id),
-        c.HAL_U32 => c.hal_pin_u32_new(name, dir, &pin_ptr, comp_id),
+    const rc = switch (@intFromEnum(pin_type)) {
+        c.HAL_BIT => c.hal_pin_bit_new(name, @intFromEnum(dir), &pin_ptr, comp_id),
+        c.HAL_FLOAT => c.hal_pin_float_new(name, @intFromEnum(dir), &pin_ptr, comp_id),
+        c.HAL_S32 => c.hal_pin_s32_new(name, @intFromEnum(dir), &pin_ptr, comp_id),
+        c.HAL_U32 => c.hal_pin_u32_new(name, @intFromEnum(dir), &pin_ptr, comp_id),
         else => return HalError.TypeMismatch,
     };
 
