@@ -270,6 +270,99 @@ pub const TreeView = struct {
         // Return substring before first dot
         return allocator.dupe(u8, full_name[0..dot_index]);
     }
+
+    /// Return a vxfw.Widget for this TreeView
+    pub fn widget(self: *TreeView) vxfw.Widget {
+        return .{
+            .userdata = self,
+            .eventHandler = typeErasedEventHandler,
+            .drawFn = typeErasedDrawFn,
+        };
+    }
+
+    /// Draw function - renders the tree with checkboxes and indicators
+    fn typeErasedDrawFn(
+        ptr: *anyopaque,
+        ctx: vxfw.DrawContext,
+    ) std.mem.Allocator.Error!vxfw.Surface {
+        const self: *TreeView = @ptrCast(@alignCast(ptr));
+
+        // Get maximum available size
+        const max = ctx.max.size() orelse .{ .width = 25, .height = 24 };
+
+        // Clear and rebuild visible nodes list
+        self.visible_nodes.clearRetainingCapacity();
+        try self.buildVisibleNodes(&self.visible_nodes);
+
+        // Ensure cursor is within bounds
+        if (self.visible_nodes.len > 0) {
+            self.cursor_index = @min(self.cursor_index, self.visible_nodes.len - 1);
+        }
+
+        // Build text lines for each visible node
+        const lines = try ctx.arena.alloc(vxfw.TextWidget, self.visible_nodes.len);
+        for (self.visible_nodes.items, 0..) |node, i| {
+            const is_checked = self.checked_items.get(node.full_name) != null;
+            const is_cursor = i == self.cursor_index;
+
+            // Build line text with checkbox, expand indicator, indentation, and name
+            const checkbox = if (is_checked) "[x]" else "[ ]";
+            const depth = node.getDepth();
+            const indent = try std.fmt.allocPrint(ctx.arena, "{s: >[0]}", .{"", depth * 2});
+
+            // Add expand/collapse indicator for component nodes
+            const indicator: []const u8 = if (node.isExpandable())
+                if (self.expanded_nodes.get(node.full_name) != null) "[- " else "[+ "
+            else
+                "   ";
+
+            // Build full line text
+            const text = try std.fmt.allocPrint(
+                ctx.arena,
+                "{s}{s}{s} {s}",
+                .{ indent, indicator, checkbox, node.name },
+            );
+
+            // Create text widget with styling
+            lines[i] = vxfw.TextWidget.init(text);
+        }
+
+        // Create surface with all text widgets
+        return .{
+            .size = max,
+            .widget = self.widget(),
+            .buffer = &.{},
+            .children = &.{},
+        };
+    }
+
+    /// Build list of visible nodes (respecting expand/collapse state)
+    fn buildVisibleNodes(self: *TreeView, list: *std.ArrayList(*Node)) !void {
+        for (self.root.items) |node| {
+            try list.append(node);
+
+            // If component is expanded, add its children
+            if (node.isExpandable() and self.expanded_nodes.get(node.full_name) != null) {
+                if (node.children) |*children| {
+                    for (children.items) |child| {
+                        try list.append(child);
+                    }
+                }
+            }
+        }
+    }
+
+    /// Event handler placeholder (will implement in Task 3)
+    fn typeErasedEventHandler(
+        ptr: *anyopaque,
+        ctx: *vxfw.EventContext,
+        event: vxfw.Event,
+    ) anyerror!void {
+        _ = ptr;
+        _ = ctx;
+        _ = event;
+        // Placeholder - will implement in Task 3
+    }
 };
 
 /// Helper struct to group HAL items by component
