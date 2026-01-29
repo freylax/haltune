@@ -5,6 +5,11 @@
 // from HAL (including newly created ones), removes stale entries for unloaded
 // components, and updates the state cache.
 //
+// Implementation:
+// - refreshPins(): Enumerates and updates HAL pins
+// - refreshSignals(): Enumerates and updates HAL signals
+// - refreshParams(): Enumerates and updates HAL parameters
+//
 // Design principles:
 // - Use atomic.Value(bool) for thread-safe running flag with .acquire/.release
 // - Never call HAL functions while holding cache lock (prevents deadlock)
@@ -215,14 +220,13 @@ pub const RefreshThread = struct {
     ///   - error.OutOfMemory if allocation fails
     ///
     /// STATE-03 support:
-    ///   - Discovers pins from newly loaded components (halcmd loadusr)
+    ///   - Discovers pins/signals/params from newly loaded components (halcmd loadusr)
     ///   - Removes pins from unloaded components (stale cleanup)
     fn refreshHal(self: *RefreshThread) !void {
-        // Refresh pins
+        // Refresh all HAL data types
         try self.refreshPins();
-
-        // TODO: Refresh signals and params in future tasks
-        // For now, only pins are implemented
+        try self.refreshSignals();
+        try self.refreshParams();
     }
 
     /// Refresh all pins from HAL
@@ -276,8 +280,24 @@ pub const RefreshThread = struct {
         }
 
         // Comparison phase: Find stale pins (in cache but not HAL)
-        // TODO: Implement stale pin removal in future task
-        // For now, new pins are added but stale pins are not removed
+        for (cached_names) |cached_name| {
+            // Check if this cached pin exists in HAL snapshot
+            var found_in_hal = false;
+            for (hal_pins.items) |pin| {
+                const hal_name = std.mem.span(pin.*.name);
+                if (std.mem.eql(u8, cached_name, hal_name)) {
+                    found_in_hal = true;
+                    break;
+                }
+            }
+
+            // If not found in HAL, remove from cache (stale entry)
+            if (!found_in_hal) {
+                self.store.removePin(cached_name) catch |err| {
+                    std.log.err("Failed to remove stale pin '{s}': {}", .{cached_name, err});
+                };
+            }
+        }
 
         // Update phase: Read all current values from HAL and update cache
         for (hal_pins.items) |pin| {
