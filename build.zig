@@ -41,8 +41,8 @@ pub fn build(b: *std.Build) void {
     if (!skip_hal_link) {
         exe.addLibraryPath(.{ .cwd_relative = "/lib" }); // Search /lib for liblinuxcnchal.so
 
-        // Link glibc first to provide GLIBC symbols needed by liblinuxcnchal.so
-        exe.linkSystemLibrary("glibc");
+        // Link libc first to provide GLIBC symbols needed by liblinuxcnchal.so
+        exe.linkSystemLibrary("c");
         exe.linkSystemLibrary("linuxcnchal"); // Library is liblinuxcnchal.so on Debian/Ubuntu
         exe.linkSystemLibrary("rt"); // LinuxCNC HAL requires librt
     }
@@ -82,8 +82,8 @@ pub fn build(b: *std.Build) void {
     if (!skip_hal_link) {
         test_exe.addLibraryPath(.{ .cwd_relative = "/lib" }); // Search /lib for liblinuxcnchal.so
 
-        // Link glibc first to provide GLIBC symbols
-        test_exe.linkSystemLibrary("glibc");
+        // Link libc first to provide GLIBC symbols
+        test_exe.linkSystemLibrary("c");
         test_exe.linkSystemLibrary("linuxcnchal"); // Library is liblinuxcnchal.so on Debian/Ubuntu
         test_exe.linkSystemLibrary("rt");
     }
