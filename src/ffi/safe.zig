@@ -15,6 +15,9 @@ const c = @import("c.zig").c;
 const HalError = @import("errors.zig").HalError;
 const hal_type_t = @import("types.zig").hal_type_t;
 const hal_pin_dir_t = @import("types.zig").hal_pin_dir_t;
+const hal_pin_t = @import("types.zig").hal_pin_t;
+const hal_sig_t = @import("types.zig").hal_sig_t;
+const hal_param_t = @import("types.zig").hal_param_t;
 
 /// Initialize a HAL component
 ///
@@ -338,7 +341,7 @@ pub fn halReady(comp_id: c_int) !void {
 ///     maybe_pin = pin.*.next;  // Walk linked list
 /// }
 /// ```
-pub fn halprFindPinByName(name: ?[*:0]const u8) ?*c.hal_pin_t {
+pub fn halprFindPinByName(name: ?[*:0]const u8) ?*hal_pin_t {
     return c.halpr_find_pin_by_name(name);
 }
 
@@ -356,7 +359,7 @@ pub fn halprFindPinByName(name: ?[*:0]const u8) ?*c.hal_pin_t {
 ///
 /// Memory ownership:
 ///   - HAL owns the signal memory - do not free
-pub fn halprFindSigByName(name: ?[*:0]const u8) ?*c.hal_sig_t {
+pub fn halprFindSigByName(name: ?[*:0]const u8) ?*hal_sig_t {
     return c.halpr_find_sig_by_name(name);
 }
 
@@ -374,7 +377,7 @@ pub fn halprFindSigByName(name: ?[*:0]const u8) ?*c.hal_sig_t {
 ///
 /// Memory ownership:
 ///   - HAL owns the parameter memory - do not free
-pub fn halprFindParamByName(name: ?[*:0]const u8) ?*c.hal_param_t {
+pub fn halprFindParamByName(name: ?[*:0]const u8) ?*hal_param_t {
     return c.halpr_find_param_by_name(name);
 }
 
