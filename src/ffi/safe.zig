@@ -140,14 +140,17 @@ pub fn halReady(comp_id: c_int) !void {
 pub fn pinNew(comp_id: c_int, name: [:0]const u8, pin_type: hal_type_t, dir: hal_pin_dir_t) ![:0]const u8 {
     // For ULAPI with opaque types, we'll use a name-based approach
     // Create the pin using typed functions
-    var pin_ptr: [*c]volatile u8 = undefined;
-    var pin_ptr_ptr: [*c][*c]volatile u8 = &pin_ptr;
+    // Each HAL pin type needs a different data pointer type
+    var bit_ptr: [*c]volatile u8 = undefined;
+    var float_ptr: [*c]volatile f64 = undefined;
+    var s32_ptr: [*c]volatile i32 = undefined;
+    var u32_ptr: [*c]volatile u32 = undefined;
 
     const rc = switch (@intFromEnum(pin_type)) {
-        c.HAL_BIT => c.hal_pin_bit_new(name, @intFromEnum(dir), @as([*c][*c]volatile u8, @ptrCast(pin_ptr_ptr)), comp_id),
-        c.HAL_FLOAT => c.hal_pin_float_new(name, @intFromEnum(dir), @as([*c][*c]volatile u8, @ptrCast(pin_ptr_ptr)), comp_id),
-        c.HAL_S32 => c.hal_pin_s32_new(name, @intFromEnum(dir), @as([*c][*c]volatile u8, @ptrCast(pin_ptr_ptr)), comp_id),
-        c.HAL_U32 => c.hal_pin_u32_new(name, @intFromEnum(dir), @as([*c][*c]volatile u8, @ptrCast(pin_ptr_ptr)), comp_id),
+        c.HAL_BIT => c.hal_pin_bit_new(name, @intFromEnum(dir), &bit_ptr, comp_id),
+        c.HAL_FLOAT => c.hal_pin_float_new(name, @intFromEnum(dir), &float_ptr, comp_id),
+        c.HAL_S32 => c.hal_pin_s32_new(name, @intFromEnum(dir), &s32_ptr, comp_id),
+        c.HAL_U32 => c.hal_pin_u32_new(name, @intFromEnum(dir), &u32_ptr, comp_id),
         else => return HalError.TypeMismatch,
     };
 
