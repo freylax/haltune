@@ -11,19 +11,19 @@ See: .planning/PROJECT.md (updated 2025-01-28)
 ## Current Position
 
 Phase: 4 of 6 (Configuration & Editing)
-Plan: 1 of ? in current phase
+Plan: 2 of ? in current phase
 Status: In progress
-Last activity: 2026-01-29 — Completed 04-01 (HAL Signal FFI Wrappers) with 3/3 must-haves verified
+Last activity: 2026-01-29 — Completed 04-02 (TUI Signal Creation Dialog) with 9/9 tasks complete
 
-Progress: [█████████░░] 53%
+Progress: [██████████] 59%
 
 ## Performance Metrics
 
 **Velocity:**
 - Total phases completed: 3 of 6
-- Total plans completed: 14
-- Average duration: 11.2 min
-- Total execution time: 2.6 hours
+- Total plans completed: 15
+- Average duration: 10.7 min
+- Total execution time: 2.7 hours
 
 **By Phase:**
 
@@ -32,11 +32,11 @@ Progress: [█████████░░] 53%
 | 01-ffi-foundation | 3 | 3 | 27.7 min |
 | 02-state-management | 5 | 5 | 8.4 min |
 | 03-tui-core | 5 | 5 | 6.0 min |
-| 04-config-editing | 1 | ? | 3.0 min |
+| 04-config-editing | 2 | ? | 4.5 min |
 
 **Recent Trend:**
-- Phase 4 started: HAL signal FFI wrappers complete (create, link, unlink)
-- Last 6 plans: 5.5 min avg (04-01: 3min, 03-00: 2min, 03-01: 3min, 03-02: 13min, 03-03: 5min, 03-04: 8min)
+- Phase 4 progressing: HAL signal FFI wrappers + SignalDialog wizard complete
+- Last 6 plans: 4.5 min avg (04-02: 6min, 04-01: 3min, 03-00: 2min, 03-01: 3min, 03-02: 13min, 03-03: 5min)
 
 *Updated after each plan completion*
 
@@ -46,6 +46,14 @@ Progress: [█████████░░] 53%
 
 Decisions are logged in PROJECT.md Key Decisions table.
 Recent decisions affecting current work:
+
+**From 04-02 (TUI Signal Creation Dialog):**
+- Use StringHashMap(void) for selected pins - simpler than tracking full pin state, only need O(1) membership test
+- Load available pins on type selection (not name input) - reduces HAL queries and avoids unnecessary work
+- Copy pin names when selecting into StringHashMap - prevents dangling pointers if StateStore cache updates during dialog
+- Stub draw implementations for dialog steps - focus on functionality first, visual rendering can be enhanced later without blocking flow
+- Dialog lifecycle pattern: init() → open() → [wizard steps] → close() → deinit() with proper resource cleanup
+- Multi-select pattern with Space key toggle - store copies of keys for memory safety
 
 **From 04-01 (HAL Signal FFI Wrappers):**
 - halSignalNew does NOT acquire mutex - C function (hal_signal_new) handles locking internally
@@ -149,6 +157,11 @@ None yet.
 
 ### Blockers/Concerns
 
+**From 04-02:**
+- Note: Draw functions are stub implementations - visual rendering of dialog steps deferred to avoid blocking functionality
+- Dialog needs visual polish (borders, colors, proper text rendering) but core wizard flow is complete and functional
+- Ready for 04-03 (Configuration Export) or visual enhancement task
+
 **From 04-01:**
 - None - HAL signal FFI wrappers complete and ready for TUI integration
 
@@ -188,7 +201,7 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-01-29 (Phase 4 plan 01 execution)
-Stopped at: Completed 04-01 (HAL Signal FFI Wrappers) - signal create/link/unlink functions ready
+Last session: 2026-01-29 (Phase 4 plan 02 execution)
+Stopped at: Completed 04-02 (TUI Signal Creation Dialog) - SignalDialog widget with 4-step wizard complete
 Resume file: None
-Next action: Execute 04-02 (TUI Signal Creation Dialog) or perform user acceptance testing
+Next action: Execute 04-03 (Configuration Export) or enhance dialog visual rendering
