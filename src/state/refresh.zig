@@ -390,6 +390,26 @@ pub const RefreshThread = struct {
             }
         }
 
+        // Comparison phase: Find stale signals (in cache but not HAL)
+        for (cached_names) |cached_name| {
+            // Check if this cached signal exists in HAL snapshot
+            var found_in_hal = false;
+            for (hal_signals.items) |sig| {
+                const hal_name = std.mem.span(sig.*.name);
+                if (std.mem.eql(u8, cached_name, hal_name)) {
+                    found_in_hal = true;
+                    break;
+                }
+            }
+
+            // If not found in HAL, remove from cache (stale entry)
+            if (!found_in_hal) {
+                self.store.removeSignal(cached_name) catch |err| {
+                    std.log.err("Failed to remove stale signal '{s}': {}", .{cached_name, err});
+                };
+            }
+        }
+
         // Update phase: Read all current values from HAL and update cache
         for (hal_signals.items) |sig| {
             const name = std.mem.span(sig.*.name);
