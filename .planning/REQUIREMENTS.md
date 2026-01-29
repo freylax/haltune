@@ -11,11 +11,11 @@ Requirements for initial release. Each maps to roadmap phases.
 
 Foundation layer - safe Zig bindings to LinuxCNC HAL C API.
 
-- [ ] **FFI-01**: Zig can call LinuxCNC HAL C API functions with proper type conversions
-- [ ] **FFI-02**: FFI layer handles struct alignment correctly on ARM64 (Pi 5 target)
-- [ ] **FFI-03**: FFI layer manages memory ownership across Zig/C boundary without leaks
-- [ ] **FFI-04**: HAL mutex lock/unlock is called correctly for all write operations
-- [ ] **FFI-05**: Compatible with LinuxCNC 2.9.7+ API (no Python2 dependencies)
+- [x] **FFI-01**: Zig can call LinuxCNC HAL C API functions with proper type conversions
+- [x] **FFI-02**: FFI layer handles struct alignment correctly on ARM64 (Pi 5 target)
+- [x] **FFI-03**: FFI layer manages memory ownership across Zig/C boundary without leaks
+- [x] **FFI-04**: HAL mutex lock/unlock is called correctly for all write operations
+- [x] **FFI-05**: Compatible with LinuxCNC 2.9.7+ API (no Python2 dependencies)
 
 ### State Management (STATE)
 
@@ -140,11 +140,11 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| FFI-01 | Phase 1 | Pending |
-| FFI-02 | Phase 1 | Pending |
-| FFI-03 | Phase 1 | Pending |
-| FFI-04 | Phase 1 | Pending |
-| FFI-05 | Phase 1 | Pending |
+| FFI-01 | Phase 1 | Complete |
+| FFI-02 | Phase 1 | Complete |
+| FFI-03 | Phase 1 | Complete |
+| FFI-04 | Phase 1 | Complete |
+| FFI-05 | Phase 1 | Complete |
 | STATE-01 | Phase 2 | Pending |
 | STATE-02 | Phase 2 | Pending |
 | STATE-03 | Phase 2 | Pending |

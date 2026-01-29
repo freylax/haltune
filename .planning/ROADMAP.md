@@ -12,7 +12,7 @@ Build a TUI-based LinuxCNC HAL manager by first establishing safe FFI bindings t
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [ ] **Phase 1: FFI Foundation** - Safe Zig bindings to LinuxCNC HAL C API
+- [x] **Phase 1: FFI Foundation** - Safe Zig bindings to LinuxCNC HAL C API
 - [ ] **Phase 2: State Management** - Thread-safe caching and synchronization
 - [ ] **Phase 3: TUI Core** - Vaxis-based HAL inspection interface
 - [ ] **Phase 4: Configuration & Editing** - HAL manipulation and persistence
@@ -39,9 +39,9 @@ Decimal phases appear between their surrounding integers in numeric order.
 **Plans:** 3 plans in 3 waves
 
 Plans:
-- [ ] 01-01-PLAN.md — Create build.zig, src/root.zig, src/ffi/c.zig (project scaffolding and C header imports)
-- [ ] 01-02-PLAN.md — Create src/ffi/types.zig, src/ffi/errors.zig, src/ffi/safe.zig (types, errors, and init/exit wrappers)
-- [ ] 01-03-PLAN.md — Pin wrapper functions with mutex locking and unit tests with leak detection
+- [x] 01-01-PLAN.md — Create build.zig, src/root.zig, src/ffi/c.zig (project scaffolding and C header imports)
+- [x] 01-02-PLAN.md — Create src/ffi/types.zig, src/ffi/errors.zig, src/ffi/safe.zig (types, errors, and init/exit wrappers)
+- [x] 01-03-PLAN.md — Pin wrapper functions with mutex locking and unit tests with leak detection
 
 ### Phase 2: State Management
 
@@ -162,7 +162,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. FFI Foundation | 0/3 | Planned, ready to execute | - |
+| 1. FFI Foundation | 3/3 | ✓ Complete | 2026-01-29 |
 | 2. State Management | 0/0 | Not started | - |
 | 3. TUI Core | 0/0 | Not started | - |
 | 4. Configuration & Editing | 0/0 | Not started | - |
