@@ -7,6 +7,7 @@ const TreeView = @import("widgets/tree_view.zig").TreeView;
 const DataTable = @import("widgets/data_table.zig").DataTable;
 const SignalDialog = @import("widgets/signal_dialog.zig").SignalDialog;
 const drawTwoPanelLayout = @import("layout.zig").drawTwoPanelLayout;
+const exportHal = @import("../hal/export.zig");
 
 /// Global redraw flag pointer for pubsub callbacks
 /// This is set by the Model during initialization and used by callbacks
@@ -52,6 +53,10 @@ pub const Model = struct {
     /// Error timeout timestamp (0 = no timeout set)
     error_timeout: u64,
 
+    /// Save dialog state
+    save_dialog_visible: bool = false,
+    save_filename: std.ArrayList(u8),
+
     /// Initialize a new Model instance
     pub fn init(
         allocator: std.mem.Allocator,
@@ -72,6 +77,9 @@ pub const Model = struct {
         // Initialize redraw flag
         const redraw_flag = std.atomic.Value(bool).init(false);
 
+        // Initialize save filename buffer
+        const save_filename = std.ArrayList(u8).init(allocator);
+
         return .{
             .allocator = allocator,
             .store = store,
@@ -84,6 +92,7 @@ pub const Model = struct {
             .error_message = null,
             .error_message_owner = null,
             .error_timeout = 0,
+            .save_filename = save_filename,
         };
     }
 
@@ -99,6 +108,9 @@ pub const Model = struct {
         if (self.error_message_owner) |msg| {
             self.allocator.free(msg);
         }
+
+        // Free save filename buffer
+        self.save_filename.deinit();
     }
 
     /// Get list of checked item names
@@ -176,6 +188,32 @@ pub const Model = struct {
     /// Close signal creation dialog
     pub fn closeSignalDialog(self: *Model) void {
         self.signal_dialog.close();
+    }
+
+    /// Open save configuration dialog
+    pub fn openSaveDialog(self: *Model) !void {
+        self.save_dialog_visible = true;
+        self.save_filename.clearRetainingCapacity();
+        // Default filename
+        try self.save_filename.appendSlice("haltune-config.hal");
+    }
+
+    /// Close save configuration dialog
+    pub fn closeSaveDialog(self: *Model) void {
+        self.save_dialog_visible = false;
+        self.save_filename.clearRetainingCapacity();
+    }
+
+    /// Save HAL configuration to file
+    pub fn saveConfiguration(self: *Model, filename: []const u8) !void {
+        const file = try std.fs.cwd().createFile(filename, .{});
+        defer file.close();
+
+        const buffered = std.io.bufferedWriter(file.writer());
+        const writer = buffered.writer();
+
+        try exportHal.exportHalConfiguration(self.allocator, self.store, writer);
+        try buffered.flush();
     }
 
     /// Return a vxfw.Widget for this Model
