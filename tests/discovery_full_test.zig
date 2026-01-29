@@ -8,6 +8,11 @@ const std = @import("std");
 const c = @import("ffi/c.zig").c;
 const safe = @import("ffi/safe.zig");
 
+// Use opaque types from types.zig
+const hal_pin_t = @import("ffi/types.zig").hal_pin_t;
+const hal_sig_t = @import("ffi/types.zig").hal_sig_t;
+const hal_param_t = @import("ffi/types.zig").hal_param_t;
+
 pub fn main() !void {
     std.debug.print("HAL Discovery Test (with created objects)\n", .{});
     std.debug.print("=========================================\n\n", .{});
@@ -26,9 +31,9 @@ pub fn main() !void {
     std.debug.print("=== Creating Test Pins ===\n", .{});
 
     // hal_pin_new signature: int hal_pin_new(const char *name, hal_type_t type, hal_pin_dir_t dir, void **ptr, int comp_id)
-    var pin_ptr_1: ?*c.hal_pin_t = null;
-    var pin_ptr_2: ?*c.hal_pin_t = null;
-    var pin_ptr_3: ?*c.hal_pin_t = null;
+    var pin_ptr_1: ?*hal_pin_t = null;
+    var pin_ptr_2: ?*hal_pin_t = null;
+    var pin_ptr_3: ?*hal_pin_t = null;
 
     const rc1 = c.hal_pin_new("test-pin-1", c.HAL_FLOAT, c.HAL_OUT, &pin_ptr_1, comp_id);
     if (rc1 == 0) {
@@ -69,8 +74,8 @@ pub fn main() !void {
 
     std.debug.print("\n=== Creating Test Parameters ===\n", .{});
 
-    var param_ptr_1: ?*c.hal_param_t = null;
-    var param_ptr_2: ?*c.hal_param_t = null;
+    var param_ptr_1: ?*hal_param_t = null;
+    var param_ptr_2: ?*hal_param_t = null;
 
     const param_rc1 = c.hal_param_new("test-param-1", c.HAL_FLOAT, c.HAL_RO, &param_ptr_1, comp_id);
     if (param_rc1 == 0) {
