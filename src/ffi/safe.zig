@@ -391,6 +391,94 @@ pub fn getSignalValue(sig: *const hal_sig_t) !@import("../state/cache.zig").HalV
     }
 }
 
+/// Set the value of a HAL bit parameter
+///
+/// Parameters:
+///   - param: Pointer to hal_param_t (from halprFindParamByName)
+///   - value: New bit value (true = 1, false = 0)
+///
+/// Returns:
+///   - void on success
+///   - error.NotFound if param pointer is null
+///   - error.TypeMismatch if param is not bit type
+///
+/// Thread safety:
+///   - Acquires HAL mutex before writing
+///   - Safe to call from multiple threads
+pub fn setParamBit(param: ?*hal_param_t, value: bool) !void {
+    const param_ptr = param orelse return HalError.NotFound;
+    if (param_ptr.*.type != c.HAL_BIT) return HalError.TypeMismatch;
+    _ = c.hal_mutex_lock(c.hal_mutex.ptr);
+    param_ptr.*.data.bit = @intFromBool(value);
+    c.hal_mutex_unlock(c.hal_mutex.ptr);
+}
+
+/// Set the value of a HAL float parameter
+///
+/// Parameters:
+///   - param: Pointer to hal_param_t (from halprFindParamByName)
+///   - value: New float value
+///
+/// Returns:
+///   - void on success
+///   - error.NotFound if param pointer is null
+///   - error.TypeMismatch if param is not float type
+///
+/// Thread safety:
+///   - Acquires HAL mutex before writing
+///   - Safe to call from multiple threads
+pub fn setParamFloat(param: ?*hal_param_t, value: f64) !void {
+    const param_ptr = param orelse return HalError.NotFound;
+    if (param_ptr.*.type != c.HAL_FLOAT) return HalError.TypeMismatch;
+    _ = c.hal_mutex_lock(c.hal_mutex.ptr);
+    param_ptr.*.data.float = value;
+    c.hal_mutex_unlock(c.hal_mutex.ptr);
+}
+
+/// Set the value of a HAL s32 parameter
+///
+/// Parameters:
+///   - param: Pointer to hal_param_t (from halprFindParamByName)
+///   - value: New signed 32-bit integer value
+///
+/// Returns:
+///   - void on success
+///   - error.NotFound if param pointer is null
+///   - error.TypeMismatch if param is not s32 type
+///
+/// Thread safety:
+///   - Acquires HAL mutex before writing
+///   - Safe to call from multiple threads
+pub fn setParamS32(param: ?*hal_param_t, value: i32) !void {
+    const param_ptr = param orelse return HalError.NotFound;
+    if (param_ptr.*.type != c.HAL_S32) return HalError.TypeMismatch;
+    _ = c.hal_mutex_lock(c.hal_mutex.ptr);
+    param_ptr.*.data.s32 = value;
+    c.hal_mutex_unlock(c.hal_mutex.ptr);
+}
+
+/// Set the value of a HAL u32 parameter
+///
+/// Parameters:
+///   - param: Pointer to hal_param_t (from halprFindParamByName)
+///   - value: New unsigned 32-bit integer value
+///
+/// Returns:
+///   - void on success
+///   - error.NotFound if param pointer is null
+///   - error.TypeMismatch if param is not u32 type
+///
+/// Thread safety:
+///   - Acquires HAL mutex before writing
+///   - Safe to call from multiple threads
+pub fn setParamU32(param: ?*hal_param_t, value: u32) !void {
+    const param_ptr = param orelse return HalError.NotFound;
+    if (param_ptr.*.type != c.HAL_U32) return HalError.TypeMismatch;
+    _ = c.hal_mutex_lock(c.hal_mutex.ptr);
+    param_ptr.*.data.u32 = value;
+    c.hal_mutex_unlock(c.hal_mutex.ptr);
+}
+
 /// Read from a HAL parameter
 ///
 /// This function reads the current value from a HAL parameter.
@@ -458,4 +546,10 @@ comptime {
     // Verify signal and param value readers
     _ = getSignalValue;
     _ = getParamValue;
+
+    // Verify param write functions return error unions
+    _ = setParamBit;
+    _ = setParamFloat;
+    _ = setParamS32;
+    _ = setParamU32;
 }
