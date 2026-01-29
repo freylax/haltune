@@ -14,6 +14,7 @@ const std = @import("std");
 const vxfw = @import("vaxis").vxfw;
 const StateStore = @import("../../state/cache.zig").StateStore;
 const HalValue = StateStore.HalValue;
+const safe = @import("../../ffi/safe.zig");
 
 /// HAL item type (pin, signal, or parameter)
 pub const ItemType = enum {
@@ -154,6 +155,18 @@ pub const DataTable = struct {
     /// Whether component filter input mode is active
     component_filter_input: bool,
 
+    /// Edit mode flag
+    edit_mode: bool,
+
+    /// Index of item being edited
+    edit_item: ?usize,
+
+    /// Edit buffer for in-place editing
+    edit_buffer: std.ArrayList(u8),
+
+    /// Pending edit items (waiting for refresh)
+    pending_edits: std.StringHashMap(void),
+
     /// Initialize a new DataTable
     ///
     /// Parameters:
@@ -174,6 +187,10 @@ pub const DataTable = struct {
             .filter_component = "",
             .component_buffer = std.ArrayList(u8).init(allocator),
             .component_filter_input = false,
+            .edit_mode = false,
+            .edit_item = null,
+            .edit_buffer = std.ArrayList(u8).init(allocator),
+            .pending_edits = std.StringHashMap(void).init(allocator),
         };
     }
 
@@ -181,6 +198,8 @@ pub const DataTable = struct {
     pub fn deinit(self: *DataTable) void {
         self.items.deinit();
         self.component_buffer.deinit();
+        self.edit_buffer.deinit();
+        self.pending_edits.deinit();
         self.* = undefined;
     }
 
@@ -315,6 +334,55 @@ pub const DataTable = struct {
         };
     }
 
+    /// Get HAL pin pointer by name
+    fn getPinPointer(self: *DataTable, name: []const u8) !?*const anyerror {
+        _ = self;
+        const c = @import("../../ffi/c.zig").c;
+        const name_c = try std.fmt.allocPrintZ(self.allocator, "{s}", .{name});
+        defer self.allocator.free(name_c);
+
+        const pin_ptr = c.halpr_find_pin_by_name(name_c);
+        return @ptrCast(pin_ptr);
+    }
+
+    /// Get HAL param pointer by name
+    fn getParamPointer(self: *DataTable, name: []const u8) !?*const anyerror {
+        _ = self;
+        const c = @import("../../ffi/c.zig").c;
+        const name_c = try std.fmt.allocPrintZ(self.allocator, "{s}", .{name});
+        defer self.allocator.free(name_c);
+
+        const param_ptr = c.halpr_find_param_by_name(name_c);
+        return @ptrCast(param_ptr);
+    }
+
+    /// Write value to HAL item
+    fn writeValue(self: *DataTable, item: TableItem, value: HalValue) !void {
+        switch (item.item_type) {
+            .pin => {
+                const pin_ptr = try self.getPinPointer(item.name);
+                switch (value) {
+                    .bit => |v| try safe.pinBitSet(@ptrCast(@alignCast(pin_ptr)), v),
+                    .float => |v| try safe.pinFloatSet(@ptrCast(@alignCast(pin_ptr)), v),
+                    .s32 => |v| try safe.pinS32Set(@ptrCast(@alignCast(pin_ptr)), v),
+                    .u32 => |v| try safe.pinU32Set(@ptrCast(@alignCast(pin_ptr)), v),
+                }
+            },
+            .param => {
+                const param_ptr = try self.getParamPointer(item.name);
+                switch (value) {
+                    .bit => |v| try safe.setParamBit(@ptrCast(@alignCast(param_ptr)), v),
+                    .float => |v| try safe.setParamFloat(@ptrCast(@alignCast(param_ptr)), v),
+                    .s32 => |v| try safe.setParamS32(@ptrCast(@alignCast(param_ptr)), v),
+                    .u32 => |v| try safe.setParamU32(@ptrCast(@alignCast(param_ptr)), v),
+                }
+            },
+            .signal => {
+                return error.ReadOnly; // Signals are read-only
+            },
+        }
+    }
+
     /// Return a vxfw.Widget for this DataTable
     pub fn widget(self: *DataTable) vxfw.Widget {
         return .{
@@ -375,6 +443,77 @@ pub const DataTable = struct {
                     return; // Ignore other keys in component filter mode
                 }
 
+                // Edit mode handling
+                if (self.edit_mode) {
+                    // Escape: cancel edit
+                    if (key.matches(vxfw.Key.escape, .{})) {
+                        self.edit_mode = false;
+                        self.edit_item = null;
+                        self.edit_buffer.clearRetainingCapacity();
+                        ctx.consumeAndRedraw();
+                        return;
+                    }
+
+                    // Enter: confirm edit
+                    if (key.matches(vxfw.Key.enter, .{})) {
+                        if (self.edit_item) |idx| {
+                            const item = self.items.items[idx];
+                            const input = self.edit_buffer.items;
+
+                            // Parse and write value based on type
+                            const write_result = switch (item.hal_type) {
+                                .bit => {
+                                    // Accept "0", "1", "false", "true"
+                                    const value = if (std.mem.eql(u8, input, "1") or
+                                        std.mem.eql(u8, input, "true")) true else false;
+                                    self.writeValue(item, HalValue{ .bit = value })
+                                },
+                                .float => {
+                                    const value = try std.fmt.parseFloat(f64, input);
+                                    self.writeValue(item, HalValue{ .float = value })
+                                },
+                                .s32 => {
+                                    const value = try std.fmt.parseInt(i32, input, 10);
+                                    self.writeValue(item, HalValue{ .s32 = value })
+                                },
+                                .u32 => {
+                                    const value = try std.fmt.parseInt(u32, input, 10);
+                                    self.writeValue(item, HalValue{ .u32 = value })
+                                },
+                            };
+
+                            // Mark as pending and clear edit mode
+                            if (write_result == null) {
+                                try self.pending_edits.put(item.name, {});
+                            }
+                            self.edit_mode = false;
+                            self.edit_item = null;
+                            self.edit_buffer.clearRetainingCapacity();
+                            ctx.consumeAndRedraw();
+                            return;
+                        }
+                    }
+
+                    // Backspace: remove last character
+                    if (key.codepoint == 127) { // ASCII DEL (backspace)
+                        if (self.edit_buffer.items.len > 0) {
+                            _ = self.edit_buffer.pop();
+                            ctx.consumeAndRedraw();
+                        }
+                        return;
+                    }
+
+                    // Regular character: add to edit buffer
+                    if (key.codepoint >= 32 and key.codepoint < 127) {
+                        const new_char = @as(u8, @intCast(key.codepoint));
+                        try self.edit_buffer.append(new_char);
+                        ctx.consumeAndRedraw();
+                        return;
+                    }
+
+                    return; // Ignore other keys in edit mode
+                }
+
                 // Normal mode handling
 
                 // "t": Cycle type filter
@@ -400,6 +539,39 @@ pub const DataTable = struct {
                     self.filter_component = "";
                     ctx.consumeAndRedraw();
                     return;
+                }
+
+                // Enter: Start editing or toggle bit value
+                if (key.matches(vxfw.Key.enter, .{})) {
+                    if (self.items.items.len > 0) {
+                        // For simplicity, edit first item (TODO: add cursor selection)
+                        const item = &self.items.items[0];
+
+                        if (!item.is_writable) {
+                            // Item is read-only - don't edit
+                            return;
+                        }
+
+                        if (item.hal_type == .bit) {
+                            // Boolean: toggle value
+                            const current_value = try self.getItemValue(item.*);
+                            const new_value = switch (current_value) {
+                                .bit => |v| !v,
+                                else => return, // Should not happen
+                            };
+                            try self.writeValue(item.*, HalValue{ .bit = new_value });
+                            try self.pending_edits.put(item.name, {});
+                            ctx.consumeAndRedraw();
+                            return;
+                        } else {
+                            // Numeric: enter edit mode
+                            self.edit_mode = true;
+                            self.edit_item = 0;
+                            self.edit_buffer.clearRetainingCapacity();
+                            ctx.consumeAndRedraw();
+                            return;
+                        }
+                    }
                 }
             },
             else => {},
@@ -470,12 +642,18 @@ pub const DataTable = struct {
         try widgets.append(vxfw.Text.asWidget(separator, .{}));
 
         // Data rows
-        for (self.items.items) |item| {
+        for (self.items.items, 0..) |item, idx| {
             // Determine row color
             const row_style = if (item.is_writable)
                 vxfw.Style{ .fg = .{ .index = 2 } } // Green for editable
             else
                 vxfw.Style{ .fg = .{ .index = 8 } }; // Dim gray for read-only
+
+            // Highlight row being edited
+            const final_style = if (self.edit_mode and self.edit_item != null and self.edit_item.? == idx)
+                vxfw.Style{ .fg = .{ .index = 2 }, .bold = true, .reverse = true } // Bold reverse for edit
+            else
+                row_style;
 
             // Format item type
             const type_str = switch (item.hal_type) {
@@ -493,8 +671,19 @@ pub const DataTable = struct {
                 .none => "",
             };
 
-            // Get current value from StateStore
+            // Get current value or edit buffer
             const value_str = blk: {
+                // If editing this item, show edit buffer
+                if (self.edit_mode and self.edit_item != null and self.edit_item.? == idx) {
+                    break :blk self.edit_buffer.items;
+                }
+
+                // If pending edit, show "..."
+                if (self.pending_edits.get(item.name) != null) {
+                    break :blk "...";
+                }
+
+                // Otherwise show current value from StateStore
                 const value = self.getItemValue(item) catch |err| {
                     std.log.warn("Failed to get value for '{s}': {}", .{item.name, err});
                     break :blk "ERR";
@@ -510,7 +699,7 @@ pub const DataTable = struct {
                 value_str, value_width,
             });
 
-            try widgets.append(vxfw.Text.asWidget(row_text, .{ .style = row_style }));
+            try widgets.append(vxfw.Text.asWidget(row_text, .{ .style = final_style }));
         }
 
         // Create surface with widgets as children
