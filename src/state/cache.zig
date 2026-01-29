@@ -461,6 +461,84 @@ pub const StateStore = struct {
         // Return owned slice (iterator no longer needed)
         return keys.toOwnedSlice();
     }
+
+    /// Remove a pin from the cache
+    ///
+    /// Deletes a pin entry from the cache. Used by refresh thread to remove
+    /// stale entries when components are unloaded.
+    ///
+    /// Parameters:
+    ///   - name: Pin name to remove
+    ///
+    /// Returns:
+    ///   - void on success
+    ///
+    /// Thread safety:
+    ///   - Acquires exclusive lock (blocks all readers)
+    ///
+    /// Example:
+    /// ```
+    /// // Component unloaded, remove its pins
+    /// try store.removePin("unloaded-component.pin-0");
+    /// ```
+    pub fn removePin(self: *StateStore, name: []const u8) !void {
+        self.rwlock.lock();
+        defer self.rwlock.unlock();
+
+        _ = self.pins.remove(name);
+    }
+
+    /// Remove a signal from the cache
+    ///
+    /// Deletes a signal entry from the cache. Used by refresh thread to remove
+    /// stale entries when components are unloaded.
+    ///
+    /// Parameters:
+    ///   - name: Signal name to remove
+    ///
+    /// Returns:
+    ///   - void on success
+    ///
+    /// Thread safety:
+    ///   - Acquires exclusive lock (blocks all readers)
+    ///
+    /// Example:
+    /// ```
+    /// // Component unloaded, remove its signals
+    /// try store.removeSignal("unloaded-component.signal-0");
+    /// ```
+    pub fn removeSignal(self: *StateStore, name: []const u8) !void {
+        self.rwlock.lock();
+        defer self.rwlock.unlock();
+
+        _ = self.signals.remove(name);
+    }
+
+    /// Remove a parameter from the cache
+    ///
+    /// Deletes a parameter entry from the cache. Used by refresh thread to remove
+    /// stale entries when components are unloaded.
+    ///
+    /// Parameters:
+    ///   - name: Parameter name to remove
+    ///
+    /// Returns:
+    ///   - void on success
+    ///
+    /// Thread safety:
+    ///   - Acquires exclusive lock (blocks all readers)
+    ///
+    /// Example:
+    /// ```
+    /// // Component unloaded, remove its params
+    /// try store.removeParam("unloaded-component.param-0");
+    /// ```
+    pub fn removeParam(self: *StateStore, name: []const u8) !void {
+        self.rwlock.lock();
+        defer self.rwlock.unlock();
+
+        _ = self.params.remove(name);
+    }
 };
 
 // Compile-time tests to verify API surface
@@ -475,12 +553,15 @@ comptime {
     _ = StateStore.getPin;
     _ = StateStore.updatePin;
     _ = StateStore.addPin;
+    _ = StateStore.removePin;
     _ = StateStore.getSignal;
     _ = StateStore.updateSignal;
     _ = StateStore.addSignal;
+    _ = StateStore.removeSignal;
     _ = StateStore.getParam;
     _ = StateStore.updateParam;
     _ = StateStore.addParam;
+    _ = StateStore.removeParam;
 
     // Verify list operations exist
     _ = StateStore.listPins;
