@@ -1,58 +1,74 @@
 # Deploying haltune to pib
 
-## Quick Start
+## Prerequisites on pib
 
-On pib (as cnc user):
+- ✓ Zig already installed
+- ✓ LinuxCNC installed (with hal.h at /usr/include/linuxcnc/hal.h)
+
+## Quick Deployment
+
+### Option 1: Copy files via scp
+
+From your development machine:
 
 ```bash
-# 1. Create project directory
-mkdir -p ~/prog
-cd ~/prog
+# Create directory on pib
+ssh cnc@pib "mkdir -p ~/prog/haltune"
 
-# 2. Clone your repo (adjust URL as needed)
-# If you have git access:
+# Copy source files (excluding .zig-cache)
+rsync -av --exclude='.zig-cache' --exclude='zig-cache' \
+    /home/robert/prog/zig/haltune/ \
+    cnc@pib:~/prog/haltune/
+
+# Build on pib
+ssh cnc@pib "cd ~/prog/haltune && bash scripts/build-on-pib.sh"
+```
+
+### Option 2: Clone git repo on pib
+
+```bash
+ssh cnc@pib
+cd ~/prog
 git clone <your-repo-url> haltune
 cd haltune
-
-# OR copy files from your development machine:
-# scp -r /home/robert/prog/zig/haltune cnc@pib:~/prog/
-
-# 3. Run setup script
-bash scripts/setup-on-pib.sh
+bash scripts/build-on-pib.sh
 ```
 
-## What the Setup Script Does
-
-1. Installs Zig 0.15.2 if not present
-2. Checks for LinuxCNC headers
-3. Builds haltune
-4. Builds tests
-
-## Manual Setup (if script fails)
+### Option 3: Manual copy
 
 ```bash
-# Install Zig manually
-cd /tmp
-wget https://ziglang.org/download/0.15.2/zig-linux-aarch64-0.15.2.tar.xz
-tar -xf zig-linux-aarch64-0.15.2.tar.xz
-sudo mv zig-linux-aarch64-0.15.2 /opt/zig
-sudo ln -sf /opt/zig/zig /usr/local/bin/zig
+# From dev machine, create a tarball
+tar czf haltune-src.tar.gz \
+    --exclude='.zig-cache' --exclude='zig-cache' \
+    --exclude='zig-out' --exclude='.git' \
+    /home/robert/prog/zig/haltune
 
-# Install LinuxCNC dev headers (if not present)
-sudo apt install linuxcnc-dev
+# Copy to pib
+scp haltune-src.tar.gz cnc@pib:~/prog/
 
-# Build
-cd ~/prog/haltune
-zig build
-zig build test
+# On pib:
+ssh cnc@pib
+cd ~/prog
+tar xzf haltune-src.tar.gz
+cd haltune
+bash scripts/build-on-pib.sh
 ```
 
-## Testing
+## What Gets Built
+
+- `zig-out/bin/haltune` - Main executable
+- Tests for Phase 2:
+  - State cache (thread-safe RwLock)
+  - Refresh thread (HAL polling at 100ms)
+  - Pubsub notifications
+  - Stale entry cleanup
+
+## Testing on pib
 
 After build completes:
 
 ```bash
-# Run unit tests
+# Run all tests
 zig build test
 
 # Run main program
@@ -61,16 +77,42 @@ zig build run
 
 ## What to Verify
 
-Phase 2 features to test:
-- [ ] State cache can store pins/signals/params
-- [ ] Refresh thread polls HAL at 100ms
-- [ ] New items from loaded components are discovered
-- [ ] Stale items from unloaded components are removed
+Phase 2 features (all should pass):
+- [ ] State cache stores pins/signals/params
+- [ ] Refresh thread polls HAL at 100ms (configurable)
+- [ ] New items from `halcmd loadusr` are discovered
+- [ ] Stale items from `halcmd unload` are removed
 - [ ] Multiple threads can read concurrently
-- [ ] Pubsub notifications work
+- [ ] Pubsub notifications trigger callbacks
+
+## Expected Test Results
+
+With LinuxCNC running:
+- ✓ State cache tests pass
+- ✓ Refresh thread tests pass
+- ✓ Pubsub tests pass
+- ✓ All Phase 2 requirements verified
+
+Without LinuxCNC:
+- Some tests may skip (require running HAL)
+- FFI bindings still tested
 
 ## Troubleshooting
 
-**"zig: command not found"** - Zig not installed or not in PATH
-**"hal.h: No such file"** - LinuxCNC dev headers missing, install linuxcnc-dev
-**"error: unable to find dynamic system library 'hal'"** - libhal.so not found, check LinuxCNC installation
+**"hal.h: No such file"**
+```bash
+sudo apt install linuxcnc-dev
+```
+
+**"error: unable to find dynamic system library 'hal'"**
+```bash
+# Check LinuxCNC is installed
+ldconfig -p | grep hal
+
+# May need to set library path
+export LD_LIBRARY_PATH=/usr/lib/linuxcnc:$LD_LIBRARY_PATH
+```
+
+**Build works but tests fail**
+- Ensure LinuxCNC is running: `halcmd show pin`
+- Check permissions: may need to be in `hal` group
