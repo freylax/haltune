@@ -383,6 +383,78 @@ pub fn halprFindParamByName(name: ?[*:0]const u8) ?*c.hal_param_t {
     return c.halpr_find_param_by_name(name);
 }
 
+/// Read from a HAL signal
+///
+/// This function reads the current value from a HAL signal.
+/// Signals store their values directly in the hal_sig_t structure.
+///
+/// Parameters:
+///   - sig: Pointer to hal_sig_t
+///
+/// Returns:
+///   - HalValue union containing the signal's value
+///   - error.TypeMismatch if signal type is invalid
+///
+/// Thread safety:
+///   - Does not acquire mutex (reads are lock-free)
+///   - Value may be updated concurrently by HAL real-time thread
+pub fn getSignalValue(sig: *const c.hal_sig_t) !@import("../state/cache.zig").HalValue {
+    const HalValue = @import("../state/cache.zig").HalValue;
+
+    // Read value based on signal type
+    switch (sig.*.type) {
+        c.HAL_BIT => {
+            return HalValue{ .bit = sig.*.data.bit != 0 };
+        },
+        c.HAL_FLOAT => {
+            return HalValue{ .float = sig.*.data.float };
+        },
+        c.HAL_S32 => {
+            return HalValue{ .s32 = sig.*.data.s32 };
+        },
+        c.HAL_U32 => {
+            return HalValue{ .u32 = sig.*.data.u32 };
+        },
+        else => return HalError.TypeMismatch,
+    }
+}
+
+/// Read from a HAL parameter
+///
+/// This function reads the current value from a HAL parameter.
+/// Parameters store their values directly in the hal_param_t structure.
+///
+/// Parameters:
+///   - param: Pointer to hal_param_t
+///
+/// Returns:
+///   - HalValue union containing the parameter's value
+///   - error.TypeMismatch if parameter type is invalid
+///
+/// Thread safety:
+///   - Does not acquire mutex (reads are lock-free)
+///   - Value may be updated concurrently by HAL real-time thread
+pub fn getParamValue(param: *const c.hal_param_t) !@import("../state/cache.zig").HalValue {
+    const HalValue = @import("../state/cache.zig").HalValue;
+
+    // Read value based on parameter type
+    switch (param.*.type) {
+        c.HAL_BIT => {
+            return HalValue{ .bit = param.*.data.bit != 0 };
+        },
+        c.HAL_FLOAT => {
+            return HalValue{ .float = param.*.data.float };
+        },
+        c.HAL_S32 => {
+            return HalValue{ .s32 = param.*.data.s32 };
+        },
+        c.HAL_U32 => {
+            return HalValue{ .u32 = param.*.data.u32 };
+        },
+        else => return HalError.TypeMismatch,
+    }
+}
+
 // Compile-time tests
 comptime {
     // Verify halInit returns error union
@@ -409,4 +481,8 @@ comptime {
     _ = halprFindPinByName;
     _ = halprFindSigByName;
     _ = halprFindParamByName;
+
+    // Verify signal and param value readers
+    _ = getSignalValue;
+    _ = getParamValue;
 }
