@@ -25,26 +25,26 @@ pub fn main() !void {
     // Create test pins
     std.debug.print("=== Creating Test Pins ===\n", .{});
 
-    // hal_pin_new signature: int hal_pin_new(const char *name, hal_type_t type, hal_pin_dir_t dir, void **ptr, int comp_id)
+    // Use typed pin creation functions
     var pin_ptr_1: ?*anyopaque = null;
     var pin_ptr_2: ?*anyopaque = null;
     var pin_ptr_3: ?*anyopaque = null;
 
-    const rc1 = c.hal_pin_new("test-pin-1", c.HAL_FLOAT, c.HAL_OUT, &pin_ptr_1, comp_id);
+    const rc1 = c.hal_pin_float_new("test-pin-1", c.HAL_OUT, &pin_ptr_1, comp_id);
     if (rc1 == 0) {
         std.debug.print("✓ Created pin: test-pin-1 (HAL_FLOAT, HAL_OUT)\n", .{});
     } else {
         std.debug.print("✗ Failed to create test-pin-1: {}\n", .{rc1});
     }
 
-    const rc2 = c.hal_pin_new("test-pin-2", c.HAL_BIT, c.HAL_IN, &pin_ptr_2, comp_id);
+    const rc2 = c.hal_pin_bit_new("test-pin-2", c.HAL_IN, &pin_ptr_2, comp_id);
     if (rc2 == 0) {
         std.debug.print("✓ Created pin: test-pin-2 (HAL_BIT, HAL_IN)\n", .{});
     } else {
         std.debug.print("✗ Failed to create test-pin-2: {}\n", .{rc2});
     }
 
-    const rc3 = c.hal_pin_new("test-pin-3", c.HAL_S32, c.HAL_IO, &pin_ptr_3, comp_id);
+    const rc3 = c.hal_pin_s32_new("test-pin-3", c.HAL_IO, &pin_ptr_3, comp_id);
     if (rc3 == 0) {
         std.debug.print("✓ Created pin: test-pin-3 (HAL_S32, HAL_IO)\n", .{});
     } else {
@@ -69,17 +69,18 @@ pub fn main() !void {
 
     std.debug.print("\n=== Creating Test Parameters ===\n", .{});
 
+    // Use typed parameter creation functions
     var param_ptr_1: ?*anyopaque = null;
     var param_ptr_2: ?*anyopaque = null;
 
-    const param_rc1 = c.hal_param_new("test-param-1", c.HAL_FLOAT, c.HAL_RO, &param_ptr_1, comp_id);
+    const param_rc1 = c.hal_param_float_new("test-param-1", c.HAL_RO, &param_ptr_1, comp_id);
     if (param_rc1 == 0) {
         std.debug.print("✓ Created param: test-param-1 (HAL_FLOAT, HAL_RO)\n", .{});
     } else {
         std.debug.print("✗ Failed to create test-param-1: {}\n", .{param_rc1});
     }
 
-    const param_rc2 = c.hal_param_new("test-param-2", c.HAL_S32, c.HAL_RW, &param_ptr_2, comp_id);
+    const param_rc2 = c.hal_param_s32_new("test-param-2", c.HAL_RW, &param_ptr_2, comp_id);
     if (param_rc2 == 0) {
         std.debug.print("✓ Created param: test-param-2 (HAL_S32, HAL_RW)\n", .{});
     } else {
