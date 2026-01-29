@@ -1,0 +1,125 @@
+// Thread-safe state cache for HAL pin/signal/parameter values
+//
+// This module provides StateStore, a concurrent-access cache that stores
+// HAL values indexed by name. Multiple TUI threads can read simultaneously
+// using RwLock shared access, while refresh thread has exclusive write access.
+//
+// Design principles:
+// - Use RwLock for concurrent reads (TUI) vs exclusive writes (refresh)
+// - StringHashMap provides O(1) name-based lookups
+// - Never call HAL functions while holding rwlock (prevents deadlock)
+// - Return error.NotFound for missing keys
+
+const std = @import("std");
+const HalError = @import("../ffi/errors.zig").HalError;
+
+/// HAL value union supporting all four HAL data types
+///
+/// This tagged union can store any HAL pin/signal/parameter value type.
+/// The tag ensures type safety - you must check which field is valid
+/// before accessing the value.
+pub const HalValue = union(enum) {
+    /// Boolean value (HAL_BIT pins/signals)
+    bit: bool,
+
+    /// Floating-point value (HAL_FLOAT pins/signals)
+    float: f64,
+
+    /// Signed 32-bit integer (HAL_S32 pins/signals/params)
+    s32: i32,
+
+    /// Unsigned 32-bit integer (HAL_U32 pins/signals/params)
+    u32: u32,
+};
+
+/// Thread-safe state store for HAL values
+///
+/// StateStore maintains three separate HashMaps for pins, signals, and parameters.
+/// All access is protected by a single RwLock to allow concurrent reads while
+/// ensuring exclusive writes.
+///
+/// Lock usage:
+/// - Read operations (get/list): lockShared(), defer unlockShared()
+/// - Write operations (update): lock(), defer unlock()
+///
+/// IMPORTANT: Never call HAL FFI functions while holding rwlock.
+/// This prevents deadlock with HAL's internal mutex (see RESEARCH.md Pitfall 1).
+pub const StateStore = struct {
+    /// Memory allocator for HashMap storage
+    allocator: std.mem.Allocator,
+
+    /// HashMap storing pin values indexed by name
+    pins: std.StringHashMap(HalValue),
+
+    /// HashMap storing signal values indexed by name
+    signals: std.StringHashMap(HalValue),
+
+    /// HashMap storing parameter values indexed by name
+    params: std.StringHashMap(HalValue),
+
+    /// Reader-writer lock for concurrent access
+    /// Multiple threads can hold shared lock for reading
+    /// Only one thread can hold exclusive lock for writing
+    rwlock: std.Thread.RwLock = .{},
+
+    /// Initialize a new StateStore
+    ///
+    /// Creates an empty state store with all HashMaps initialized.
+    /// The allocator is stored for HashMap operations and must remain
+    /// valid for the lifetime of the StateStore.
+    ///
+    /// Parameters:
+    ///   - allocator: Memory allocator for HashMap storage
+    ///
+    /// Returns:
+    ///   - Initialized StateStore
+    ///
+    /// Example:
+    /// ```
+    /// var store = StateStore.init(std.heap.page_allocator);
+    /// defer store.deinit();
+    /// ```
+    pub fn init(allocator: std.mem.Allocator) StateStore {
+        return .{
+            .allocator = allocator,
+            .pins = std.StringHashMap(HalValue).init(allocator),
+            .signals = std.StringHashMap(HalValue).init(allocator),
+            .params = std.StringHashMap(HalValue).init(allocator),
+        };
+    }
+
+    /// Clean up StateStore and free all resources
+    ///
+    /// Releases all HashMap storage. The StateStore must not be used
+    /// after calling deinit().
+    ///
+    /// IMPORTANT: This only frees HashMap storage, not the string keys
+    /// themselves. StringHashMap manages key memory automatically.
+    ///
+    /// Example:
+    /// ```
+    /// var store = StateStore.init(std.heap.page_allocator);
+    /// defer store.deinit();  // Always cleanup
+    /// ```
+    pub fn deinit(self: *StateStore) void {
+        self.pins.deinit();
+        self.signals.deinit();
+        self.params.deinit();
+        self.* = undefined;
+    }
+};
+
+// Compile-time tests to verify API surface
+comptime {
+    // Verify StateStore can be initialized
+    _ = StateStore.init;
+
+    // Verify deinit is callable
+    _ = StateStore.deinit;
+
+    // Verify HalValue union has all expected fields
+    _ = HalValue.bit;
+    _ = HalValue.float;
+    _ = HalValue.s32;
+    _ = HalValue.u32;
+}
