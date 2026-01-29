@@ -137,10 +137,15 @@ pub fn halReady(comp_id: c_int) !void {
 /// const value = pin.*;  // Read value
 /// ```
 pub fn pinFloatNew(comp_id: c_int, name: [:0]const u8, dir: hal_pin_dir_t) ![*c]volatile f64 {
-    var pin_ptr: [*c]volatile f64 = null;
-    const rc = c.hal_pin_float_new(name, @intFromEnum(dir), &pin_ptr, comp_id);
+    // Allocate memory from HAL's shared memory region
+    // This is required for pin data pointers in hal_pin_*_new functions
+    const mem = c.hal_malloc(@sizeOf([*c]volatile f64)) orelse return HalError.InitFailed;
+    const pin_ptr_ptr: [*c][*c]volatile f64 = @ptrCast(mem);
+
+    const rc = c.hal_pin_float_new(name, @intFromEnum(dir), pin_ptr_ptr, comp_id);
     if (rc != 0) return HalError.InitFailed;
-    return pin_ptr;
+
+    return pin_ptr_ptr.*;
 }
 
 /// Create a new HAL bit pin
@@ -156,30 +161,39 @@ pub fn pinFloatNew(comp_id: c_int, name: [:0]const u8, dir: hal_pin_dir_t) ![*c]
 ///   - Pointer to pin data (use for reading/writing)
 ///   - error.InitFailed if pin creation fails
 pub fn pinBitNew(comp_id: c_int, name: [:0]const u8, dir: hal_pin_dir_t) ![*c]volatile u8 {
-    var pin_ptr: [*c]volatile u8 = null;
-    const rc = c.hal_pin_bit_new(name, @intFromEnum(dir), &pin_ptr, comp_id);
+    const mem = c.hal_malloc(@sizeOf([*c]volatile u8)) orelse return HalError.InitFailed;
+    const pin_ptr_ptr: [*c][*c]volatile u8 = @ptrCast(mem);
+
+    const rc = c.hal_pin_bit_new(name, @intFromEnum(dir), pin_ptr_ptr, comp_id);
     if (rc != 0) return HalError.InitFailed;
-    return pin_ptr;
+
+    return pin_ptr_ptr.*;
 }
 
 /// Create a new HAL s32 pin
 ///
 /// This function creates a new signed 32-bit integer pin in the HAL.
 pub fn pinS32New(comp_id: c_int, name: [:0]const u8, dir: hal_pin_dir_t) ![*c]volatile i32 {
-    var pin_ptr: [*c]volatile i32 = null;
-    const rc = c.hal_pin_s32_new(name, @intFromEnum(dir), &pin_ptr, comp_id);
+    const mem = c.hal_malloc(@sizeOf([*c]volatile i32)) orelse return HalError.InitFailed;
+    const pin_ptr_ptr: [*c][*c]volatile i32 = @ptrCast(mem);
+
+    const rc = c.hal_pin_s32_new(name, @intFromEnum(dir), pin_ptr_ptr, comp_id);
     if (rc != 0) return HalError.InitFailed;
-    return pin_ptr;
+
+    return pin_ptr_ptr.*;
 }
 
 /// Create a new HAL u32 pin
 ///
 /// This function creates a new unsigned 32-bit integer pin in the HAL.
 pub fn pinU32New(comp_id: c_int, name: [:0]const u8, dir: hal_pin_dir_t) ![*c]volatile u32 {
-    var pin_ptr: [*c]volatile u32 = null;
-    const rc = c.hal_pin_u32_new(name, @intFromEnum(dir), &pin_ptr, comp_id);
+    const mem = c.hal_malloc(@sizeOf([*c]volatile u32)) orelse return HalError.InitFailed;
+    const pin_ptr_ptr: [*c][*c]volatile u32 = @ptrCast(mem);
+
+    const rc = c.hal_pin_u32_new(name, @intFromEnum(dir), pin_ptr_ptr, comp_id);
     if (rc != 0) return HalError.InitFailed;
-    return pin_ptr;
+
+    return pin_ptr_ptr.*;
 }
 
 /// Find a HAL pin by name

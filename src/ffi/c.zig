@@ -32,3 +32,9 @@ pub extern "c" fn halpr_find_param_by_name(name: ?[*:0]const u8) ?*opaque {};
 pub extern "c" fn halpr_find_pin_by_owner(comp_id: c_int) ?*opaque {};
 pub extern "c" fn halpr_find_sig_by_owner(comp_id: c_int) ?*opaque {};
 pub extern "c" fn halpr_find_param_by_owner(comp_id: c_int) ?*opaque {};
+
+// HAL memory allocation
+// hal_malloc allocates memory from HAL's shared memory region.
+// This is required for pin data pointers in hal_pin_*_new functions.
+// Source: LinuxCNC HAL source code (src/hal/hal_lib.c)
+pub extern "c" fn hal_malloc(size: c_long) ?*anyopaque;
