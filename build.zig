@@ -158,14 +158,33 @@ pub fn build(b: *std.Build) void {
 
     // ===== Discovery Test =====
 
+    // Create discovery test module
+    const discovery_module = b.createModule(.{
+        .root_source_file = b.path("tests/discovery_test.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+
+    // Add FFI modules to discovery test module
+    discovery_module.addImport("ffi/c.zig", ffi_c);
+    discovery_module.addImport("ffi/errors.zig", ffi_errors);
+    discovery_module.addImport("ffi/types.zig", ffi_types);
+    discovery_module.addImport("ffi/safe.zig", ffi_safe);
+
     // Create discovery test executable
     const discovery_exe = b.addExecutable(.{
         .name = "discovery-test",
-        .root_module = root_module, // Reuse the same module configuration
+        .root_module = discovery_module,
     });
 
-    // Override root source file for discovery test
-    discovery_exe.root_source_file = b.path("tests/discovery_test.zig");
+    // Link discovery test against LinuxCNC HAL library
+    if (!skip_hal_link) {
+        discovery_exe.addLibraryPath(.{ .cwd_relative = "/usr/lib" });
+        discovery_exe.linkSystemLibrary("c");
+        discovery_exe.linkSystemLibrary("linuxcnchal");
+        discovery_exe.linkSystemLibrary("rt");
+        discovery_exe.linker_allow_shlib_undefined = true;
+    }
 
     // Create discovery test run step
     const run_discovery = b.addRunArtifact(discovery_exe);
