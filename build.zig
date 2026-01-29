@@ -115,48 +115,8 @@ pub fn build(b: *std.Build) void {
 
     // ===== Test Configuration =====
 
-    // Create FFI modules for tests to import
-    const ffi_c = b.createModule(.{
-        .root_source_file = b.path("src/ffi/c.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
-    ffi_c.addIncludePath(.{ .cwd_relative = linuxcnc_include });
-
-    const ffi_errors = b.createModule(.{
-        .root_source_file = b.path("src/ffi/errors.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
-
-    const ffi_types = b.createModule(.{
-        .root_source_file = b.path("src/ffi/types.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
-    // types.zig depends on c.zig
-    ffi_types.addImport("c.zig", ffi_c);
-
-    // Create state module (needed by safe.zig for getSignalValue/getParamValue)
-    const state_cache = b.createModule(.{
-        .root_source_file = b.path("src/state/cache.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
-    // state/cache.zig imports ../ffi/errors.zig, so we alias it
-    state_cache.addImport("ffi-errors", ffi_errors);
-    state_cache.addImport("ffi-types", ffi_types);
-
-    const ffi_safe = b.createModule(.{
-        .root_source_file = b.path("src/ffi/safe.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
-    // safe.zig depends on c.zig, errors.zig, types.zig, and ../state/cache.zig
-    ffi_safe.addImport("c.zig", ffi_c);
-    ffi_safe.addImport("errors.zig", ffi_errors);
-    ffi_safe.addImport("types.zig", ffi_types);
-    ffi_safe.addImport("state-cache", state_cache);
+    // Note: FFI modules (ffi_c, ffi_errors, ffi_types, ffi_safe, state_cache)
+    // are already created above for the main executable. We reuse them here.
 
     // Create test module
     const test_module = b.createModule(.{
