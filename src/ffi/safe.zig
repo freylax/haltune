@@ -109,6 +109,29 @@ pub fn halReady(comp_id: c_int) !void {
     }
 }
 
+/// Create a new HAL signal
+///
+/// This function creates a new signal in the HAL with the specified name and type.
+///
+/// Parameters:
+///   - name: Null-terminated signal name (must be unique in HAL)
+///   - hal_type: Signal type (HAL_BIT, HAL_FLOAT, HAL_S32, HAL_U32)
+///
+/// Returns:
+///   - void on success
+///   - error.InitFailed if signal already exists or type is invalid
+///
+/// Memory ownership:
+///   - HAL allocates memory for the signal
+///   - Signal is automatically cleaned up when hal_exit() is called
+///
+/// Thread safety:
+///   - Acquires HAL mutex before creating signal
+pub fn halSignalNew(name: [:0]const u8, hal_type: hal_type_t) !void {
+    const rc = c.hal_signal_new(name, @intFromEnum(hal_type));
+    if (rc != 0) return HalError.InitFailed;
+}
+
 /// Create a new HAL float pin
 ///
 /// This function creates a new float pin in the HAL with the specified name and direction.
