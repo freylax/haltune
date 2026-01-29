@@ -90,12 +90,13 @@ Plans:
 12. After edit confirmation (Enter): clear cell immediately and wait for next HAL refresh to display actual value (confirms write succeeded, applies to both numeric and boolean)
 13. TUI displays helpful error messages for non-input-related invalid operations (e.g., attempting to edit read-only items)
 
-**Plans**: TBD
+**Plans**: 4 plans in 3 waves
 
 Plans:
-- [ ] 03-01: TBD
-- [ ] 03-02: TBD
-- [ ] 03-03: TBD
+- [ ] 03-01-PLAN.md — Vaxis integration and two-panel layout
+- [ ] 03-02-PLAN.md — Tree view with component hierarchy
+- [ ] 03-03-PLAN.md — Data table with real-time updates
+- [ ] 03-04-PLAN.md — Search, filter, and in-place editing
 
 ### Phase 4: Configuration & Editing
 
@@ -165,9 +166,9 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. FFI Foundation | 3/3 | ✓ Complete | 2026-01-29 |
-| 2. State Management | 3/5 | In progress (gap closure) | - |
-| 3. TUI Core | 0/0 | Not started | - |
+| 1. FFI Foundation | 3/3 | Complete | 2026-01-29 |
+| 2. State Management | 5/5 | Complete | 2026-01-29 |
+| 3. TUI Core | 0/4 | Planning complete | - |
 | 4. Configuration & Editing | 0/0 | Not started | - |
 | 5. Bookmarks & Plugins | 0/0 | Not started | - |
 | 6. Polish & Optimization | 0/0 | Not started | - |
