@@ -9,6 +9,7 @@
 
 const std = @import("std");
 const testing = std.testing;
+const c = @import("ffi/c.zig").c;
 const safe = @import("ffi/safe.zig");
 const HalError = @import("ffi/errors.zig").HalError;
 
@@ -139,12 +140,148 @@ test "discovery functions handle empty strings" {
     }
 }
 
-// Note: Tests for pin creation (pinNew, setPin*, getPin*) are disabled
-// because hal_pin_t is opaque in ULAPI and the FFI pointer handling is complex.
-//
-// Pin creation would require either:
-// - RTAPI (realtime API) instead of ULAPI
-// - Complex pointer casting with double-indirection
-// - Or using name-based HAL functions only
-//
-// For now, we test discovery with signals which don't need pointer handling.
+// Note: Pin creation tests now use name-based API which works with opaque types in ULAPI.
+// The pinNew, setPin*, and getPin* functions use pin names instead of pointers.
+
+test "pinFloat: create, write, and read float pin" {
+    const comp_id = safe.halInit("float-pin-test") catch |err| {
+        std.debug.print("halInit failed: {}\n", .{err});
+        return err;
+    };
+    defer safe.halExit(comp_id);
+    _ = try safe.halReady(comp_id);
+
+    // Create a float pin
+    const pin_name = try safe.pinNew(comp_id, "test-float-pin", c.HAL_FLOAT, c.HAL_OUT);
+    try testing.expectEqualStrings("test-float-pin", pin_name);
+
+    // Write a value to the pin
+    try safe.setPinFloat(pin_name, 3.14159);
+
+    // Read the value back
+    const value = try safe.getPinFloat(pin_name);
+    try testing.expectApproxEqAbs(3.14159, value, 0.00001);
+}
+
+test "pinBit: create, write, and read bit pin" {
+    const comp_id = safe.halInit("bit-pin-test") catch |err| {
+        std.debug.print("halInit failed: {}\n", .{err});
+        return err;
+    };
+    defer safe.halExit(comp_id);
+    _ = try safe.halReady(comp_id);
+
+    // Create a bit pin
+    const pin_name = try safe.pinNew(comp_id, "test-bit-pin", c.HAL_BIT, c.HAL_OUT);
+    try testing.expectEqualStrings("test-bit-pin", pin_name);
+
+    // Write true to the pin
+    try safe.setPinBit(pin_name, true);
+    const value_true = try safe.getPinBit(pin_name);
+    try testing.expect(value_true);
+
+    // Write false to the pin
+    try safe.setPinBit(pin_name, false);
+    const value_false = try safe.getPinBit(pin_name);
+    try testing.expect(!value_false);
+}
+
+test "pinS32: create, write, and read signed 32-bit integer pin" {
+    const comp_id = safe.halInit("s32-pin-test") catch |err| {
+        std.debug.print("halInit failed: {}\n", .{err});
+        return err;
+    };
+    defer safe.halExit(comp_id);
+    _ = try safe.halReady(comp_id);
+
+    // Create an s32 pin
+    const pin_name = try safe.pinNew(comp_id, "test-s32-pin", c.HAL_S32, c.HAL_OUT);
+    try testing.expectEqualStrings("test-s32-pin", pin_name);
+
+    // Write a positive value
+    try safe.setPinS32(pin_name, 12345);
+    const value1 = try safe.getPinS32(pin_name);
+    try testing.expectEqual(@as(i32, 12345), value1);
+
+    // Write a negative value
+    try safe.setPinS32(pin_name, -6789);
+    const value2 = try safe.getPinS32(pin_name);
+    try testing.expectEqual(@as(i32, -6789), value2);
+}
+
+test "pinU32: create, write, and read unsigned 32-bit integer pin" {
+    const comp_id = safe.halInit("u32-pin-test") catch |err| {
+        std.debug.print("halInit failed: {}\n", .{err});
+        return err;
+    };
+    defer safe.halExit(comp_id);
+    _ = try safe.halReady(comp_id);
+
+    // Create a u32 pin
+    const pin_name = try safe.pinNew(comp_id, "test-u32-pin", c.HAL_U32, c.HAL_OUT);
+    try testing.expectEqualStrings("test-u32-pin", pin_name);
+
+    // Write a value
+    try safe.setPinU32(pin_name, 54321);
+    const value = try safe.getPinU32(pin_name);
+    try testing.expectEqual(@as(u32, 54321), value);
+}
+
+test "pinNew with invalid type returns error" {
+    const comp_id = safe.halInit("invalid-type-test") catch |err| {
+        std.debug.print("halInit failed: {}\n", .{err});
+        return err;
+    };
+    defer safe.halExit(comp_id);
+    _ = try safe.halReady(comp_id);
+
+    // Try to create a pin with an invalid type (255 is not a valid HAL type)
+    const result = safe.pinNew(comp_id, "test-invalid-pin", 255, c.HAL_OUT);
+
+    // Should return TypeMismatch error
+    try testing.expectError(HalError.TypeMismatch, result);
+}
+
+test "setPin* on non-existent pin returns error" {
+    const comp_id = safe.halInit("nonexistent-pin-test") catch |err| {
+        std.debug.print("halInit failed: {}\n", .{err});
+        return err;
+    };
+    defer safe.halExit(comp_id);
+    _ = try safe.halReady(comp_id);
+
+    // Try to write to a pin that doesn't exist
+    const float_result = safe.setPinFloat("nonexistent-float-pin", 1.0);
+    try testing.expectError(HalError.PinNotFound, float_result);
+
+    const bit_result = safe.setPinBit("nonexistent-bit-pin", true);
+    try testing.expectError(HalError.PinNotFound, bit_result);
+
+    const s32_result = safe.setPinS32("nonexistent-s32-pin", 42);
+    try testing.expectError(HalError.PinNotFound, s32_result);
+
+    const u32_result = safe.setPinU32("nonexistent-u32-pin", 42);
+    try testing.expectError(HalError.PinNotFound, u32_result);
+}
+
+test "getPin* on non-existent pin returns error" {
+    const comp_id = safe.halInit("get-nonexistent-test") catch |err| {
+        std.debug.print("halInit failed: {}\n", .{err});
+        return err;
+    };
+    defer safe.halExit(comp_id);
+    _ = try safe.halReady(comp_id);
+
+    // Try to read from a pin that doesn't exist
+    const float_result = safe.getPinFloat("nonexistent-float-pin");
+    try testing.expectError(HalError.PinNotFound, float_result);
+
+    const bit_result = safe.getPinBit("nonexistent-bit-pin");
+    try testing.expectError(HalError.PinNotFound, bit_result);
+
+    const s32_result = safe.getPinS32("nonexistent-s32-pin");
+    try testing.expectError(HalError.PinNotFound, s32_result);
+
+    const u32_result = safe.getPinU32("nonexistent-u32-pin");
+    try testing.expectError(HalError.PinNotFound, u32_result);
+}
