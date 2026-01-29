@@ -58,11 +58,12 @@ Plans:
 4. TUI components receive state change notifications and can subscribe to specific items (e.g., "notify me when pid.0.P changes")
 5. Application runs smoothly without blocking HAL refresh or causing real-time thread starvation
 
-**Plans**: TBD
+**Plans**: 3 plans in 2 waves
 
 Plans:
-- [ ] 02-01: TBD
-- [ ] 02-02: TBD
+- [ ] 02-01-PLAN.md — Thread-safe state cache with RwLock and StringHashMap
+- [ ] 02-02-PLAN.md — HAL refresh thread with configurable polling interval
+- [ ] 02-03-PLAN.md — Change notification pubsub system for TUI updates
 
 ### Phase 3: TUI Core
 
@@ -163,7 +164,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. FFI Foundation | 3/3 | ✓ Complete | 2026-01-29 |
-| 2. State Management | 0/0 | Not started | - |
+| 2. State Management | 0/3 | Planned | - |
 | 3. TUI Core | 0/0 | Not started | - |
 | 4. Configuration & Editing | 0/0 | Not started | - |
 | 5. Bookmarks & Plugins | 0/0 | Not started | - |
