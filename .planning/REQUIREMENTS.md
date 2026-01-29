@@ -21,28 +21,28 @@ Foundation layer - safe Zig bindings to LinuxCNC HAL C API.
 
 Thread-safe caching and synchronization between HAL and TUI.
 
-- [ ] **STATE-01**: Central state store caches current HAL pin/signal/parameter values
-- [ ] **STATE-02**: State refresh timer polls HAL at configurable rate (default 100ms)
-- [ ] **STATE-03**: State cache handles dynamic HAL changes (components load/unload)
-- [ ] **STATE-04**: Thread-safe access prevents race conditions between refresh and TUI reads
-- [ ] **STATE-05**: State changes are published to TUI for reactive updates
+- [x] **STATE-01**: Central state store caches current HAL pin/signal/parameter values
+- [x] **STATE-02**: State refresh timer polls HAL at configurable rate (default 100ms)
+- [x] **STATE-03**: State cache handles dynamic HAL changes (components load/unload)
+- [x] **STATE-04**: Thread-safe access prevents race conditions between refresh and TUI reads
+- [x] **STATE-05**: State changes are published to TUI for reactive updates
 
 ### HAL Inspector (CORE)
 
 Primary user-facing feature - browse and manipulate HAL components.
 
-- [ ] **CORE-01**: User can view all loaded HAL components in tree structure
-- [ ] **CORE-02**: Tree view supports collapse/expand navigation and item selection (checkboxes to add to data table view)
-- [ ] **CORE-03**: User can view all HAL pins with type (bit/s32/u32/float), direction (IN/OUT/I/O), and current value
-- [ ] **CORE-04**: User can view all HAL signals with type, value, and connected pins
-- [ ] **CORE-05**: User can view all HAL parameters with visual distinction between read-only and writable (color or icon indicators)
-- [ ] **CORE-06**: Values update in real-time (configurable refresh rate)
-- [ ] **CORE-07**: User can edit writable parameter values in data table (setp equivalent); only writable items are editable, visual indicators show editability
+- [x] **CORE-01**: User can view all loaded HAL components in tree structure
+- [x] **CORE-02**: Tree view supports collapse/expand navigation and item selection (checkboxes to add to data table view)
+- [x] **CORE-03**: User can view all HAL pins with type (bit/s32/u32/float), direction (IN/OUT/I/O), and current value
+- [x] **CORE-04**: User can view all HAL signals with type, value, and connected pins
+- [x] **CORE-05**: User can view all HAL parameters with visual distinction between read-only and writable (color or icon indicators)
+- [x] **CORE-06**: Values update in real-time (configurable refresh rate)
+- [x] **CORE-07**: User can edit writable parameter values in data table (setp equivalent); only writable items are editable, visual indicators show editability
 - [ ] **CORE-08**: User can create new signals and link pins to them (net equivalent)
-- [ ] **CORE-09**: User can search pins/signals/params by name with glob pattern matching
-- [ ] **CORE-10**: User can filter view by pin type (bit/s32/u32/float)
+- [x] **CORE-09**: User can search pins/signals/params by name with glob pattern matching
+- [x] **CORE-10**: User can filter view by pin type (bit/s32/u32/float)
 - [ ] **CORE-11**: User can save current HAL configuration to file in halcmd-compatible format
-- [ ] **CORE-12**: Smart filtering shows all items owned by a specific component (e.g., "show all pins for pid.0")
+- [x] **CORE-12**: Smart filtering shows all items owned by a specific component (e.g., "show all pins for pid.0")
 
 ### Bookmarks (BKMK)
 
@@ -57,18 +57,18 @@ Quick access to frequently monitored HAL items.
 
 Terminal user interface built on Vaxis.
 
-- [ ] **TUI-01**: Application displays responsive TUI interface using Vaxis framework
-- [ ] **TUI-02**: TUI renders correctly on Raspberry Pi 5 terminal (80x24 minimum)
-- [ ] **TUI-03**: User can navigate tree view with keyboard (arrow keys, enter, collapse/expand)
-- [ ] **TUI-04**: TUI updates display in response to state changes (reactive rendering)
-- [ ] **TUI-05**: TUI handles user input for editing values without blocking HAL refresh
-- [ ] **TUI-05-1**: Input validation prevents type errors (numeric fields only accept numbers, boolean fields only accept toggle)
-- [ ] **TUI-05-2**: Boolean/bit pins: pressing Enter toggles value (True ↔ False) without opening edit dialog; cell shows unsaved color while waiting for HAL refresh
-- [ ] **TUI-05-3**: Numeric pins: pressing Enter enables in-place editing in data table cell with validation (only valid numeric input accepted, Enter confirms, Escape cancels); cell shows unsaved color during editing
-- [ ] **TUI-05-4**: After edit confirmation (Enter): clear cell immediately and wait for next HAL refresh to display actual value (confirms write succeeded)
-- [ ] **TUI-06**: TUI displays error messages for invalid operations (type mismatches, attempting to edit read-only items)
-- [ ] **TUI-07**: TUI performs smoothly on Pi 5 hardware (no lag or stutter during refresh)
-- [ ] **TUI-08**: Data table uses color or icon indicators to show which items are editable vs read-only
+- [x] **TUI-01**: Application displays responsive TUI interface using Vaxis framework
+- [x] **TUI-02**: TUI renders correctly on Raspberry Pi 5 terminal (80x24 minimum)
+- [x] **TUI-03**: User can navigate tree view with keyboard (arrow keys, enter, collapse/expand)
+- [x] **TUI-04**: TUI updates display in response to state changes (reactive rendering)
+- [x] **TUI-05**: TUI handles user input for editing values without blocking HAL refresh
+- [x] **TUI-05-1**: Input validation prevents type errors (numeric fields only accept numbers, boolean fields only accept toggle)
+- [x] **TUI-05-2**: Boolean/bit pins: pressing Enter toggles value (True ↔ False) without opening edit dialog; cell shows unsaved color while waiting for HAL refresh
+- [x] **TUI-05-3**: Numeric pins: pressing Enter enables in-place editing in data table cell with validation (only valid numeric input accepted, Enter confirms, Escape cancels); cell shows unsaved color during editing
+- [x] **TUI-05-4**: After edit confirmation (Enter): clear cell immediately and wait for next HAL refresh to display actual value (confirms write succeeded)
+- [x] **TUI-06**: TUI displays error messages for invalid operations (type mismatches, attempting to edit read-only items)
+- [x] **TUI-07**: TUI performs smoothly on Pi 5 hardware (no lag or stutter during refresh)
+- [x] **TUI-08**: Data table uses color or icon indicators to show which items are editable vs read-only
 
 ### Plugin Foundation (PLUGIN)
 

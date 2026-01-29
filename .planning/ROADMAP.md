@@ -14,7 +14,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: FFI Foundation** - Safe Zig bindings to LinuxCNC HAL C API
 - [x] **Phase 2: State Management** - Thread-safe caching and synchronization
-- [ ] **Phase 3: TUI Core** - Vaxis-based HAL inspection interface
+- [x] **Phase 3: TUI Core** - Vaxis-based HAL inspection interface
 - [ ] **Phase 4: Configuration & Editing** - HAL manipulation and persistence
 - [ ] **Phase 5: Bookmarks & Plugins** - Quick access and extensibility
 - [ ] **Phase 6: Polish & Optimization** - Performance tuning and UX refinement
@@ -90,13 +90,14 @@ Plans:
 12. After edit confirmation (Enter): clear cell immediately and wait for next HAL refresh to display actual value (confirms write succeeded, applies to both numeric and boolean)
 13. TUI displays helpful error messages for non-input-related invalid operations (e.g., attempting to edit read-only items)
 
-**Plans**: 4 plans in 3 waves
+**Plans**: 5 plans in 4 waves
 
 Plans:
-- [ ] 03-01-PLAN.md — Vaxis integration and two-panel layout
-- [ ] 03-02-PLAN.md — Tree view with component hierarchy
-- [ ] 03-03-PLAN.md — Data table with real-time updates
-- [ ] 03-04-PLAN.md — Search, filter, and in-place editing
+- [x] 03-00-PLAN.md — FFI write functions (pins and parameters)
+- [x] 03-01-PLAN.md — Vaxis integration and two-panel layout
+- [x] 03-02-PLAN.md — Tree view with component hierarchy
+- [x] 03-03-PLAN.md — Data table with real-time updates
+- [x] 03-04-PLAN.md — Search, filter, and in-place editing
 
 ### Phase 4: Configuration & Editing
 
@@ -168,7 +169,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 |-------|----------------|--------|-----------|
 | 1. FFI Foundation | 3/3 | Complete | 2026-01-29 |
 | 2. State Management | 5/5 | Complete | 2026-01-29 |
-| 3. TUI Core | 0/4 | Planning complete | - |
+| 3. TUI Core | 5/5 | Complete | 2026-01-29 |
 | 4. Configuration & Editing | 0/0 | Not started | - |
 | 5. Bookmarks & Plugins | 0/0 | Not started | - |
 | 6. Polish & Optimization | 0/0 | Not started | - |
