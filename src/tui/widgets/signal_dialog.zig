@@ -289,7 +289,26 @@ pub const SignalDialog = struct {
                 }
             },
             .confirm => {
-                // Handled in next task
+                // 'y' to create signal
+                if (key.matchesChar('y', .{})) {
+                    self.error_message = null;
+                    self.createSignal() catch |err| {
+                        self.setError(switch (err) {
+                            error.InitFailed => "Failed: Signal may already exist",
+                            error.LinkFailed => "Failed: Pin link error (wrong type?)",
+                            error.OutOfMemory => "Failed: Out of memory",
+                            else => "Failed: Unknown error",
+                        });
+                        return true;
+                    };
+                    self.close();
+                    return true;
+                }
+                // 'n' or Escape to cancel
+                if (key.matchesChar('n', .{}) or key == .Escape) {
+                    self.close();
+                    return true;
+                }
             },
         }
         return true;
@@ -322,5 +341,25 @@ pub const SignalDialog = struct {
         }
     }
 
-    // TODO: Add draw(), createSignal() in subsequent tasks
+    /// Create signal and link selected pins
+    fn createSignal(self: *SignalDialog) !void {
+        // Null-terminate signal name
+        const name_terminated = try self.allocator.dupeZ(u8, self.signal_name.items);
+        defer self.allocator.free(name_terminated);
+
+        // Create signal
+        try ffi.halSignalNew(name_terminated, self.signal_type);
+
+        // Link all selected pins
+        var iter = self.selected_pins.iterator();
+        while (iter.next()) |entry| {
+            const pin_name = entry.key_ptr.*;
+            const pin_terminated = try self.allocator.dupeZ(u8, pin_name);
+            defer self.allocator.free(pin_terminated);
+
+            try ffi.halLink(pin_terminated, name_terminated);
+        }
+    }
+
+    // TODO: Add draw() in subsequent task
 };
