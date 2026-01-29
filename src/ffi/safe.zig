@@ -170,15 +170,15 @@ pub fn halReady(comp_id: c_int) !void {
 /// ```
 // pub fn setPinFloat(pin: *c.hal_pin_t, value: f64) !void {
     // Acquire HAL mutex before write
-    _ = c.hl_mutex_lock(&c.hal_mutex);
-    defer c.hl_mutex_unlock(&c.hal_mutex);
-
+//     _ = c.hl_mutex_lock(&c.hal_mutex);
+//     defer c.hl_mutex_unlock(&c.hal_mutex);
+// 
     // Verify pin type
-    if (pin.*.type != c.HAL_FLOAT) return HalError.TypeMismatch;
-
+//     if (pin.*.type != c.HAL_FLOAT) return HalError.TypeMismatch;
+// 
     // Write value through pin's data pointer
-    pin.*.data.float.* = value;
-}
+//     pin.*.data.float.* = value;
+// }
 
 /// Write to a bit pin (thread-safe)
 ///
@@ -193,13 +193,13 @@ pub fn halReady(comp_id: c_int) !void {
 ///   - void on success
 ///   - error.TypeMismatch if pin is not a HAL_BIT pin
 // pub fn setPinBit(pin: *c.hal_pin_t, value: bool) !void {
-    _ = c.hl_mutex_lock(&c.hal_mutex);
-    defer c.hl_mutex_unlock(&c.hal_mutex);
-
-    if (pin.*.type != c.HAL_BIT) return HalError.TypeMismatch;
-
-    pin.*.data.bit.* = @intFromBool(value);
-}
+//     _ = c.hl_mutex_lock(&c.hal_mutex);
+//     defer c.hl_mutex_unlock(&c.hal_mutex);
+// 
+//     if (pin.*.type != c.HAL_BIT) return HalError.TypeMismatch;
+// 
+//     pin.*.data.bit.* = @intFromBool(value);
+// }
 
 /// Write to a signed 32-bit integer pin (thread-safe)
 ///
@@ -214,13 +214,13 @@ pub fn halReady(comp_id: c_int) !void {
 ///   - void on success
 ///   - error.TypeMismatch if pin is not a HAL_S32 pin
 // pub fn setPinS32(pin: *c.hal_pin_t, value: i32) !void {
-    _ = c.hl_mutex_lock(&c.hal_mutex);
-    defer c.hl_mutex_unlock(&c.hal_mutex);
-
-    if (pin.*.type != c.HAL_S32) return HalError.TypeMismatch;
-
-    pin.*.data.s32.* = value;
-}
+//     _ = c.hl_mutex_lock(&c.hal_mutex);
+//     defer c.hl_mutex_unlock(&c.hal_mutex);
+// 
+//     if (pin.*.type != c.HAL_S32) return HalError.TypeMismatch;
+// 
+//     pin.*.data.s32.* = value;
+// }
 
 /// Write to an unsigned 32-bit integer pin (thread-safe)
 ///
@@ -235,13 +235,13 @@ pub fn halReady(comp_id: c_int) !void {
 ///   - void on success
 ///   - error.TypeMismatch if pin is not a HAL_U32 pin
 // pub fn setPinU32(pin: *c.hal_pin_t, value: u32) !void {
-    _ = c.hl_mutex_lock(&c.hal_mutex);
-    defer c.hl_mutex_unlock(&c.hal_mutex);
-
-    if (pin.*.type != c.HAL_U32) return HalError.TypeMismatch;
-
-    pin.*.data.u32.* = value;
-}
+//     _ = c.hl_mutex_lock(&c.hal_mutex);
+//     defer c.hl_mutex_unlock(&c.hal_mutex);
+// 
+//     if (pin.*.type != c.HAL_U32) return HalError.TypeMismatch;
+// 
+//     pin.*.data.u32.* = value;
+// }
 
 /// Read from a float pin
 ///
@@ -259,10 +259,10 @@ pub fn halReady(comp_id: c_int) !void {
 ///   - Does not acquire mutex (reads are lock-free)
 ///   - Value may be updated concurrently by HAL real-time thread
 // pub fn getPinFloat(pin: *const c.hal_pin_t) !f64 {
-    if (pin.*.type != c.HAL_FLOAT) return HalError.TypeMismatch;
-
-    return pin.*.data.float.*;
-}
+//     if (pin.*.type != c.HAL_FLOAT) return HalError.TypeMismatch;
+// 
+//     return pin.*.data.float.*;
+// }
 
 /// Read from a bit pin
 ///
@@ -276,10 +276,10 @@ pub fn halReady(comp_id: c_int) !void {
 ///   - Boolean value on success
 ///   - error.TypeMismatch if pin is not a HAL_BIT pin
 // pub fn getPinBit(pin: *const c.hal_pin_t) !bool {
-    if (pin.*.type != c.HAL_BIT) return HalError.TypeMismatch;
-
-    return pin.*.data.bit.* != 0;
-}
+//     if (pin.*.type != c.HAL_BIT) return HalError.TypeMismatch;
+// 
+//     return pin.*.data.bit.* != 0;
+// }
 
 /// Read from a signed 32-bit integer pin
 ///
@@ -293,10 +293,10 @@ pub fn halReady(comp_id: c_int) !void {
 ///   - Signed 32-bit integer value on success
 ///   - error.TypeMismatch if pin is not a HAL_S32 pin
 // pub fn getPinS32(pin: *const c.hal_pin_t) !i32 {
-    if (pin.*.type != c.HAL_S32) return HalError.TypeMismatch;
-
-    return pin.*.data.s32.*;
-}
+//     if (pin.*.type != c.HAL_S32) return HalError.TypeMismatch;
+// 
+//     return pin.*.data.s32.*;
+// }
 
 /// Read from an unsigned 32-bit integer pin
 ///
@@ -310,10 +310,10 @@ pub fn halReady(comp_id: c_int) !void {
 ///   - Unsigned 32-bit integer value on success
 ///   - error.TypeMismatch if pin is not a HAL_U32 pin
 // pub fn getPinU32(pin: *const c.hal_pin_t) !u32 {
-    if (pin.*.type != c.HAL_U32) return HalError.TypeMismatch;
-
-    return pin.*.data.u32.*;
-}
+//     if (pin.*.type != c.HAL_U32) return HalError.TypeMismatch;
+// 
+//     return pin.*.data.u32.*;
+// }
 
 /// Find a HAL pin by name
 ///
