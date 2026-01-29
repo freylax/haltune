@@ -57,6 +57,9 @@ pub const StateStore = struct {
     /// HashMap storing parameter values indexed by name
     params: std.StringHashMap(HalValue),
 
+    /// HashMap storing pin -> signal mappings (pin_name -> signal_name)
+    pin_links: std.StringHashMap([]const u8),
+
     /// Reader-writer lock for concurrent access
     /// Multiple threads can hold shared lock for reading
     /// Only one thread can hold exclusive lock for writing
@@ -85,6 +88,7 @@ pub const StateStore = struct {
             .pins = std.StringHashMap(HalValue).init(allocator),
             .signals = std.StringHashMap(HalValue).init(allocator),
             .params = std.StringHashMap(HalValue).init(allocator),
+            .pin_links = std.StringHashMap([]const u8).init(allocator),
         };
     }
 
@@ -105,6 +109,14 @@ pub const StateStore = struct {
         self.pins.deinit();
         self.signals.deinit();
         self.params.deinit();
+
+        // Free pin link strings
+        var link_iter = self.pin_links.iterator();
+        while (link_iter.next()) |entry| {
+            self.allocator.free(entry.value_ptr.*);
+        }
+        self.pin_links.deinit();
+
         self.* = undefined;
     }
 
@@ -460,6 +472,76 @@ pub const StateStore = struct {
 
         // Return owned slice (iterator no longer needed)
         return keys.toOwnedSlice();
+    }
+
+    /// Get all pins linked to a signal
+    ///
+    /// Returns a list of pin names that are linked to the specified signal.
+    /// Used by configuration export to generate net commands.
+    ///
+    /// Parameters:
+    ///   - allocator: Memory allocator for the returned string slice
+    ///   - signal_name: Signal name to find linked pins for
+    ///
+    /// Returns:
+    ///   - Slice of pin names linked to this signal (caller owns memory)
+    ///   - Empty slice if signal has no linked pins
+    ///   - error.OutOfMemory if allocation fails
+    ///
+    /// Thread safety:
+    ///   - Acquires shared lock while copying keys
+    ///   - Caller must free returned slice and all pin names with allocator.free()
+    ///
+    /// Example:
+    /// ```
+    /// const pins = try store.getSignalLinks(allocator, "my-signal");
+    /// defer {
+    ///     for (pins) |pin| allocator.free(pin);
+    ///     allocator.free(pins);
+    /// }
+    /// ```
+    pub fn getSignalLinks(
+        self: *StateStore,
+        allocator: std.mem.Allocator,
+        signal_name: []const u8,
+    ) ![][]const u8 {
+        self.rwlock.lockShared();
+        defer self.rwlock.unlockShared();
+
+        var result = std.ArrayList([]const u8).init(allocator);
+
+        // Iterate through all pin_links and find pins linked to this signal
+        var iter = self.pin_links.iterator();
+        while (iter.next()) |entry| {
+            const pin_name = entry.key_ptr.*;
+            const linked_signal = entry.value_ptr.*;
+
+            if (std.mem.eql(u8, linked_signal, signal_name)) {
+                // Duplicate pin name for caller
+                try result.append(try allocator.dupe(u8, pin_name));
+            }
+        }
+
+        return result.toOwnedSlice();
+    }
+
+    /// Update pin->signal link mapping
+    ///
+    /// Called by refresh thread when pin link status changes.
+    /// This is a stub for now - the refresh thread doesn't yet track links.
+    pub fn updatePinLink(self: *StateStore, pin_name: []const u8, signal_name: ?[]const u8) !void {
+        self.rwlock.lock();
+        defer self.rwlock.unlock();
+
+        // Remove old link if exists
+        if (self.pin_links.fetchRemove(pin_name)) |entry| {
+            self.allocator.free(entry.value);
+        }
+
+        // Add new link if provided
+        if (signal_name) |sig| {
+            try self.pin_links.put(pin_name, try self.allocator.dupe(u8, sig));
+        }
     }
 
     /// Remove a pin from the cache
