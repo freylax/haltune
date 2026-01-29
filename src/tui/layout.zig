@@ -2,6 +2,7 @@ const std = @import("std");
 const vxfw = @import("vaxis").vxfw;
 const Model = @import("model.zig").Model;
 const TreeView = @import("widgets/tree_view.zig").TreeView;
+const DataTable = @import("widgets/data_table.zig").DataTable;
 
 /// Draw function for two-panel split layout
 /// Left panel: 30% of screen width (tree navigation)
@@ -69,29 +70,20 @@ fn createLeftPanel(
 }
 
 /// Create right panel surface (70% width)
-/// Placeholder for data table widget (will implement in plan 03-03)
+/// Draws the data table widget showing checked items
 fn createRightPanel(
     self: *Model,
     ctx: vxfw.DrawContext,
     width: u16,
     height: u16,
 ) std.mem.Allocator.Error!vxfw.Surface {
-    _ = self;
-
     // Constrain drawing to right panel dimensions
     const constrained_ctx = ctx.withConstraints(
         .{ .width = width, .height = height },
         .{ .width = width, .height = height },
     );
 
-    _ = constrained_ctx; // Will use in plan 03-03
-
-    // Placeholder surface - empty buffer, no children
-    // In plan 03-03, this will draw the data table widget
-    return .{
-        .size = .{ .width = width, .height = height },
-        .widget = undefined,
-        .buffer = &.{},
-        .children = &.{},
-    };
+    // Draw data table widget in right panel
+    const table_widget = self.data_table.widget();
+    return try table_widget.drawFn(table_widget.userdata, constrained_ctx);
 }

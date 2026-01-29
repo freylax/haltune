@@ -4,6 +4,7 @@ const StateStore = @import("../state/cache.zig").StateStore;
 const SubscriptionManager = @import("../state/pubsub.zig").SubscriptionManager;
 const RefreshThread = @import("../state/refresh.zig").RefreshThread;
 const TreeView = @import("widgets/tree_view.zig").TreeView;
+const DataTable = @import("widgets/data_table.zig").DataTable;
 const drawTwoPanelLayout = @import("layout.zig").drawTwoPanelLayout;
 
 /// Global redraw flag pointer for pubsub callbacks
@@ -33,6 +34,7 @@ pub const Model = struct {
     store: *StateStore,
     pubsub: *SubscriptionManager,
     tree_view: *TreeView,
+    data_table: *DataTable,
     refresh_thread: ?RefreshThread,
 
     /// Redraw flag for pubsub callbacks
@@ -49,6 +51,10 @@ pub const Model = struct {
         const tree_view = try allocator.create(TreeView);
         tree_view.* = try TreeView.init(allocator, store);
 
+        // Create DataTable widget
+        const data_table = try allocator.create(DataTable);
+        data_table.* = DataTable.init(allocator, store);
+
         // Initialize redraw flag
         const redraw_flag = std.atomic.Value(bool).init(false);
 
@@ -57,6 +63,7 @@ pub const Model = struct {
             .store = store,
             .pubsub = pubsub,
             .tree_view = tree_view,
+            .data_table = data_table,
             .refresh_thread = null,
             .redraw_flag = redraw_flag,
         };
@@ -66,6 +73,8 @@ pub const Model = struct {
     pub fn deinit(self: *Model) void {
         self.tree_view.deinit();
         self.allocator.destroy(self.tree_view);
+        self.data_table.deinit();
+        self.allocator.destroy(self.data_table);
     }
 
     /// Get list of checked item names
@@ -79,6 +88,20 @@ pub const Model = struct {
         }
 
         return items.toOwnedSlice();
+    }
+
+    /// Update data table with currently checked items
+    ///
+    /// This function should be called when tree selection changes to update
+    /// the data table with the new set of checked items.
+    ///
+    /// Thread safety:
+    ///   - Not thread-safe (call from TUI thread only)
+    pub fn updateTable(self: *Model) !void {
+        const checked_items = try self.getCheckedItems(self.allocator);
+        defer self.allocator.free(checked_items);
+
+        try self.data_table.setItems(checked_items);
     }
 
     /// Return a vxfw.Widget for this Model
