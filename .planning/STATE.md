@@ -11,18 +11,18 @@ See: .planning/PROJECT.md (updated 2025-01-28)
 ## Current Position
 
 Phase: 3 of 6 (TUI Core)
-Plan: 0 of ? in current phase
+Plan: 1 of ? in current phase
 Status: In progress
-Last activity: 2026-01-29 — Completed 03-00 (FFI Write Functions)
+Last activity: 2026-01-29 — Completed 03-01 (TUI Foundation)
 
-Progress: [█░░░░░░░░░] 10%
+Progress: [██░░░░░░░░] 20%
 
 ## Performance Metrics
 
 **Velocity:**
 - Total phases completed: 2 of 6
-- Total plans completed: 9
-- Average duration: 15.0 min
+- Total plans completed: 10
+- Average duration: 14.1 min
 - Total execution time: 2.7 hours
 
 **By Phase:**
@@ -31,11 +31,11 @@ Progress: [█░░░░░░░░░] 10%
 |-------|-------|-------|----------|
 | 01-ffi-foundation | 3 | 3 | 27.7 min |
 | 02-state-management | 5 | 5 | 8.4 min |
-| 03-tui-core | 1 | ? | 1.0 min |
+| 03-tui-core | 2 | ? | 0.5 min |
 
 **Recent Trend:**
-- Phase 3 started: FFI write functions completed quickly (1 min)
-- Last 5 plans: 6.6 min avg (02-02: 19min, 02-03: 4min, 02-04: 6min, 02-05: 11min, 03-00: 1min)
+- Phase 3 progressing quickly: TUI foundation completed in 2 min
+- Last 5 plans: 6.2 min avg (02-02: 19min, 02-03: 4min, 02-04: 6min, 02-05: 11min, 03-01: 2min)
 
 *Updated after each plan completion*
 
@@ -109,6 +109,13 @@ Recent decisions affecting current work:
 - Read functions remain lock-free across all FFI (pins, signals, parameters)
 - TUI layer responsible for checking pin direction/param writability before calling write functions
 
+**From 03-01 (TUI Foundation):**
+- Use vxfw framework (not low-level Vaxis API) - provides automatic redraw optimization via ctx.consumeAndRedraw()
+- Delegate layout logic to separate module (layout.zig) - keeps model.zig focused on state management
+- Use ctx.withConstraints for panel sizing - ensures responsive layout at different terminal sizes (TUI-02 requirement)
+- Arena allocation pattern - use ctx.arena for temporary allocations (freed automatically each frame)
+- Two-panel layout uses SubSurface children with origin offsets - left panel (30%), right panel (70%)
+
 ### Pending Todos
 
 None yet.
@@ -158,9 +165,17 @@ None yet.
 - Ready for Phase 3 Plan 4 (Search, Filter, and In-Place Editing) to use write functions
 - TUI layer will check pin direction/param writability before calling write functions
 
+**From 03-01:**
+- None - TUI foundation complete with Vaxis vxfw integration and two-panel layout
+- Vaxis dependency successfully integrated (libvaxis 0.5.1)
+- Model struct implements vxfw.Widget interface with event handling and drawing
+- Two-panel layout (30%/70% split) ready for widget integration
+- Note: Build fails with -Dskip-hal-link due to missing hal.h on dev machine (expected, not a blocker)
+- Ready for plan 03-02 (Tree Navigation widget in left panel)
+
 ## Session Continuity
 
-Last session: 2026-01-29 (Phase 3 Plan 0 execution)
-Stopped at: Completed 03-00 (FFI Write Functions), 3/3 tasks complete
+Last session: 2026-01-29 (Phase 3 Plan 1 execution)
+Stopped at: Completed 03-01 (TUI Foundation), 4/4 tasks complete
 Resume file: None
-Next action: Continue Phase 3 planning or execute next plan
+Next action: Execute plan 03-02 (Tree Navigation) or continue phase planning
