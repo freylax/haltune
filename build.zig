@@ -98,20 +98,20 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
-    // state/cache.zig depends on errors.zig and types.zig
-    state_cache.addImport("ffi/errors.zig", ffi_errors);
-    state_cache.addImport("ffi/types.zig", ffi_types);
+    // state/cache.zig imports ../ffi/errors.zig, so we alias it
+    state_cache.addImport("ffi-errors", ffi_errors);
+    state_cache.addImport("ffi-types", ffi_types);
 
     const ffi_safe = b.createModule(.{
         .root_source_file = b.path("src/ffi/safe.zig"),
         .target = target,
         .optimize = optimize,
     });
-    // safe.zig depends on c.zig, errors.zig, types.zig, and state/cache.zig
+    // safe.zig depends on c.zig, errors.zig, types.zig, and ../state/cache.zig
     ffi_safe.addImport("c.zig", ffi_c);
     ffi_safe.addImport("errors.zig", ffi_errors);
     ffi_safe.addImport("types.zig", ffi_types);
-    ffi_safe.addImport("../state/cache.zig", state_cache);
+    ffi_safe.addImport("state-cache", state_cache);
 
     // Create test module
     const test_module = b.createModule(.{

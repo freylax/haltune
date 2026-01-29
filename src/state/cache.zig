@@ -11,7 +11,7 @@
 // - Return error.NotFound for missing keys
 
 const std = @import("std");
-const HalError = @import("../ffi/errors.zig").HalError;
+const HalError = @import("ffi-errors").HalError;
 
 /// HAL value union supporting all four HAL data types
 ///
