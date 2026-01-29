@@ -4,8 +4,11 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{
         .default_target = .{
             // Target aarch64-linux for Raspberry Pi 5 compatibility
+            // NOTE: For native builds on glibc systems, override with:
+            //   zig build -Dtarget=aarch64-linux-gnu
             .cpu_arch = .aarch64,
             .os_tag = .linux,
+            .abi = .gnu,  // Use glibc instead of musl
         },
     });
 
