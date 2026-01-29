@@ -345,7 +345,10 @@ pub fn halReady(comp_id: c_int) !void {
 pub fn halprFindPinByName(name: ?[*:0]const u8) ?*hal_pin_t {
     const c_import = @import("c.zig");
     const ptr = c_import.halpr_find_pin_by_name(name);
-    return if (ptr) |p| @ptrCast(*hal_pin_t, p) else null;
+    if (ptr) |p| {
+        return @as(*hal_pin_t, @ptrCast(p));
+    }
+    return null;
 }
 
 /// Find a HAL signal by name
@@ -365,7 +368,10 @@ pub fn halprFindPinByName(name: ?[*:0]const u8) ?*hal_pin_t {
 pub fn halprFindSigByName(name: ?[*:0]const u8) ?*hal_sig_t {
     const c_import = @import("c.zig");
     const ptr = c_import.halpr_find_sig_by_name(name);
-    return if (ptr) |p| @ptrCast(*hal_sig_t, p) else null;
+    if (ptr) |p| {
+        return @as(*hal_sig_t, @ptrCast(p));
+    }
+    return null;
 }
 
 /// Find a HAL parameter by name
@@ -385,7 +391,10 @@ pub fn halprFindSigByName(name: ?[*:0]const u8) ?*hal_sig_t {
 pub fn halprFindParamByName(name: ?[*:0]const u8) ?*hal_param_t {
     const c_import = @import("c.zig");
     const ptr = c_import.halpr_find_param_by_name(name);
-    return if (ptr) |p| @ptrCast(*hal_param_t, p) else null;
+    if (ptr) |p| {
+        return @as(*hal_param_t, @ptrCast(p));
+    }
+    return null;
 }
 
 /// Read from a HAL signal
