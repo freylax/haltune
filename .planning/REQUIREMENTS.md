@@ -145,11 +145,11 @@ Which phases cover which requirements. Updated during roadmap creation.
 | FFI-03 | Phase 1 | Complete |
 | FFI-04 | Phase 1 | Complete |
 | FFI-05 | Phase 1 | Complete |
-| STATE-01 | Phase 2 | Pending |
-| STATE-02 | Phase 2 | Pending |
-| STATE-03 | Phase 2 | Pending |
-| STATE-04 | Phase 2 | Pending |
-| STATE-05 | Phase 2 | Pending |
+| STATE-01 | Phase 2 | Complete |
+| STATE-02 | Phase 2 | Complete |
+| STATE-03 | Phase 2 | Complete |
+| STATE-04 | Phase 2 | Complete |
+| STATE-05 | Phase 2 | Complete |
 | TUI-01 | Phase 3 | Pending |
 | TUI-02 | Phase 3 | Pending |
 | TUI-03 | Phase 3 | Pending |

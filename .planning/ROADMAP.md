@@ -13,7 +13,7 @@ Build a TUI-based LinuxCNC HAL manager by first establishing safe FFI bindings t
 Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: FFI Foundation** - Safe Zig bindings to LinuxCNC HAL C API
-- [ ] **Phase 2: State Management** - Thread-safe caching and synchronization
+- [x] **Phase 2: State Management** - Thread-safe caching and synchronization
 - [ ] **Phase 3: TUI Core** - Vaxis-based HAL inspection interface
 - [ ] **Phase 4: Configuration & Editing** - HAL manipulation and persistence
 - [ ] **Phase 5: Bookmarks & Plugins** - Quick access and extensibility
@@ -64,8 +64,8 @@ Plans:
 - [x] 02-01-PLAN.md — Thread-safe state cache with RwLock and StringHashMap
 - [x] 02-02-PLAN.md — HAL refresh thread with configurable polling interval
 - [x] 02-03-PLAN.md — Change notification pubsub system for TUI updates
-- [ ] 02-04-PLAN.md — Signal and parameter refresh implementation (gap closure)
-- [ ] 02-05-PLAN.md — Stale entry removal for unloaded components (gap closure)
+- [x] 02-04-PLAN.md — Signal and parameter refresh implementation (gap closure)
+- [x] 02-05-PLAN.md — Stale entry removal for unloaded components (gap closure)
 
 ### Phase 3: TUI Core
 
