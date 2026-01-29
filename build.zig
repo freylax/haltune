@@ -20,12 +20,57 @@ pub fn build(b: *std.Build) void {
     // Option to skip HAL library linking for development on machines without LinuxCNC
     const skip_hal_link = b.option(bool, "skip-hal-link", "Skip linking against libhal (for development on machines without LinuxCNC)") orelse false;
 
+    // Create FFI modules for imports
+    const ffi_c = b.createModule(.{
+        .root_source_file = b.path("src/ffi/c.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    ffi_c.addIncludePath(.{ .cwd_relative = linuxcnc_include });
+
+    const ffi_errors = b.createModule(.{
+        .root_source_file = b.path("src/ffi/errors.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+
+    const ffi_types = b.createModule(.{
+        .root_source_file = b.path("src/ffi/types.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    ffi_types.addImport("c.zig", ffi_c);
+
+    const state_cache = b.createModule(.{
+        .root_source_file = b.path("src/state/cache.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    state_cache.addImport("ffi-errors", ffi_errors);
+    state_cache.addImport("ffi-types", ffi_types);
+
+    const ffi_safe = b.createModule(.{
+        .root_source_file = b.path("src/ffi/safe.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    ffi_safe.addImport("c.zig", ffi_c);
+    ffi_safe.addImport("errors.zig", ffi_errors);
+    ffi_safe.addImport("types.zig", ffi_types);
+    ffi_safe.addImport("../state/cache.zig", state_cache);
+
     // Create root module
     const root_module = b.createModule(.{
         .root_source_file = b.path("src/root.zig"),
         .target = target,
         .optimize = optimize,
     });
+
+    // Add FFI modules to root module
+    root_module.addImport("ffi/c.zig", ffi_c);
+    root_module.addImport("ffi/errors.zig", ffi_errors);
+    root_module.addImport("ffi/types.zig", ffi_types);
+    root_module.addImport("ffi/safe.zig", ffi_safe);
 
     // Add LinuxCNC HAL include path for @cImport
     root_module.addIncludePath(.{ .cwd_relative = linuxcnc_include });
