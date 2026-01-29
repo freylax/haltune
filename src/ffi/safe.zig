@@ -355,6 +355,47 @@ pub fn halprFindParamByName(name: ?[*:0]const u8) ?*hal_param_t {
     return null;
 }
 
+/// Read from a HAL pin
+///
+/// This function reads the current value from a HAL pin.
+/// For pins linked to signals, this returns the signal's value.
+///
+/// Parameters:
+///   - pin: Pointer to hal_pin_t (from halprFindPinByName)
+///
+/// Returns:
+///   - HalValue union containing the pin's value
+///   - error.NotFound if pin pointer is null
+///   - error.TypeMismatch if pin type is invalid
+///
+/// Thread safety:
+///   - Does not acquire mutex (reads are lock-free)
+///   - Value may be updated concurrently by HAL real-time thread
+pub fn getPinValue(pin: ?*const hal_pin_t) !@import("../state/cache.zig").HalValue {
+    const pin_ptr = pin orelse return HalError.NotFound;
+    const HalValue = @import("../state/cache.zig").HalValue;
+
+    // Pin values are stored in signal_data union
+    // If pin is linked to signal, signal_data points to signal value
+    // If pin is unlinked, signal_data contains pin's direct value
+    switch (pin_ptr.*.signal) {
+        null => {
+            // Unlinked pin - read from pin's dummy value
+            switch (pin_ptr.*.type) {
+                c.HAL_BIT => return HalValue{ .bit = pin_ptr.*.dummysig.bit != 0 },
+                c.HAL_FLOAT => return HalValue{ .float = pin_ptr.*.dummysig.float },
+                c.HAL_S32 => return HalValue{ .s32 = pin_ptr.*.dummysig.s32 },
+                c.HAL_U32 => return HalValue{ .u32 = pin_ptr.*.dummysig.u32 },
+                else => return HalError.TypeMismatch,
+            }
+        },
+        else => {
+            // Linked pin - read from signal
+            return getSignalValue(pin_ptr.*.signal.?);
+        }
+    }
+}
+
 /// Read from a HAL signal
 ///
 /// This function reads the current value from a HAL signal.
@@ -543,7 +584,8 @@ comptime {
     _ = halprFindSigByName;
     _ = halprFindParamByName;
 
-    // Verify signal and param value readers
+    // Verify pin, signal and param value readers
+    _ = getPinValue;
     _ = getSignalValue;
     _ = getParamValue;
 
