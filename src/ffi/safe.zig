@@ -335,14 +335,15 @@ pub fn halReady(comp_id: c_int) !void {
 ///
 /// Usage for enumeration:
 /// ```
-/// var maybe_pin = ffi.halprFindPinByName(null);  // Get first pin
+/// var maybe_pin = halprFindPinByName(null);  // Get first pin
 /// while (maybe_pin) |pin| {
-///     std.debug.print("{s}\n", .{std.mem.span(pin.*.name)});
-///     maybe_pin = pin.*.next;  // Walk linked list
+///     // Can't access pin.*.name directly - hal_pin_t is opaque in ULAPI
+///     // Use HAL API functions to read pin data
+///     maybe_pin = halprFindPinByName(pin.*.next);  // Walk linked list
 /// }
 /// ```
 pub fn halprFindPinByName(name: ?[*:0]const u8) ?*hal_pin_t {
-    return c.halpr_find_pin_by_name(name);
+    return @import("c.zig").halpr_find_pin_by_name(name);
 }
 
 /// Find a HAL signal by name
@@ -360,7 +361,7 @@ pub fn halprFindPinByName(name: ?[*:0]const u8) ?*hal_pin_t {
 /// Memory ownership:
 ///   - HAL owns the signal memory - do not free
 pub fn halprFindSigByName(name: ?[*:0]const u8) ?*hal_sig_t {
-    return c.halpr_find_sig_by_name(name);
+    return @import("c.zig").halpr_find_sig_by_name(name);
 }
 
 /// Find a HAL parameter by name
@@ -378,7 +379,7 @@ pub fn halprFindSigByName(name: ?[*:0]const u8) ?*hal_sig_t {
 /// Memory ownership:
 ///   - HAL owns the parameter memory - do not free
 pub fn halprFindParamByName(name: ?[*:0]const u8) ?*hal_param_t {
-    return c.halpr_find_param_by_name(name);
+    return @import("c.zig").halpr_find_param_by_name(name);
 }
 
 /// Read from a HAL signal
