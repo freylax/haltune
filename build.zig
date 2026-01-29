@@ -50,8 +50,8 @@ pub fn build(b: *std.Build) void {
         // LLD is stricter than system linker about symbol versions
         exe.linker_allow_shlib_undefined = true;
 
-        // Add RPATH so runtime linker can find liblinuxcnchal.so
-        exe.rpath = "/usr/lib";
+        // Add RPATH using -rpath linker flag so runtime linker can find liblinuxcnchal.so
+        exe.linker_flags = &[_][]const u8{"-rpath", "/usr/lib"};
     }
 
     // Install the executable
@@ -97,8 +97,8 @@ pub fn build(b: *std.Build) void {
         // Allow undefined symbols in shared libraries
         test_exe.linker_allow_shlib_undefined = true;
 
-        // Add RPATH so runtime linker can find liblinuxcnchal.so
-        test_exe.rpath = "/usr/lib";
+        // Add RPATH using -rpath linker flag
+        test_exe.linker_flags = &[_][]const u8{"-rpath", "/usr/lib"};
     }
 
     // Create test step
