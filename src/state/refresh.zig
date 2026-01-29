@@ -465,6 +465,26 @@ pub const RefreshThread = struct {
             }
         }
 
+        // Comparison phase: Find stale params (in cache but not HAL)
+        for (cached_names) |cached_name| {
+            // Check if this cached param exists in HAL snapshot
+            var found_in_hal = false;
+            for (hal_params.items) |param| {
+                const hal_name = std.mem.span(param.*.name);
+                if (std.mem.eql(u8, cached_name, hal_name)) {
+                    found_in_hal = true;
+                    break;
+                }
+            }
+
+            // If not found in HAL, remove from cache (stale entry)
+            if (!found_in_hal) {
+                self.store.removeParam(cached_name) catch |err| {
+                    std.log.err("Failed to remove stale param '{s}': {}", .{cached_name, err});
+                };
+            }
+        }
+
         // Update phase: Read all current values from HAL and update cache
         for (hal_params.items) |param| {
             const name = std.mem.span(param.*.name);
