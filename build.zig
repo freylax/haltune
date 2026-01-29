@@ -192,4 +192,41 @@ pub fn build(b: *std.Build) void {
 
     const discovery_step = b.step("discovery", "Run HAL discovery test");
     discovery_step.dependOn(&run_discovery.step);
+
+    // ===== Full Discovery Test (with created objects) =====
+
+    // Create full discovery test module
+    const discovery_full_module = b.createModule(.{
+        .root_source_file = b.path("tests/discovery_full_test.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+
+    // Add FFI modules to full discovery test module
+    discovery_full_module.addImport("ffi/c.zig", ffi_c);
+    discovery_full_module.addImport("ffi/errors.zig", ffi_errors);
+    discovery_full_module.addImport("ffi/types.zig", ffi_types);
+    discovery_full_module.addImport("ffi/safe.zig", ffi_safe);
+
+    // Create full discovery test executable
+    const discovery_full_exe = b.addExecutable(.{
+        .name = "discovery-full-test",
+        .root_module = discovery_full_module,
+    });
+
+    // Link full discovery test against LinuxCNC HAL library
+    if (!skip_hal_link) {
+        discovery_full_exe.addLibraryPath(.{ .cwd_relative = "/usr/lib" });
+        discovery_full_exe.linkSystemLibrary("c");
+        discovery_full_exe.linkSystemLibrary("linuxcnchal");
+        discovery_full_exe.linkSystemLibrary("rt");
+        discovery_full_exe.linker_allow_shlib_undefined = true;
+    }
+
+    // Create full discovery test run step
+    const run_discovery_full = b.addRunArtifact(discovery_full_exe);
+    run_discovery_full.step.dependOn(b.getInstallStep());
+
+    const discovery_full_step = b.step("discovery-full", "Run HAL discovery test with created objects");
+    discovery_full_step.dependOn(&run_discovery_full.step);
 }
