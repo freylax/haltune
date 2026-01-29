@@ -35,6 +35,52 @@ pub const HalType = enum {
     s32,
     /// Unsigned 32-bit integer
     u32,
+
+    /// String representation
+    pub fn toString(self: HalType) []const u8 {
+        return switch (self) {
+            .bit => "BIT",
+            .float => "FLOAT",
+            .s32 => "S32",
+            .u32 => "U32",
+        };
+    }
+};
+
+/// Type filter for table items
+pub const TypeFilter = enum {
+    /// Show all types
+    all,
+    /// Show only bit items
+    bit,
+    /// Show only float items
+    float,
+    /// Show only s32 items
+    s32,
+    /// Show only u32 items
+    u32,
+
+    /// Get next filter in cycle
+    pub fn next(self: TypeFilter) TypeFilter {
+        return switch (self) {
+            .all => .bit,
+            .bit => .float,
+            .float => .s32,
+            .s32 => .u32,
+            .u32 => .all,
+        };
+    }
+
+    /// String representation
+    pub fn toString(self: TypeFilter) []const u8 {
+        return switch (self) {
+            .all => "ALL",
+            .bit => "BIT",
+            .float => "FLOAT",
+            .s32 => "S32",
+            .u32 => "U32",
+        };
+    }
 };
 
 /// Pin direction (for pins only)
@@ -78,6 +124,10 @@ pub const TableItem = struct {
 /// The table uses color coding:
 /// - Green: Editable items (writable params, OUT/I/O pins)
 /// - Dim gray: Read-only items (IN pins, read-only params)
+///
+/// Filters:
+/// - Type filter: Show only items of specific HAL type
+/// - Component filter: Show only items from specific component
 pub const DataTable = struct {
     /// Memory allocator for table data
     allocator: std.mem.Allocator,
@@ -91,6 +141,18 @@ pub const DataTable = struct {
     /// Column widths (as percentages of total width)
     /// [Name, Type, Direction, Value]
     column_widths: [4]u16,
+
+    /// Type filter (null = show all types)
+    filter_type: TypeFilter,
+
+    /// Component filter (empty = show all components)
+    filter_component: []const u8,
+
+    /// Component filter buffer
+    component_buffer: std.ArrayList(u8),
+
+    /// Whether component filter input mode is active
+    component_filter_input: bool,
 
     /// Initialize a new DataTable
     ///
@@ -108,19 +170,25 @@ pub const DataTable = struct {
             // Column widths: Name 40%, Type 10%, Direction 10%, Value 30%
             // Remaining 10% for spacing/padding
             .column_widths = .{ 40, 10, 10, 30 },
+            .filter_type = .all,
+            .filter_component = "",
+            .component_buffer = std.ArrayList(u8).init(allocator),
+            .component_filter_input = false,
         };
     }
 
     /// Clean up DataTable resources
     pub fn deinit(self: *DataTable) void {
         self.items.deinit();
+        self.component_buffer.deinit();
         self.* = undefined;
     }
 
     /// Set the items to display in the table
     ///
     /// This function parses HAL item names to determine their type and
-    /// editability, then populates the items list.
+    /// editability, then populates the items list. Items are filtered
+    /// by type and component if filters are active.
     ///
     /// Parameters:
     ///   - item_names: Slice of HAL item names to display
@@ -134,9 +202,27 @@ pub const DataTable = struct {
         // Clear existing items
         self.items.clearRetainingCapacity();
 
-        // Parse each item name and add to table
+        // Parse each item name and add to table (with filtering)
         for (item_names) |name| {
             const item = try self.parseItem(name);
+
+            // Apply type filter
+            if (self.filter_type != .all) {
+                const filter_hal_type: HalType = switch (self.filter_type) {
+                    .all => unreachable, // handled above
+                    .bit => .bit,
+                    .float => .float,
+                    .s32 => .s32,
+                    .u32 => .u32,
+                };
+                if (item.hal_type != filter_hal_type) continue;
+            }
+
+            // Apply component filter (prefix match)
+            if (self.filter_component.len > 0) {
+                if (!std.mem.startsWith(u8, item.name, self.filter_component)) continue;
+            }
+
             try self.items.append(item);
         }
     }
@@ -238,16 +324,86 @@ pub const DataTable = struct {
         };
     }
 
-    /// Event handler (no-op for now - editing handled in plan 03-04)
+    /// Event handler for keyboard input
     fn typeErasedEventHandler(
         ptr: *anyopaque,
         ctx: *vxfw.EventContext,
         event: vxfw.Event,
     ) anyerror!void {
-        _ = ptr;
-        _ = ctx;
-        _ = event;
-        // No event handling for now - will add in plan 03-04
+        const self: *DataTable = @ptrCast(@alignCast(ptr));
+
+        switch (event) {
+            .key_press => |key| {
+                // Component filter input mode handling
+                if (self.component_filter_input) {
+                    // Escape: exit component filter mode and clear
+                    if (key.matches(vxfw.Key.escape, .{})) {
+                        self.component_filter_input = false;
+                        self.component_buffer.clearRetainingCapacity();
+                        self.filter_component = "";
+                        ctx.consumeAndRedraw();
+                        return;
+                    }
+
+                    // Enter: apply component filter and exit input mode
+                    if (key.matches(vxfw.Key.enter, .{})) {
+                        self.component_filter_input = false;
+                        self.filter_component = self.component_buffer.items;
+                        ctx.consumeAndRedraw();
+                        return;
+                    }
+
+                    // Backspace: remove last character
+                    if (key.codepoint == 127) { // ASCII DEL (backspace)
+                        if (self.component_buffer.items.len > 0) {
+                            _ = self.component_buffer.pop();
+                            self.filter_component = self.component_buffer.items;
+                            ctx.consumeAndRedraw();
+                        }
+                        return;
+                    }
+
+                    // Regular character: add to component filter
+                    if (key.codepoint >= 32 and key.codepoint < 127) {
+                        const new_char = @as(u8, @intCast(key.codepoint));
+                        try self.component_buffer.append(new_char);
+                        self.filter_component = self.component_buffer.items;
+                        ctx.consumeAndRedraw();
+                        return;
+                    }
+
+                    return; // Ignore other keys in component filter mode
+                }
+
+                // Normal mode handling
+
+                // "t": Cycle type filter
+                if (key.matches('t', .{})) {
+                    self.filter_type = self.filter_type.next();
+                    ctx.consumeAndRedraw();
+                    return;
+                }
+
+                // "c": Enter component filter mode
+                if (key.matches('c', .{})) {
+                    self.component_filter_input = true;
+                    self.component_buffer.clearRetainingCapacity();
+                    self.filter_component = "";
+                    ctx.consumeAndRedraw();
+                    return;
+                }
+
+                // Escape: Clear all filters
+                if (key.matches(vxfw.Key.escape, .{})) {
+                    self.filter_type = .all;
+                    self.component_buffer.clearRetainingCapacity();
+                    self.filter_component = "";
+                    ctx.consumeAndRedraw();
+                    return;
+                }
+            },
+            else => {},
+        }
     }
 
     /// Draw function - renders the data table
@@ -269,6 +425,30 @@ pub const DataTable = struct {
         // Build list of text widgets for table content
         var widgets = std.ArrayList(vxfw.Widget).init(ctx.arena);
         defer widgets.deinit();
+
+        // Show filter indicators if filters are active
+        if (self.filter_type != .all or self.filter_component.len > 0 or self.component_filter_input) {
+            var filter_text = std.ArrayList(u8).init(ctx.arena);
+            try filter_text.append('[');
+
+            // Type filter
+            try filter_text.appendSlice("Type: ");
+            try filter_text.appendSlice(self.filter_type.toString());
+
+            // Component filter
+            if (self.filter_component.len > 0) {
+                try filter_text.appendSlice(", Comp: ");
+                try filter_text.appendSlice(self.filter_component);
+            } else if (self.component_filter_input) {
+                try filter_text.appendSlice(", Comp: ");
+                try filter_text.appendSlice(self.component_buffer.items);
+            }
+
+            try filter_text.append(']');
+
+            const filter_style = vxfw.Style{ .bold = true, .fg = .{ .index = 3 } }; // Yellow
+            try widgets.append(vxfw.Text.asWidget(filter_text.items, .{ .style = filter_style }));
+        }
 
         // Row 1: Header
         const header_style = vxfw.Style{ .bold = true };
