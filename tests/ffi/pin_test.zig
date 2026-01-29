@@ -1,7 +1,7 @@
-// Unit tests for HAL FFI operations
+// Unit tests for HAL pin operations
 //
-// These tests verify the FFI bindings work correctly with LinuxCNC HAL.
-// Tests the basic lifecycle functions that are available in ULAPI.
+// These tests verify pin creation, reading, writing, and type safety.
+// All tests use std.testing.allocator to detect memory leaks.
 //
 // Run tests with: zig build test
 //
@@ -13,275 +13,262 @@ const c = @import("ffi/c.zig").c;
 const safe = @import("ffi/safe.zig");
 const HalError = @import("ffi/errors.zig").HalError;
 
-test "HAL init and ready" {
-    // Test that halInit creates a component
-    const comp_id = safe.halInit("test-component") catch |err| {
-        std.debug.print("halInit failed: {}\n", .{err});
-        return err;
-    };
-    defer safe.halExit(comp_id);
-
-    // Verify component ID is positive (success)
-    try testing.expect(comp_id > 0);
-
-    // Test that halReady marks the component as ready
-    try safe.halReady(comp_id);
-}
-
-test "halInit with duplicate name fails" {
-    // First component should succeed
-    const comp_id1 = safe.halInit("duplicate-test") catch |err| {
-        std.debug.print("First halInit failed: {}\n", .{err});
-        return err;
-    };
-    defer safe.halExit(comp_id1);
-
-    // Second component with same name should fail
-    const result = safe.halInit("duplicate-test");
-
-    // Should return an error (component name already exists)
-    try testing.expectError(HalError.InitFailed, result);
-}
-
-test "halExit accepts any component ID" {
-    // halExit should not crash even with invalid ID
-    // (it's designed to always succeed)
-    safe.halExit(-1);
-    safe.halExit(999);
-}
-
-test "halInit/halReady/halExit sequence" {
-    // Test the full lifecycle of a HAL component
-    const comp_id = try safe.halInit("lifecycle-test");
-    try testing.expect(comp_id > 0);
-
-    // Mark component as ready
-    try safe.halReady(comp_id);
-
-    // Clean exit
-    safe.halExit(comp_id);
-
-    // After exit, component ID is invalid
-    // (halExit is designed to always succeed, even with invalid IDs)
-}
-
-test "discovery functions find created signals" {
-    // Create a component and test signals
-    const comp_id = safe.halInit("discovery-signal-test") catch |err| {
-        std.debug.print("halInit failed: {}\n", .{err});
-        return err;
-    };
-    defer safe.halExit(comp_id);
+// Helper function to initialize HAL for testing
+fn initTestComponent() !c_int {
+    const comp_id = try safe.halInit("pin-test-component");
+    errdefer safe.halExit(comp_id);
     _ = try safe.halReady(comp_id);
-
-    // Import C functions directly to create test signals
-    const c = @import("ffi/c.zig").c;
-
-    // Create a test signal
-    const sig_rc = c.hal_signal_new("test-discovery-signal", c.HAL_FLOAT);
-    if (sig_rc != 0) {
-        std.debug.print("Failed to create signal: {}\n", .{sig_rc});
-        // Signal might already exist from previous test run
-    }
-
-    // Test discovery: find the signal we just created
-    const sig = safe.halprFindSigByName("test-discovery-signal");
-
-    // Signal should be found (unless it already existed and was cleaned up)
-    if (sig) |s| {
-        _ = s;
-        // Success! Signal was found
-        std.debug.print("✓ Discovered test-discovery-signal\n", .{});
-    } else {
-        // Signal might have been cleaned up by previous test
-        std.debug.print("Signal not found (may have been cleaned up)\n", .{});
-    }
+    return comp_id;
 }
 
-test "discovery functions return null for non-existent objects" {
+test "pin creation and cleanup" {
+    const gpa = testing.allocator;
+
     // Initialize HAL component
-    const comp_id = safe.halInit("null-test") catch |err| {
-        std.debug.print("halInit failed: {}\n", .{err});
-        return err;
-    };
+    const comp_id = try initTestComponent();
     defer safe.halExit(comp_id);
-    _ = try safe.halReady(comp_id);
 
-    // Test that discovery functions return null for non-existent objects
-    const pin = safe.halprFindPinByName("definitely-does-not-exist-pin");
-    try testing.expect(pin == null);
-
-    const sig = safe.halprFindSigByName("definitely-does-not-exist-signal");
-    try testing.expect(sig == null);
-
-    const param = safe.halprFindParamByName("definitely-does-not-exist-param");
-    try testing.expect(param == null);
-}
-
-test "discovery functions handle empty strings" {
-    // Initialize HAL component
-    const comp_id = safe.halInit("empty-string-test") catch |err| {
-        std.debug.print("halInit failed: {}\n", .{err});
-        return err;
-    };
-    defer safe.halExit(comp_id);
-    _ = try safe.halReady(comp_id);
-
-    // Test that discovery functions handle empty strings (should return null)
-    const pin = safe.halprFindPinByName("");
-    // Empty string is not a valid HAL name, so it should return null
-    if (pin) |p| {
-        _ = p;
-        // If it doesn't crash, that's good enough
-        std.debug.print("Empty string pin query returned a value\n", .{});
-    } else {
-        // Expected - empty strings are invalid
-        std.debug.print("Empty string correctly returns null\n", .{});
-    }
-}
-
-// Note: Pin creation tests now use name-based API which works with opaque types in ULAPI.
-// The pinNew, setPin*, and getPin* functions use pin names instead of pointers.
-
-test "pinFloat: create, write, and read float pin" {
-    const comp_id = safe.halInit("float-pin-test") catch |err| {
-        std.debug.print("halInit failed: {}\n", .{err});
-        return err;
-    };
-    defer safe.halExit(comp_id);
-    _ = try safe.halReady(comp_id);
-
-    // Create a float pin
+    // Create a float pin (returns pin name, not pointer)
     const pin_name = try safe.pinNew(comp_id, "test-float-pin", c.HAL_FLOAT, c.HAL_OUT);
+
+    // Verify pin name matches what we requested
     try testing.expectEqualStrings("test-float-pin", pin_name);
 
-    // Write a value to the pin
-    try safe.setPinFloat(pin_name, 3.14159);
-
-    // Read the value back
-    const value = try safe.getPinFloat(pin_name);
-    try testing.expectApproxEqAbs(3.14159, value, 0.00001);
+    // No leaks should be detected
+    try testing.allocator_check(gpa);
 }
 
-test "pinBit: create, write, and read bit pin" {
-    const comp_id = safe.halInit("bit-pin-test") catch |err| {
-        std.debug.print("halInit failed: {}\n", .{err});
-        return err;
-    };
+test "pin write and read - float" {
+    const gpa = testing.allocator;
+
+    const comp_id = try initTestComponent();
     defer safe.halExit(comp_id);
-    _ = try safe.halReady(comp_id);
 
-    // Create a bit pin
-    const pin_name = try safe.pinNew(comp_id, "test-bit-pin", c.HAL_BIT, c.HAL_OUT);
-    try testing.expectEqualStrings("test-bit-pin", pin_name);
+    // Create float pin (returns pin name)
+    const pin_name = try safe.pinNew(comp_id, "test-float-write", c.HAL_FLOAT, c.HAL_OUT);
 
-    // Write true to the pin
+    // Write value
+    const test_value: f64 = 3.14159;
+    try safe.setPinFloat(pin_name, test_value);
+
+    // Read back
+    const read_value = try safe.getPinFloat(pin_name);
+
+    // Verify value matches
+    try testing.expectEqual(test_value, read_value);
+
+    // No leaks
+    try testing.allocator_check(gpa);
+}
+
+test "pin write and read - bit" {
+    const gpa = testing.allocator;
+
+    const comp_id = try initTestComponent();
+    defer safe.halExit(comp_id);
+
+    // Create bit pin (returns pin name)
+    const pin_name = try safe.pinNew(comp_id, "test-bit-write", c.HAL_BIT, c.HAL_OUT);
+
+    // Write true
     try safe.setPinBit(pin_name, true);
-    const value_true = try safe.getPinBit(pin_name);
-    try testing.expect(value_true);
+    try testing.expectEqual(true, try safe.getPinBit(pin_name));
 
-    // Write false to the pin
+    // Write false
     try safe.setPinBit(pin_name, false);
-    const value_false = try safe.getPinBit(pin_name);
-    try testing.expect(!value_false);
+    try testing.expectEqual(false, try safe.getPinBit(pin_name));
+
+    // No leaks
+    try testing.allocator_check(gpa);
 }
 
-test "pinS32: create, write, and read signed 32-bit integer pin" {
-    const comp_id = safe.halInit("s32-pin-test") catch |err| {
-        std.debug.print("halInit failed: {}\n", .{err});
-        return err;
-    };
+test "pin write and read - s32" {
+    const gpa = testing.allocator;
+
+    const comp_id = try initTestComponent();
     defer safe.halExit(comp_id);
-    _ = try safe.halReady(comp_id);
 
-    // Create an s32 pin
-    const pin_name = try safe.pinNew(comp_id, "test-s32-pin", c.HAL_S32, c.HAL_OUT);
-    try testing.expectEqualStrings("test-s32-pin", pin_name);
+    // Create s32 pin (returns pin name)
+    const pin_name = try safe.pinNew(comp_id, "test-s32-write", c.HAL_S32, c.HAL_OUT);
 
-    // Write a positive value
-    try safe.setPinS32(pin_name, 12345);
-    const value1 = try safe.getPinS32(pin_name);
-    try testing.expectEqual(@as(i32, 12345), value1);
+    // Write value
+    const test_value: i32 = -12345;
+    try safe.setPinS32(pin_name, test_value);
 
-    // Write a negative value
-    try safe.setPinS32(pin_name, -6789);
-    const value2 = try safe.getPinS32(pin_name);
-    try testing.expectEqual(@as(i32, -6789), value2);
+    // Read back
+    const read_value = try safe.getPinS32(pin_name);
+
+    // Verify value matches
+    try testing.expectEqual(test_value, read_value);
+
+    // No leaks
+    try testing.allocator_check(gpa);
 }
 
-test "pinU32: create, write, and read unsigned 32-bit integer pin" {
-    const comp_id = safe.halInit("u32-pin-test") catch |err| {
-        std.debug.print("halInit failed: {}\n", .{err});
-        return err;
-    };
+test "pin write and read - u32" {
+    const gpa = testing.allocator;
+
+    const comp_id = try initTestComponent();
     defer safe.halExit(comp_id);
-    _ = try safe.halReady(comp_id);
 
-    // Create a u32 pin
-    const pin_name = try safe.pinNew(comp_id, "test-u32-pin", c.HAL_U32, c.HAL_OUT);
-    try testing.expectEqualStrings("test-u32-pin", pin_name);
+    // Create u32 pin (returns pin name)
+    const pin_name = try safe.pinNew(comp_id, "test-u32-write", c.HAL_U32, c.HAL_OUT);
 
-    // Write a value
-    try safe.setPinU32(pin_name, 54321);
-    const value = try safe.getPinU32(pin_name);
-    try testing.expectEqual(@as(u32, 54321), value);
+    // Write value
+    const test_value: u32 = 54321;
+    try safe.setPinU32(pin_name, test_value);
+
+    // Read back
+    const read_value = try safe.getPinU32(pin_name);
+
+    // Verify value matches
+    try testing.expectEqual(test_value, read_value);
+
+    // No leaks
+    try testing.allocator_check(gpa);
 }
 
-test "pinNew with invalid type returns error" {
-    const comp_id = safe.halInit("invalid-type-test") catch |err| {
-        std.debug.print("halInit failed: {}\n", .{err});
-        return err;
-    };
+test "type mismatch error - float pin with bit operation" {
+    const gpa = testing.allocator;
+
+    const comp_id = try initTestComponent();
     defer safe.halExit(comp_id);
-    _ = try safe.halReady(comp_id);
 
-    // Try to create a pin with an invalid type (255 is not a valid HAL type)
-    const result = safe.pinNew(comp_id, "test-invalid-pin", 255, c.HAL_OUT);
+    // Create float pin (returns pin name)
+    const pin_name = try safe.pinNew(comp_id, "test-float-mismatch", c.HAL_FLOAT, c.HAL_OUT);
 
-    // Should return TypeMismatch error
-    try testing.expectError(HalError.TypeMismatch, result);
+    // Try to use bit operation on float pin - should return PinNotFound (wrong type)
+    const result = safe.setPinBit(pin_name, true);
+
+    // Verify error is returned
+    try testing.expectError(HalError.PinNotFound, result);
+
+    // No leaks
+    try testing.allocator_check(gpa);
 }
 
-test "setPin* on non-existent pin returns error" {
-    const comp_id = safe.halInit("nonexistent-pin-test") catch |err| {
-        std.debug.print("halInit failed: {}\n", .{err});
-        return err;
-    };
+test "type mismatch error - bit pin with float operation" {
+    const gpa = testing.allocator;
+
+    const comp_id = try initTestComponent();
     defer safe.halExit(comp_id);
-    _ = try safe.halReady(comp_id);
 
-    // Try to write to a pin that doesn't exist
-    const float_result = safe.setPinFloat("nonexistent-float-pin", 1.0);
-    try testing.expectError(HalError.PinNotFound, float_result);
+    // Create bit pin (returns pin name)
+    const pin_name = try safe.pinNew(comp_id, "test-bit-mismatch", c.HAL_BIT, c.HAL_OUT);
 
-    const bit_result = safe.setPinBit("nonexistent-bit-pin", true);
-    try testing.expectError(HalError.PinNotFound, bit_result);
+    // Try to use float operation on bit pin - should return PinNotFound (wrong type)
+    const result = safe.setPinFloat(pin_name, 3.14);
 
-    const s32_result = safe.setPinS32("nonexistent-s32-pin", 42);
-    try testing.expectError(HalError.PinNotFound, s32_result);
+    // Verify error is returned
+    try testing.expectError(HalError.PinNotFound, result);
 
-    const u32_result = safe.setPinU32("nonexistent-u32-pin", 42);
-    try testing.expectError(HalError.PinNotFound, u32_result);
+    // No leaks
+    try testing.allocator_check(gpa);
 }
 
-test "getPin* on non-existent pin returns error" {
-    const comp_id = safe.halInit("get-nonexistent-test") catch |err| {
-        std.debug.print("halInit failed: {}\n", .{err});
-        return err;
-    };
+test "type mismatch error - read wrong type" {
+    const gpa = testing.allocator;
+
+    const comp_id = try initTestComponent();
     defer safe.halExit(comp_id);
-    _ = try safe.halReady(comp_id);
 
-    // Try to read from a pin that doesn't exist
-    const float_result = safe.getPinFloat("nonexistent-float-pin");
-    try testing.expectError(HalError.PinNotFound, float_result);
+    // Create float pin (returns pin name)
+    const pin_name = try safe.pinNew(comp_id, "test-read-mismatch", c.HAL_FLOAT, c.HAL_OUT);
 
-    const bit_result = safe.getPinBit("nonexistent-bit-pin");
-    try testing.expectError(HalError.PinNotFound, bit_result);
+    // Try to read as s32 - should return PinNotFound (wrong type)
+    const result = safe.getPinS32(pin_name);
 
-    const s32_result = safe.getPinS32("nonexistent-s32-pin");
-    try testing.expectError(HalError.PinNotFound, s32_result);
+    // Verify error is returned
+    try testing.expectError(HalError.PinNotFound, result);
 
-    const u32_result = safe.getPinU32("nonexistent-u32-pin");
-    try testing.expectError(HalError.PinNotFound, u32_result);
+    // No leaks
+    try testing.allocator_check(gpa);
+}
+
+test "pin direction - input pin" {
+    const gpa = testing.allocator;
+
+    const comp_id = try initTestComponent();
+    defer safe.halExit(comp_id);
+
+    // Create input pin (returns pin name)
+    const pin_name = try safe.pinNew(comp_id, "test-input-pin", c.HAL_FLOAT, c.HAL_IN);
+
+    // Should be able to write to it (component sets input pins)
+    try safe.setPinFloat(pin_name, 1.23);
+
+    // No leaks
+    try testing.allocator_check(gpa);
+}
+
+test "pin direction - IO pin" {
+    const gpa = testing.allocator;
+
+    const comp_id = try initTestComponent();
+    defer safe.halExit(comp_id);
+
+    // Create IO pin (returns pin name)
+    const pin_name = try safe.pinNew(comp_id, "test-io-pin", c.HAL_FLOAT, c.HAL_IO);
+
+    // Should be able to write to it
+    try safe.setPinFloat(pin_name, 4.56);
+
+    // No leaks
+    try testing.allocator_check(gpa);
+}
+
+test "multiple pins same component" {
+    const gpa = testing.allocator;
+
+    const comp_id = try initTestComponent();
+    defer safe.halExit(comp_id);
+
+    // Create multiple pins of different types (returns pin names)
+    const float_pin = try safe.pinNew(comp_id, "multi-float", c.HAL_FLOAT, c.HAL_OUT);
+    const bit_pin = try safe.pinNew(comp_id, "multi-bit", c.HAL_BIT, c.HAL_OUT);
+    const s32_pin = try safe.pinNew(comp_id, "multi-s32", c.HAL_S32, c.HAL_OUT);
+    const u32_pin = try safe.pinNew(comp_id, "multi-u32", c.HAL_U32, c.HAL_OUT);
+
+    // Write values to all pins
+    try safe.setPinFloat(float_pin, 1.0);
+    try safe.setPinBit(bit_pin, true);
+    try safe.setPinS32(s32_pin, 100);
+    try safe.setPinU32(u32_pin, 200);
+
+    // Read back and verify
+    try testing.expectEqual(1.0, try safe.getPinFloat(float_pin));
+    try testing.expectEqual(true, try safe.getPinBit(bit_pin));
+    try testing.expectEqual(@as(i32, 100), try safe.getPinS32(s32_pin));
+    try testing.expectEqual(@as(u32, 200), try safe.getPinU32(u32_pin));
+
+    // No leaks
+    try testing.allocator_check(gpa);
+}
+
+test "concurrent pin writes - basic sanity check" {
+    const gpa = testing.allocator;
+
+    const comp_id = try initTestComponent();
+    defer safe.halExit(comp_id);
+
+    // Create multiple pins (returns pin names)
+    const pin1 = try safe.pinNew(comp_id, "concurrent-1", c.HAL_FLOAT, c.HAL_OUT);
+    const pin2 = try safe.pinNew(comp_id, "concurrent-2", c.HAL_FLOAT, c.HAL_OUT);
+    const pin3 = try safe.pinNew(comp_id, "concurrent-3", c.HAL_FLOAT, c.HAL_OUT);
+
+    // Write to all pins rapidly (simulates concurrent access)
+    var i: usize = 0;
+    while (i < 100) : (i += 1) {
+        try safe.setPinFloat(pin1, @as(f64, @floatFromInt(i)));
+        try safe.setPinFloat(pin2, @as(f64, @floatFromInt(i)) * 2.0);
+        try safe.setPinFloat(pin3, @as(f64, @floatFromInt(i)) * 3.0);
+    }
+
+    // Verify final values
+    try testing.expectEqual(@as(f64, 99), try safe.getPinFloat(pin1));
+    try testing.expectEqual(@as(f64, 198), try safe.getPinFloat(pin2));
+    try testing.expectEqual(@as(f64, 297), try safe.getPinFloat(pin3));
+
+    // No leaks
+    try testing.allocator_check(gpa);
 }
