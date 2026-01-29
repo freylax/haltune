@@ -5,6 +5,7 @@ const SubscriptionManager = @import("../state/pubsub.zig").SubscriptionManager;
 const RefreshThread = @import("../state/refresh.zig").RefreshThread;
 const TreeView = @import("widgets/tree_view.zig").TreeView;
 const DataTable = @import("widgets/data_table.zig").DataTable;
+const SignalDialog = @import("widgets/signal_dialog.zig").SignalDialog;
 const drawTwoPanelLayout = @import("layout.zig").drawTwoPanelLayout;
 
 /// Global redraw flag pointer for pubsub callbacks
@@ -35,6 +36,7 @@ pub const Model = struct {
     pubsub: *SubscriptionManager,
     tree_view: *TreeView,
     data_table: *DataTable,
+    signal_dialog: SignalDialog,
     refresh_thread: ?RefreshThread,
 
     /// Redraw flag for pubsub callbacks
@@ -64,6 +66,9 @@ pub const Model = struct {
         const data_table = try allocator.create(DataTable);
         data_table.* = DataTable.init(allocator, store);
 
+        // Create SignalDialog widget
+        const signal_dialog = try SignalDialog.init(allocator, store);
+
         // Initialize redraw flag
         const redraw_flag = std.atomic.Value(bool).init(false);
 
@@ -73,6 +78,7 @@ pub const Model = struct {
             .pubsub = pubsub,
             .tree_view = tree_view,
             .data_table = data_table,
+            .signal_dialog = signal_dialog,
             .refresh_thread = null,
             .redraw_flag = redraw_flag,
             .error_message = null,
@@ -87,6 +93,7 @@ pub const Model = struct {
         self.allocator.destroy(self.tree_view);
         self.data_table.deinit();
         self.allocator.destroy(self.data_table);
+        self.signal_dialog.deinit();
 
         // Free error message if allocated
         if (self.error_message_owner) |msg| {
@@ -159,6 +166,16 @@ pub const Model = struct {
             return true;
         }
         return false;
+    }
+
+    /// Open signal creation dialog
+    pub fn openSignalDialog(self: *Model) !void {
+        try self.signal_dialog.open();
+    }
+
+    /// Close signal creation dialog
+    pub fn closeSignalDialog(self: *Model) void {
+        self.signal_dialog.close();
     }
 
     /// Return a vxfw.Widget for this Model
@@ -239,7 +256,7 @@ pub const Model = struct {
         for (checked_items) |item_name| {
             // Subscribe to item changes with global callback
             self.pubsub.subscribe(item_name, valueChangedCallback) catch |err| {
-                std.log.err("Failed to subscribe to '{s}': {}", .{item_name, err});
+                std.log.err("Failed to subscribe to '{s}': {}", .{ item_name, err });
             };
         }
     }
