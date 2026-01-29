@@ -39,7 +39,7 @@ pub fn build(b: *std.Build) void {
     // Link against LinuxCNC HAL library (system library search path)
     // Skip if building on dev machine without LinuxCNC installed
     if (!skip_hal_link) {
-        exe.addLibraryPath(.{ .cwd_relative = "/lib" }); // Search /lib for liblinuxcnchal.so
+        exe.addLibraryPath(.{ .cwd_relative = "/usr/lib" }); // Search /usr/lib for liblinuxcnchal.so
 
         // Link libc first to provide GLIBC symbols needed by liblinuxcnchal.so
         exe.linkSystemLibrary("c");
@@ -49,6 +49,9 @@ pub fn build(b: *std.Build) void {
         // Allow undefined symbols in shared libraries to work around GLIBC version mismatch
         // LLD is stricter than system linker about symbol versions
         exe.linker_allow_shlib_undefined = true;
+
+        // Add RPATH so runtime linker can find liblinuxcnchal.so
+        exe.rpath = "/usr/lib";
     }
 
     // Install the executable
@@ -84,7 +87,7 @@ pub fn build(b: *std.Build) void {
 
     // Link test against LinuxCNC HAL library
     if (!skip_hal_link) {
-        test_exe.addLibraryPath(.{ .cwd_relative = "/lib" }); // Search /lib for liblinuxcnchal.so
+        test_exe.addLibraryPath(.{ .cwd_relative = "/usr/lib" }); // Search /usr/lib for liblinuxcnchal.so
 
         // Link libc first to provide GLIBC symbols
         test_exe.linkSystemLibrary("c");
@@ -93,6 +96,9 @@ pub fn build(b: *std.Build) void {
 
         // Allow undefined symbols in shared libraries
         test_exe.linker_allow_shlib_undefined = true;
+
+        // Add RPATH so runtime linker can find liblinuxcnchal.so
+        test_exe.rpath = "/usr/lib";
     }
 
     // Create test step
