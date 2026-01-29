@@ -49,6 +49,12 @@ pub fn build(b: *std.Build) void {
     state_cache.addImport("ffi-errors", ffi_errors);
     state_cache.addImport("ffi-types", ffi_types);
 
+    const state_pubsub = b.createModule(.{
+        .root_source_file = b.path("src/state/pubsub.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+
     const ffi_safe = b.createModule(.{
         .root_source_file = b.path("src/ffi/safe.zig"),
         .target = target,
@@ -58,6 +64,28 @@ pub fn build(b: *std.Build) void {
     ffi_safe.addImport("errors.zig", ffi_errors);
     ffi_safe.addImport("types.zig", ffi_types);
     ffi_safe.addImport("../state/cache.zig", state_cache);
+
+    // Vaxis dependency for TUI framework
+    const vaxis = b.dependency("vaxis", .{
+        .target = target,
+        .optimize = optimize,
+    });
+
+    // Create TUI module
+    const tui_module = b.createModule(.{
+        .root_source_file = b.path("src/tui/app.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+
+    // Import existing modules into TUI
+    tui_module.addImport("ffi-errors", ffi_errors);
+    tui_module.addImport("ffi-types", ffi_types);
+    tui_module.addImport("state-cache", state_cache);
+    tui_module.addImport("state-pubsub", state_pubsub);
+
+    // Add Vaxis to TUI module
+    tui_module.addImport("vaxis", vaxis.module("vaxis"));
 
     // Create root module
     const root_module = b.createModule(.{
