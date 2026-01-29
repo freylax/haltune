@@ -168,7 +168,7 @@ pub fn halReady(comp_id: c_int) !void {
 /// const pin = try pinNew(comp_id, "value", c.HAL_FLOAT, c.HAL_OUT);
 /// try setPinFloat(pin, 3.14159);
 /// ```
-pub fn setPinFloat(pin: *c.hal_pin_t, value: f64) !void {
+// pub fn setPinFloat(pin: *c.hal_pin_t, value: f64) !void {
     // Acquire HAL mutex before write
     _ = c.hl_mutex_lock(&c.hal_mutex);
     defer c.hl_mutex_unlock(&c.hal_mutex);
@@ -192,7 +192,7 @@ pub fn setPinFloat(pin: *c.hal_pin_t, value: f64) !void {
 /// Returns:
 ///   - void on success
 ///   - error.TypeMismatch if pin is not a HAL_BIT pin
-pub fn setPinBit(pin: *c.hal_pin_t, value: bool) !void {
+// pub fn setPinBit(pin: *c.hal_pin_t, value: bool) !void {
     _ = c.hl_mutex_lock(&c.hal_mutex);
     defer c.hl_mutex_unlock(&c.hal_mutex);
 
@@ -213,7 +213,7 @@ pub fn setPinBit(pin: *c.hal_pin_t, value: bool) !void {
 /// Returns:
 ///   - void on success
 ///   - error.TypeMismatch if pin is not a HAL_S32 pin
-pub fn setPinS32(pin: *c.hal_pin_t, value: i32) !void {
+// pub fn setPinS32(pin: *c.hal_pin_t, value: i32) !void {
     _ = c.hl_mutex_lock(&c.hal_mutex);
     defer c.hl_mutex_unlock(&c.hal_mutex);
 
@@ -234,7 +234,7 @@ pub fn setPinS32(pin: *c.hal_pin_t, value: i32) !void {
 /// Returns:
 ///   - void on success
 ///   - error.TypeMismatch if pin is not a HAL_U32 pin
-pub fn setPinU32(pin: *c.hal_pin_t, value: u32) !void {
+// pub fn setPinU32(pin: *c.hal_pin_t, value: u32) !void {
     _ = c.hl_mutex_lock(&c.hal_mutex);
     defer c.hl_mutex_unlock(&c.hal_mutex);
 
@@ -258,7 +258,7 @@ pub fn setPinU32(pin: *c.hal_pin_t, value: u32) !void {
 /// Thread safety:
 ///   - Does not acquire mutex (reads are lock-free)
 ///   - Value may be updated concurrently by HAL real-time thread
-pub fn getPinFloat(pin: *const c.hal_pin_t) !f64 {
+// pub fn getPinFloat(pin: *const c.hal_pin_t) !f64 {
     if (pin.*.type != c.HAL_FLOAT) return HalError.TypeMismatch;
 
     return pin.*.data.float.*;
@@ -275,7 +275,7 @@ pub fn getPinFloat(pin: *const c.hal_pin_t) !f64 {
 /// Returns:
 ///   - Boolean value on success
 ///   - error.TypeMismatch if pin is not a HAL_BIT pin
-pub fn getPinBit(pin: *const c.hal_pin_t) !bool {
+// pub fn getPinBit(pin: *const c.hal_pin_t) !bool {
     if (pin.*.type != c.HAL_BIT) return HalError.TypeMismatch;
 
     return pin.*.data.bit.* != 0;
@@ -292,7 +292,7 @@ pub fn getPinBit(pin: *const c.hal_pin_t) !bool {
 /// Returns:
 ///   - Signed 32-bit integer value on success
 ///   - error.TypeMismatch if pin is not a HAL_S32 pin
-pub fn getPinS32(pin: *const c.hal_pin_t) !i32 {
+// pub fn getPinS32(pin: *const c.hal_pin_t) !i32 {
     if (pin.*.type != c.HAL_S32) return HalError.TypeMismatch;
 
     return pin.*.data.s32.*;
@@ -309,7 +309,7 @@ pub fn getPinS32(pin: *const c.hal_pin_t) !i32 {
 /// Returns:
 ///   - Unsigned 32-bit integer value on success
 ///   - error.TypeMismatch if pin is not a HAL_U32 pin
-pub fn getPinU32(pin: *const c.hal_pin_t) !u32 {
+// pub fn getPinU32(pin: *const c.hal_pin_t) !u32 {
     if (pin.*.type != c.HAL_U32) return HalError.TypeMismatch;
 
     return pin.*.data.u32.*;
@@ -462,15 +462,16 @@ comptime {
     _ = halReady;
 
     // Verify pin functions return error unions
-    // _ = pinNew; // DISABLED: hal_pin_t is opaque in ULAPI
-    _ = setPinFloat;
-    _ = setPinBit;
-    _ = setPinS32;
-    _ = setPinU32;
-    _ = getPinFloat;
-    _ = getPinBit;
-    _ = getPinS32;
-    _ = getPinU32;
+    // DISABLED: hal_pin_t is opaque in ULAPI, need to implement name-based API
+    // _ = pinNew;
+    // _ = setPinFloat;
+    // _ = setPinBit;
+    // _ = setPinS32;
+    // _ = setPinU32;
+    // _ = getPinFloat;
+    // _ = getPinBit;
+    // _ = getPinS32;
+    // _ = getPinU32;
 
     // Verify discovery functions
     _ = halprFindPinByName;
