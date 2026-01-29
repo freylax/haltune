@@ -38,7 +38,7 @@ pub fn build(b: *std.Build) void {
     // Skip if building on dev machine without LinuxCNC installed
     if (!skip_hal_link) {
         // Use system linker (ld.bfd) instead of Zig's LLD to avoid GLIBC version issues
-        exe.root_module.addLinkerFlag(@asBytes("-fuse-ld=bfd"));
+        exe.root_module.addLinkerFlag("-fuse-ld=bfd");
 
         exe.addLibraryPath(.{ .cwd_relative = "/lib" }); // Search /lib for liblinuxcnchal.so
         exe.linkSystemLibrary("linuxcnchal"); // Library is liblinuxcnchal.so on Debian/Ubuntu
