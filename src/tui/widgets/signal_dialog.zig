@@ -241,7 +241,52 @@ pub const SignalDialog = struct {
                 }
             },
             .select_pins => {
-                // Handled in next task
+                const pin_count = self.available_pins.items.len;
+
+                // Arrow keys to navigate
+                if (key.matches('k', .{}) or key.matchesChar('A', .{ .ctrl = true })) {
+                    // Up arrow
+                    if (self.pin_cursor > 0) self.pin_cursor -= 1;
+                    return true;
+                }
+                if (key.matches('j', .{}) or key.matchesChar('B', .{ .ctrl = true })) {
+                    // Down arrow
+                    if (self.pin_cursor + 1 < pin_count) self.pin_cursor += 1;
+                    return true;
+                }
+
+                // Space to toggle selection
+                if (key == .Space) {
+                    if (pin_count > 0) {
+                        const pin = self.available_pins.items[self.pin_cursor];
+                        if (self.selected_pins.get(pin)) |_| {
+                            // Deselect
+                            _ = self.selected_pins.remove(pin);
+                        } else {
+                            // Select (store copy of key)
+                            const pin_copy = try self.allocator.dupe(u8, pin);
+                            try self.selected_pins.put(pin_copy, {});
+                        }
+                    }
+                    return true;
+                }
+
+                // Enter to advance (must have at least one pin selected)
+                if (key == .Enter) {
+                    if (self.selected_pins.count() == 0) {
+                        self.setError("Select at least one pin");
+                        return true;
+                    }
+                    self.error_message = null;
+                    self.current_step = .confirm;
+                    return true;
+                }
+
+                // Escape to cancel
+                if (key == .Escape) {
+                    self.close();
+                    return true;
+                }
             },
             .confirm => {
                 // Handled in next task
