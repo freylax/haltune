@@ -14,6 +14,9 @@ pub fn build(b: *std.Build) void {
     // LinuxCNC include path - system option for dev vs production environments
     const linuxcnc_include = b.option([]const u8, "linuxcnc-include", "Path to LinuxCNC headers (default: /usr/include/linuxcnc)") orelse "/usr/include/linuxcnc";
 
+    // Option to skip HAL library linking for development on machines without LinuxCNC
+    const skip_hal_link = b.option(bool, "skip-hal-link", "Skip linking against libhal (for development on machines without LinuxCNC)") orelse false;
+
     // Create root module
     const root_module = b.createModule(.{
         .root_source_file = b.path("src/root.zig"),
@@ -31,8 +34,11 @@ pub fn build(b: *std.Build) void {
     });
 
     // Link against LinuxCNC HAL library (system library search path)
-    exe.linkSystemLibrary("hal");
-    exe.linkSystemLibrary("rt"); // LinuxCNC HAL requires librt
+    // Skip if building on dev machine without LinuxCNC installed
+    if (!skip_hal_link) {
+        exe.linkSystemLibrary("hal");
+        exe.linkSystemLibrary("rt"); // LinuxCNC HAL requires librt
+    }
 
     // Install the executable
     b.installArtifact(exe);
