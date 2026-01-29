@@ -228,6 +228,146 @@ pub const DataTable = struct {
             .u32 => .u32,
         };
     }
+
+    /// Return a vxfw.Widget for this DataTable
+    pub fn widget(self: *DataTable) vxfw.Widget {
+        return .{
+            .userdata = self,
+            .eventHandler = typeErasedEventHandler,
+            .drawFn = typeErasedDrawFn,
+        };
+    }
+
+    /// Event handler (no-op for now - editing handled in plan 03-04)
+    fn typeErasedEventHandler(
+        ptr: *anyopaque,
+        ctx: *vxfw.EventContext,
+        event: vxfw.Event,
+    ) anyerror!void {
+        _ = ptr;
+        _ = ctx;
+        _ = event;
+        // No event handling for now - will add in plan 03-04
+    }
+
+    /// Draw function - renders the data table
+    fn typeErasedDrawFn(
+        ptr: *anyopaque,
+        ctx: vxfw.DrawContext,
+    ) std.mem.Allocator.Error!vxfw.Surface {
+        const self: *DataTable = @ptrCast(@alignCast(ptr));
+
+        // Get available size
+        const max = ctx.max.size() orelse .{ .width = 80, .height = 24 };
+
+        // Calculate column widths in characters
+        const name_width = (max.width * self.column_widths[0]) / 100;
+        const type_width = (max.width * self.column_widths[1]) / 100;
+        const dir_width = (max.width * self.column_widths[2]) / 100;
+        const value_width = (max.width * self.column_widths[3]) / 100;
+
+        // Build list of text widgets for table content
+        var widgets = std.ArrayList(vxfw.Widget).init(ctx.arena);
+        defer widgets.deinit();
+
+        // Row 1: Header
+        const header_style = vxfw.Style{ .bold = true };
+        try widgets.append(vxfw.Text.asWidget(
+            try std.fmt.allocPrint(ctx.arena, "{s:<{d}}{s:<{d}}{s:<{d}}{s:<{d}}", .{
+                "Name", name_width,
+                "Type", type_width,
+                "Dir", dir_width,
+                "Value", value_width,
+            }),
+            .{ .style = header_style },
+        ));
+
+        // Row 2: Separator
+        const separator = try std.fmt.allocPrint(ctx.arena, "{s:<{d}}", .{
+            "-" ** (name_width + type_width + dir_width + value_width),
+            max.width,
+        });
+        try widgets.append(vxfw.Text.asWidget(separator, .{}));
+
+        // Data rows
+        for (self.items.items) |item| {
+            // Determine row color
+            const row_style = if (item.is_writable)
+                vxfw.Style{ .fg = .{ .index = 2 } } // Green for editable
+            else
+                vxfw.Style{ .fg = .{ .index = 8 } }; // Dim gray for read-only
+
+            // Format item type
+            const type_str = switch (item.hal_type) {
+                .bit => "BIT",
+                .float => "FLOAT",
+                .s32 => "S32",
+                .u32 => "U32",
+            };
+
+            // Format direction
+            const dir_str = switch (item.direction) {
+                .@"in" => "IN",
+                .out => "OUT",
+                .io => "IO",
+                .none => "",
+            };
+
+            // Get current value from StateStore
+            const value_str = blk: {
+                const value = self.getItemValue(item) catch |err| {
+                    std.log.warn("Failed to get value for '{s}': {}", .{item.name, err});
+                    break :blk "ERR";
+                };
+                break :blk formatHalValue(value, ctx.arena);
+            };
+
+            // Format row
+            const row_text = try std.fmt.allocPrint(ctx.arena, "{s:<{d}}{s:<{d}}{s:<{d}}{s:<{d}}", .{
+                item.name, name_width,
+                type_str, type_width,
+                dir_str, dir_width,
+                value_str, value_width,
+            });
+
+            try widgets.append(vxfw.Text.asWidget(row_text, .{ .style = row_style }));
+        }
+
+        // Create surface with widgets as children
+        const children = try ctx.arena.alloc(vxfw.SubSurface, widgets.items.len);
+        for (widgets.items, 0..) |widget, i| {
+            children[i] = .{
+                .origin = .{ .row = @intCast(i), .col = 0 },
+                .surface = try widget.draw(ctx),
+            };
+        }
+
+        return .{
+            .size = .{ .width = max.width, .height = @intCast(widgets.items.len) },
+            .widget = self.widget(),
+            .buffer = &.{},
+            .children = children,
+        };
+    }
+
+    /// Get current value for an item from StateStore
+    fn getItemValue(self: *DataTable, item: TableItem) !HalValue {
+        return switch (item.item_type) {
+            .pin => self.store.getPin(item.name),
+            .signal => self.store.getSignal(item.name),
+            .param => self.store.getParam(item.name),
+        };
+    }
+
+    /// Format a HalValue as a string
+    fn formatHalValue(value: HalValue, allocator: std.mem.Allocator) []const u8 {
+        return switch (value) {
+            .bit => |v| if (v) "TRUE" else "FALSE",
+            .float => |v| std.fmt.allocPrint(allocator, "{d:.2}", .{v}) catch "ERR",
+            .s32 => |v| std.fmt.allocPrint(allocator, "{d}", .{v}) catch "ERR",
+            .u32 => |v| std.fmt.allocPrint(allocator, "{d}", .{v}) catch "ERR",
+        };
+    }
 };
 
 // Compile-time tests to verify API surface
