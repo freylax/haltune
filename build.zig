@@ -155,4 +155,22 @@ pub fn build(b: *std.Build) void {
 
     const test_step = b.step("test", "Run all tests");
     test_step.dependOn(&run_test.step);
+
+    // ===== Discovery Test =====
+
+    // Create discovery test executable
+    const discovery_exe = b.addExecutable(.{
+        .name = "discovery-test",
+        .root_module = root_module, // Reuse the same module configuration
+    });
+
+    // Override root source file for discovery test
+    discovery_exe.root_source_file = b.path("tests/discovery_test.zig");
+
+    // Create discovery test run step
+    const run_discovery = b.addRunArtifact(discovery_exe);
+    run_discovery.step.dependOn(b.getInstallStep());
+
+    const discovery_step = b.step("discovery", "Run HAL discovery test");
+    discovery_step.dependOn(&run_discovery.step);
 }
