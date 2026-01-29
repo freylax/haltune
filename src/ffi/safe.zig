@@ -134,7 +134,7 @@ pub fn halReady(comp_id: c_int) !void {
 /// const pin = try pinNew(comp_id, "my-pin", c.HAL_FLOAT, c.HAL_OUT);
 /// // pin is now ready to use
 /// ```
-pub fn pinNew(
+// pub fn pinNew( // DISABLED: hal_pin_t is opaque in ULAPI
     comp_id: c_int,
     name: [:0]const u8,
     pin_type: hal_type_t,

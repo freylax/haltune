@@ -49,72 +49,39 @@ pub const hal_pin_dir_t = enum(c_int) {
 /// Note: This is a wrapper around the C union from hal.h
 pub const hal_data_u = c.hal_data_u;
 
-/// HAL pin structure
+/// HAL pin structure (opaque in ULAPI)
 ///
-/// This structure represents a pin in the HAL. It is imported from the C headers.
+/// When ULAPI is defined (userspace API), hal_pin_t is an opaque type.
+/// We use opaque {} because the struct definition is not exposed to userspace.
+/// For reading pins, use halprFindPinByName() discovery API.
 ///
-/// Memory: hal_pin_t structures are owned by HAL and allocated via hal_malloc().
-/// Never free these pointers - HAL will clean them up on hal_exit().
-///
-/// Expected struct sizes (for documentation):
-/// - LinuxCNC 2.9.7: ~64 bytes (varies with architecture)
-/// - LinuxCNC 2.10: ~64 bytes (varies with architecture)
-///
-/// The actual size is verified at compile time via assertions below.
-pub const hal_pin_t = c.hal_pin_t;
+/// Memory: Opaque pointers owned by HAL. Never free them.
+pub const hal_pin_t = opaque {};
 
-/// HAL component structure
-///
-/// This structure represents a component in the HAL. It is imported from C headers.
-///
-/// Memory: hal_comp_t structures are owned by HAL and allocated via hal_malloc().
-/// Never free these pointers - HAL will clean them up on hal_exit().
-///
-/// Expected struct sizes (for documentation):
-/// - LinuxCNC 2.9.7: ~64 bytes (varies with architecture)
-/// - LinuxCNC 2.10: ~64 bytes (varies with architecture)
-///
-/// The actual size is verified at compile time via assertions below.
-pub const hal_comp_t = c.hal_comp_t;
+/// HAL signal structure (opaque in ULAPI)
+pub const hal_sig_t = opaque {};
 
-// Compile-time verification that Zig extern structs match C ABI
+/// HAL parameter structure (opaque in ULAPI)
+pub const hal_param_t = opaque {};
+
+/// HAL component ID (not a structure in ULAPI)
+///
+/// In userspace API, hal_init() returns an int component ID, not a pointer.
+/// We use c_int (alias for int) for component IDs.
+// pub const hal_comp_t = c.hal_comp_t;
+
+// Compile-time verification disabled for ULAPI
 //
-// These assertions prevent silent ABI mismatches that would cause bugs
-// on ARM64 (Raspberry Pi 5). If these fail, the struct definition is wrong.
+// When ULAPI is defined, HAL structs (hal_pin_t, hal_sig_t, hal_param_t)
+// are opaque types - their fields are not exposed to userspace code.
+// Therefore we cannot verify field offsets or sizes at compile time.
 //
-// Version compatibility: LinuxCNC 2.9.7 through 2.10
-// Struct sizes may vary slightly between versions. We verify at compile time.
-comptime {
-    // Detect LinuxCNC version from HAL headers if available
-    // HAL_VERSION is defined in hal.h as: (MAJOR << 16) | (MINOR << 8) | PATCH
-    // For example: 2.10.0 = 0x020A00, 2.9.7 = 0x020907
-
-    // Verify hal_pin_t size and layout match C ABI
-    const pin_size_match = @sizeOf(hal_pin_t) == @sizeOf(c.hal_pin_t);
-    if (!pin_size_match) {
-        @compileError("hal_pin_t size mismatch between Zig extern struct and C struct. " ++
-            "This indicates an ABI incompatibility that will cause bugs on ARM64.");
-    }
-
-    std.debug.assert(@offsetOf(hal_pin_t, "name") == @offsetOf(c.hal_pin_t, "name"));
-    std.debug.assert(@offsetOf(hal_pin_t, "type") == @offsetOf(c.hal_pin_t, "type"));
-    std.debug.assert(@offsetOf(hal_pin_t, "dir") == @offsetOf(c.hal_pin_t, "dir"));
-
-    // Verify hal_comp_t size and layout match C ABI
-    const comp_size_match = @sizeOf(hal_comp_t) == @sizeOf(c.hal_comp_t);
-    if (!comp_size_match) {
-        @compileError("hal_comp_t size mismatch between Zig extern struct and C struct. " ++
-            "This indicates an ABI incompatibility that will cause bugs on ARM64.");
-    }
-
-    std.debug.assert(@offsetOf(hal_comp_t, "name") == @offsetOf(c.hal_comp_t, "name"));
-    std.debug.assert(@offsetOf(hal_comp_t, "comp_id") == @offsetOf(c.hal_comp_t, "comp_id"));
-    std.debug.assert(@offsetOf(hal_comp_t, "state_ptr") == @offsetOf(c.hal_comp_t, "state_ptr"));
-
-    // Log struct sizes for verification (visible in compile output)
-    std.log.debug("HAL struct sizes: hal_pin_t={} bytes, hal_comp_t={} bytes",
-        .{@sizeOf(hal_pin_t), @sizeOf(hal_comp_t)});
-}
+// For our use case (HAL inspector/monitor), we only need to:
+// - Enumerate pins/signals/params via halprFind*ByName() discovery API
+// - Read values via hal_get*() functions
+// - Write values via hal_set*() functions (if needed)
+//
+// We don't need direct struct field access, so opaque types are sufficient.
 
 // Document expected struct sizes for different LinuxCNC versions
 // These are for reference only - actual verification happens at compile time above
