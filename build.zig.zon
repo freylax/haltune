@@ -6,6 +6,10 @@
             .url = "git+https://github.com/rockorager/libvaxis.git#8a9c2d5e1b3778f1ea43c9bd5d325cfa72016584",
             .hash = "vaxis-0.5.1-BWNV_Bw_CQAIVNh1ekGVzbip25CYBQ_J3kgABnYGFnI4",
         },
+        .glob = .{
+            .url = "git+https://github.com/xcaeser/glob.zig.git#3a03cc87147c9c74cb16594bdc881541c0175a7f",
+            .hash = "glob-0.1.0-AymqdJQ4AABqoaLWCtZyfQh4_bEh7c8bhffcZNp7HWsL",
+        },
     },
     .paths = .{""},
     .fingerprint = 0xca9ed5c135c317e2,

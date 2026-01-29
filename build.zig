@@ -71,6 +71,12 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
+    // Glob dependency for pattern matching
+    const glob = b.dependency("glob", .{
+        .target = target,
+        .optimize = optimize,
+    });
+
     // Create TUI module
     const tui_module = b.createModule(.{
         .root_source_file = b.path("src/tui/app.zig"),
@@ -86,6 +92,9 @@ pub fn build(b: *std.Build) void {
 
     // Add Vaxis to TUI module
     tui_module.addImport("vaxis", vaxis.module("vaxis"));
+
+    // Add Glob to TUI module
+    tui_module.addImport("glob", glob.module("glob"));
 
     // Create root module
     const root_module = b.createModule(.{
