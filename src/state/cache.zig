@@ -195,6 +195,62 @@ pub const StateStore = struct {
         try self.pins.put(name, value);
     }
 
+    /// Add a new signal to the cache
+    ///
+    /// This function adds a newly discovered signal to the cache with its initial value.
+    /// Used by the refresh thread when discovering signals from dynamically loaded components.
+    ///
+    /// Parameters:
+    ///   - name: Signal name to add
+    ///   - value: Initial value for the signal
+    ///
+    /// Returns:
+    ///   - void on success
+    ///   - error.OutOfMemory if allocator fails
+    ///
+    /// Thread safety:
+    ///   - Acquires exclusive lock (blocks all readers)
+    ///
+    /// Example:
+    /// ```
+    /// // Discovered new signal via HAL enumeration
+    /// try store.addSignal("new-component.signal-0", .{.float = 0.0});
+    /// ```
+    pub fn addSignal(self: *StateStore, name: []const u8, value: HalValue) !void {
+        self.rwlock.lock();
+        defer self.rwlock.unlock();
+
+        try self.signals.put(name, value);
+    }
+
+    /// Add a new parameter to the cache
+    ///
+    /// This function adds a newly discovered parameter to the cache with its initial value.
+    /// Used by the refresh thread when discovering parameters from dynamically loaded components.
+    ///
+    /// Parameters:
+    ///   - name: Parameter name to add
+    ///   - value: Initial value for the parameter
+    ///
+    /// Returns:
+    ///   - void on success
+    ///   - error.OutOfMemory if allocator fails
+    ///
+    /// Thread safety:
+    ///   - Acquires exclusive lock (blocks all readers)
+    ///
+    /// Example:
+    /// ```
+    /// // Discovered new parameter via HAL enumeration
+    /// try store.addParam("new-component.param-0", .{.s32 = 0});
+    /// ```
+    pub fn addParam(self: *StateStore, name: []const u8, value: HalValue) !void {
+        self.rwlock.lock();
+        defer self.rwlock.unlock();
+
+        try self.params.put(name, value);
+    }
+
     /// Get a signal value by name
     ///
     /// Retrieves the current value of a signal from the cache.
@@ -421,8 +477,10 @@ comptime {
     _ = StateStore.addPin;
     _ = StateStore.getSignal;
     _ = StateStore.updateSignal;
+    _ = StateStore.addSignal;
     _ = StateStore.getParam;
     _ = StateStore.updateParam;
+    _ = StateStore.addParam;
 
     // Verify list operations exist
     _ = StateStore.listPins;
