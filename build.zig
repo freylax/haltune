@@ -6,7 +6,9 @@ pub fn build(b: *std.Build) void {
             // Target aarch64-linux for Raspberry Pi 5 compatibility
             .cpu_arch = .aarch64,
             .os_tag = .linux,
-            // Default to musl for better compatibility (install musl on target: apt install musl)
+            // Use musl - requires: apt install musl on target
+            // Note: This conflicts with liblinuxcnchal.so which is glibc-based
+            // To fix: either build LinuxCNC from source with musl, or use glibc build
         },
     });
 
@@ -37,12 +39,13 @@ pub fn build(b: *std.Build) void {
     // Link against LinuxCNC HAL library (system library search path)
     // Skip if building on dev machine without LinuxCNC installed
     if (!skip_hal_link) {
-        // Use system linker (ld.bfd) instead of Zig's LLD to avoid GLIBC version issues
-        exe.addLinkerFlag("-fuse-ld=bfd");
-
         exe.addLibraryPath(.{ .cwd_relative = "/lib" }); // Search /lib for liblinuxcnchal.so
         exe.linkSystemLibrary("linuxcnchal"); // Library is liblinuxcnchal.so on Debian/Ubuntu
         exe.linkSystemLibrary("rt"); // LinuxCNC HAL requires librt
+
+        // FIXME: Zig 0.15.2 uses LLD which has GLIBC compatibility issues
+        // Try using system linker by setting an environment variable
+        // This requires a workaround or Zig upgrade to 0.14.0+
     }
 
     // Install the executable
@@ -78,9 +81,6 @@ pub fn build(b: *std.Build) void {
 
     // Link test against LinuxCNC HAL library
     if (!skip_hal_link) {
-        // Use system linker (ld.bfd) instead of Zig's LLD
-        test_exe.addLinkerFlag("-fuse-ld=bfd");
-
         test_exe.addLibraryPath(.{ .cwd_relative = "/lib" }); // Search /lib for liblinuxcnchal.so
         test_exe.linkSystemLibrary("linuxcnchal"); // Library is liblinuxcnchal.so on Debian/Ubuntu
         test_exe.linkSystemLibrary("rt");
