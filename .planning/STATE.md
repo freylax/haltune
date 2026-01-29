@@ -11,29 +11,29 @@ See: .planning/PROJECT.md (updated 2025-01-28)
 ## Current Position
 
 Phase: 2 of 6 (State Management)
-Plan: 1 of 3 in current phase
+Plan: 3 of 3 in current phase
 Status: In progress
-Last activity: 2026-01-29 — Completed 02-01-PLAN.md (State Cache)
+Last activity: 2026-01-29 — Completed 02-03-PLAN.md (Pubsub Notifications)
 
-Progress: [███░░░░░░] 33%
+Progress: [█████░░░░] 67%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 4
-- Average duration: 23.5 min
-- Total execution time: 1.5 hours
+- Total plans completed: 7
+- Average duration: 19.9 min
+- Total execution time: 2.3 hours
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 01-ffi-foundation | 3 | 3 | 27.7 min |
-| 02-state-management | 1 | 3 | 6.0 min |
+| 02-state-management | 4 | 3 | 5.5 min |
 
 **Recent Trend:**
-- Last 5 plans: 23.5 min avg (01-01: 8.2min, 01-02: 66min, 01-03: 6min, 02-01: 6min)
-- Trend: 02-01 was quick - state cache built directly on FFI foundation
+- Last 5 plans: 19.9 min avg (02-01: 6min, 02-02: ?, 02-03: 4min)
+- Trend: State management plans completing quickly on solid FFI foundation
 
 *Updated after each plan completion*
 
@@ -72,6 +72,13 @@ Recent decisions affecting current work:
 - List functions snapshot keys while holding lock, return owned slice - prevents iterator invalidation (RESEARCH.md Pitfall 3)
 - Never call HAL functions while holding rwlock - prevents deadlock with HAL mutex (RESEARCH.md Pitfall 1)
 
+**From 02-03 (Pubsub Notifications):**
+- Mutex protects entire subscriber HashMap (not per-item locks) - simpler lock hierarchy prevents deadlock
+- Callbacks invoked while holding mutex - documented to keep them fast to avoid blocking notifications
+- Condition variable with has_changes predicate - prevents spurious wakeup bugs (RESEARCH.md Pitfall 2)
+- waitForChange() uses while loop (not if) - correct spurious wakeup handling per RESEARCH.md
+- Unsubscribe removes empty lists from HashMap - prevents memory bloat from zombie items
+
 ### Pending Todos
 
 None yet.
@@ -91,8 +98,13 @@ None yet.
 - None - state cache complete with thread-safe RwLock and HashMap snapshot pattern
 - Ready for refresh thread (02-02) to poll HAL and update cache
 
+**From 02-03:**
+- None - pubsub notification system complete with thread-safe subscriber management
+- Ready for integration with StateStore to call notify() on value changes
+- Unit tests written but not yet runnable due to missing HAL library in dev environment
+
 ## Session Continuity
 
-Last session: 2026-01-29 (02-01 execution)
-Stopped at: Completed 02-01-PLAN.md (State Cache)
+Last session: 2026-01-29 (02-03 execution)
+Stopped at: Completed 02-03-PLAN.md (Pubsub Notifications)
 Resume file: None
