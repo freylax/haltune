@@ -154,7 +154,7 @@ pub fn pinNew(comp_id: c_int, name: [:0]const u8, pin_type: hal_type_t, dir: hal
         else => return HalError.TypeMismatch,
     };
 
-    if (rc != 0) return HalError.PinCreationFailed;
+    if (rc != 0) return HalError.InitFailed;
 
     // Return the pin name (caller must keep track of the pin type)
     return name;
