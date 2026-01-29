@@ -5,7 +5,7 @@
 // halprFindParamByName work correctly.
 
 const std = @import("std");
-const safe = @import("src/ffi/safe.zig");
+const safe = @import("ffi/safe.zig");
 
 pub fn main() !void {
     std.debug.print("HAL Discovery Test\n", .{});
@@ -26,8 +26,8 @@ pub fn main() !void {
     var pin_count: usize = 0;
     var pin_name: ?[*:0]const u8 = null;
 
-    while (true) {
-        const pin = safe.halprFindPinByName(pin_name) orelse break;
+    while (safe.halprFindPinByName(pin_name)) |pin| {
+        _ = pin; // Mark as used
         pin_count += 1;
 
         // Since hal_pin_t is opaque, we can't access pin.*.name directly
@@ -46,8 +46,8 @@ pub fn main() !void {
     var sig_count: usize = 0;
     var sig_name: ?[*:0]const u8 = null;
 
-    while (true) {
-        const sig = safe.halprFindSigByName(sig_name) orelse break;
+    while (safe.halprFindSigByName(sig_name)) |sig| {
+        _ = sig; // Mark as used
         sig_count += 1;
         sig_name = null;
         if (sig_count >= 10) break;
@@ -63,8 +63,8 @@ pub fn main() !void {
     var param_count: usize = 0;
     var param_name: ?[*:0]const u8 = null;
 
-    while (true) {
-        const param = safe.halprFindParamByName(param_name) orelse break;
+    while (safe.halprFindParamByName(param_name)) |param| {
+        _ = param; // Mark as used
         param_count += 1;
         param_name = null;
         if (param_count >= 10) break;
