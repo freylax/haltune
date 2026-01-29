@@ -13,7 +13,7 @@ pub fn main() !void {
     std.debug.print("=========================================\n\n", .{});
 
     // Initialize HAL component
-    const comp_id = safe.halInit("discovery-test") catch |err| {
+    const comp_id = safe.halInit("discovery-full-test") catch |err| {
         std.debug.print("Failed to initialize HAL: {}\n", .{err});
         return err;
     };
