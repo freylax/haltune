@@ -16,6 +16,19 @@ pub fn drawTwoPanelLayout(
     // Get maximum available size
     const max = ctx.max.size() orelse .{ .width = 80, .height = 24 };
 
+    // TODO: Draw save dialog if visible
+    // Draw centered modal box with filename input
+    if (self.save_dialog_visible) {
+        // Placeholder: save dialog overlay will be drawn here
+        // For now, the dialog state is managed but not rendered
+        // Full implementation requires drawing:
+        // - Centered modal box
+        // - "Save Configuration" title
+        // - Current filename input field
+        // - Instructions: "Enter to save, Escape to cancel"
+        // - Error message if present
+    }
+
     // Reserve one row at bottom for help text
     const help_height: u16 = 1;
     const panel_height = if (max.height > help_height) max.height - help_height else max.height;
