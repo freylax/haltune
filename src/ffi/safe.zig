@@ -252,6 +252,86 @@ pub fn halprFindSigByName(name: ?[*:0]const u8) ?*hal_sig_t {
     return null;
 }
 
+/// Set the value of a HAL bit pin
+///
+/// Parameters:
+///   - pin: Pointer to pin data (from pinBitNew or halprFindPinByName)
+///   - value: New bit value (true = 1, false = 0)
+///
+/// Returns:
+///   - void on success
+///   - error.NotFound if pin pointer is null
+///
+/// Thread safety:
+///   - Acquires HAL mutex before writing
+///   - Safe to call from multiple threads
+pub fn pinBitSet(pin: ?[*c]volatile u8, value: bool) !void {
+    const pin_ptr = pin orelse return HalError.NotFound;
+    _ = c.hal_mutex_lock(c.hal_mutex.ptr);
+    pin_ptr.* = @intFromBool(value);
+    c.hal_mutex_unlock(c.hal_mutex.ptr);
+}
+
+/// Set the value of a HAL float pin
+///
+/// Parameters:
+///   - pin: Pointer to pin data (from pinFloatNew or halprFindPinByName)
+///   - value: New float value
+///
+/// Returns:
+///   - void on success
+///   - error.NotFound if pin pointer is null
+///
+/// Thread safety:
+///   - Acquires HAL mutex before writing
+///   - Safe to call from multiple threads
+pub fn pinFloatSet(pin: ?[*c]volatile f64, value: f64) !void {
+    const pin_ptr = pin orelse return HalError.NotFound;
+    _ = c.hal_mutex_lock(c.hal_mutex.ptr);
+    pin_ptr.* = value;
+    c.hal_mutex_unlock(c.hal_mutex.ptr);
+}
+
+/// Set the value of a HAL s32 pin
+///
+/// Parameters:
+///   - pin: Pointer to pin data (from pinS32New or halprFindPinByName)
+///   - value: New signed 32-bit integer value
+///
+/// Returns:
+///   - void on success
+///   - error.NotFound if pin pointer is null
+///
+/// Thread safety:
+///   - Acquires HAL mutex before writing
+///   - Safe to call from multiple threads
+pub fn pinS32Set(pin: ?[*c]volatile i32, value: i32) !void {
+    const pin_ptr = pin orelse return HalError.NotFound;
+    _ = c.hal_mutex_lock(c.hal_mutex.ptr);
+    pin_ptr.* = value;
+    c.hal_mutex_unlock(c.hal_mutex.ptr);
+}
+
+/// Set the value of a HAL u32 pin
+///
+/// Parameters:
+///   - pin: Pointer to pin data (from pinU32New or halprFindPinByName)
+///   - value: New unsigned 32-bit integer value
+///
+/// Returns:
+///   - void on success
+///   - error.NotFound if pin pointer is null
+///
+/// Thread safety:
+///   - Acquires HAL mutex before writing
+///   - Safe to call from multiple threads
+pub fn pinU32Set(pin: ?[*c]volatile u32, value: u32) !void {
+    const pin_ptr = pin orelse return HalError.NotFound;
+    _ = c.hal_mutex_lock(c.hal_mutex.ptr);
+    pin_ptr.* = value;
+    c.hal_mutex_unlock(c.hal_mutex.ptr);
+}
+
 /// Find a HAL parameter by name
 ///
 /// This function searches the HAL parameter database for a parameter with the given name.
@@ -363,6 +443,12 @@ comptime {
     _ = pinBitNew;
     _ = pinS32New;
     _ = pinU32New;
+
+    // Verify pin write functions return error unions
+    _ = pinBitSet;
+    _ = pinFloatSet;
+    _ = pinS32Set;
+    _ = pinU32Set;
 
     // Verify discovery functions
     _ = halprFindPinByName;
