@@ -72,6 +72,13 @@ Recent decisions affecting current work:
 - List functions snapshot keys while holding lock, return owned slice - prevents iterator invalidation (RESEARCH.md Pitfall 3)
 - Never call HAL functions while holding rwlock - prevents deadlock with HAL mutex (RESEARCH.md Pitfall 1)
 
+**From 02-02 (Refresh Thread):**
+- Use .acquire/.release memory ordering for atomic running flag - ensures visibility across threads (RESEARCH.md Pitfall 4)
+- Read HAL values before acquiring cache lock - prevents deadlock with HAL mutex (RESEARCH.md Pitfall 1)
+- Enumerate ALL pins from HAL each cycle via halpr_find_pin_by_name(null) - supports dynamic component load/unload
+- Sleep loop with atomic flag for clean thread shutdown - thread exits within one refresh interval
+- Stale pin cleanup deferred - new pins added immediately, old pins detected but removal TODO
+
 **From 02-03 (Pubsub Notifications):**
 - Mutex protects entire subscriber HashMap (not per-item locks) - simpler lock hierarchy prevents deadlock
 - Callbacks invoked while holding mutex - documented to keep them fast to avoid blocking notifications
@@ -98,6 +105,11 @@ None yet.
 - None - state cache complete with thread-safe RwLock and HashMap snapshot pattern
 - Ready for refresh thread (02-02) to poll HAL and update cache
 
+**From 02-02:**
+- None - refresh thread complete with HAL discovery and atomic lifecycle management
+- Stale pin removal deferred to future task (not blocking)
+- Unit tests written but not yet runnable due to missing HAL library in dev environment
+
 **From 02-03:**
 - None - pubsub notification system complete with thread-safe subscriber management
 - Ready for integration with StateStore to call notify() on value changes
@@ -105,6 +117,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-01-29 (02-03 execution)
-Stopped at: Completed 02-03-PLAN.md (Pubsub Notifications)
+Last session: 2026-01-29 (02-02 execution)
+Stopped at: Completed 02-02-PLAN.md (Refresh Thread)
 Resume file: None
