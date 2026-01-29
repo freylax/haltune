@@ -40,7 +40,7 @@ const hal_pin_dir_t = @import("types.zig").hal_pin_dir_t;
 /// // ... use HAL features
 /// _ = try halReady(comp_id);
 /// ```
-pub fn halInit(comp_name: [:0]const u8) !c.hal_comp_t {
+pub fn halInit(comp_name: [:0]const u8) !c_int {
     // Call hal_init - returns null on failure, or component ID on success
     const comp_id = c.hal_init(comp_name) orelse return HalError.InitFailed;
 
@@ -70,7 +70,7 @@ pub fn halInit(comp_name: [:0]const u8) !c.hal_comp_t {
 /// const comp_id = try halInit("mycomponent");
 /// defer halExit(comp_id);  // Always cleanup, even on error
 /// ```
-pub fn halExit(comp_id: c.hal_comp_t) void {
+pub fn halExit(comp_id: c_int) void {
     // hal_exit has no return value - it always succeeds
     _ = c.hal_exit(comp_id);
 }
@@ -95,7 +95,7 @@ pub fn halExit(comp_id: c.hal_comp_t) void {
 /// _ = try halReady(comp_id);
 /// // ... now can create pins, signals, etc.
 /// ```
-pub fn halReady(comp_id: c.hal_comp_t) !void {
+pub fn halReady(comp_id: c_int) !void {
     const rc = c.hal_ready(comp_id);
     if (rc != 0) {
         // Map negative return code to specific error
@@ -135,7 +135,7 @@ pub fn halReady(comp_id: c.hal_comp_t) !void {
 /// // pin is now ready to use
 /// ```
 pub fn pinNew(
-    comp_id: c.hal_comp_t,
+    comp_id: c_int,
     name: [:0]const u8,
     pin_type: hal_type_t,
     dir: hal_pin_dir_t,
