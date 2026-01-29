@@ -79,7 +79,7 @@ pub fn build(b: *std.Build) void {
     // Link test against LinuxCNC HAL library
     if (!skip_hal_link) {
         // Use system linker (ld.bfd) instead of Zig's LLD
-        test_exe.root_module.addLinkerFlag(@asBytes("-fuse-ld=bfd"));
+        test_exe.root_module.addLinkerFlag("-fuse-ld=bfd");
 
         test_exe.addLibraryPath(.{ .cwd_relative = "/lib" }); // Search /lib for liblinuxcnchal.so
         test_exe.linkSystemLibrary("linuxcnchal"); // Library is liblinuxcnchal.so on Debian/Ubuntu
