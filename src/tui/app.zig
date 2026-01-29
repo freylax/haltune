@@ -45,7 +45,7 @@ pub fn main() !void {
     const model = try allocator.create(Model);
     defer allocator.destroy(model);
 
-    model.* = Model.init(allocator, &store, &pubsub);
+    model.* = try Model.init(allocator, &store, &pubsub);
 
     // Initialize Vxfw application
     // Vxfw manages the event loop, terminal I/O, and rendering

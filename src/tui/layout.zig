@@ -1,6 +1,7 @@
 const std = @import("std");
 const vxfw = @import("vaxis").vxfw;
 const Model = @import("model.zig").Model;
+const TreeView = @import("widgets/tree_view.zig").TreeView;
 
 /// Draw function for two-panel split layout
 /// Left panel: 30% of screen width (tree navigation)
@@ -49,29 +50,22 @@ pub fn drawTwoPanelLayout(
 }
 
 /// Create left panel surface (30% width)
-/// Placeholder for tree view widget (will implement in plan 03-02)
+/// Draws the tree view widget for browsing HAL components
 fn createLeftPanel(
     self: *Model,
     ctx: vxfw.DrawContext,
     width: u16,
     height: u16,
 ) std.mem.Allocator.Error!vxfw.Surface {
-    _ = self;
-
     // Constrain drawing to left panel dimensions
     const constrained_ctx = ctx.withConstraints(
         .{ .width = width, .height = height },
         .{ .width = width, .height = height },
     );
 
-    // Placeholder surface - empty buffer, no children
-    // In plan 03-02, this will draw the tree view widget
-    return .{
-        .size = .{ .width = width, .height = height },
-        .widget = undefined,
-        .buffer = &.{},
-        .children = &.{},
-    };
+    // Draw tree view widget in left panel
+    const tree_widget = self.tree_view.widget();
+    return try tree_widget.drawFn(tree_widget.userdata, constrained_ctx);
 }
 
 /// Create right panel surface (70% width)
