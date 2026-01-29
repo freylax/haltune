@@ -45,6 +45,10 @@ pub fn build(b: *std.Build) void {
         exe.linkSystemLibrary("c");
         exe.linkSystemLibrary("linuxcnchal"); // Library is liblinuxcnchal.so on Debian/Ubuntu
         exe.linkSystemLibrary("rt"); // LinuxCNC HAL requires librt
+
+        // Allow undefined symbols in shared libraries to work around GLIBC version mismatch
+        // LLD is stricter than system linker about symbol versions
+        exe.linker_allow_shlib_undefined = true;
     }
 
     // Install the executable
@@ -86,6 +90,9 @@ pub fn build(b: *std.Build) void {
         test_exe.linkSystemLibrary("c");
         test_exe.linkSystemLibrary("linuxcnchal"); // Library is liblinuxcnchal.so on Debian/Ubuntu
         test_exe.linkSystemLibrary("rt");
+
+        // Allow undefined symbols in shared libraries
+        test_exe.linker_allow_shlib_undefined = true;
     }
 
     // Create test step
