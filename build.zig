@@ -70,6 +70,38 @@ pub fn build(b: *std.Build) void {
 
     // ===== Test Configuration =====
 
+    // Create FFI modules for tests to import
+    const ffi_c = b.createModule(.{
+        .root_source_file = b.path("src/ffi/c.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    ffi_c.addIncludePath(.{ .cwd_relative = linuxcnc_include });
+
+    const ffi_errors = b.createModule(.{
+        .root_source_file = b.path("src/ffi/errors.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+
+    const ffi_types = b.createModule(.{
+        .root_source_file = b.path("src/ffi/types.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    // types.zig depends on c.zig
+    ffi_types.addImport("c.zig", ffi_c);
+
+    const ffi_safe = b.createModule(.{
+        .root_source_file = b.path("src/ffi/safe.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    // safe.zig depends on c.zig, errors.zig, and types.zig
+    ffi_safe.addImport("c.zig", ffi_c);
+    ffi_safe.addImport("errors.zig", ffi_errors);
+    ffi_safe.addImport("types.zig", ffi_types);
+
     // Create test module
     const test_module = b.createModule(.{
         .root_source_file = b.path("tests/ffi/pin_test.zig"),
@@ -77,8 +109,10 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
-    // Add LinuxCNC HAL include path for @cImport
-    test_module.addIncludePath(.{ .cwd_relative = linuxcnc_include });
+    // Add FFI modules as imports so tests can access them
+    test_module.addImport("ffi/c.zig", ffi_c);
+    test_module.addImport("ffi/errors.zig", ffi_errors);
+    test_module.addImport("ffi/safe.zig", ffi_safe);
 
     // Create test executable
     const test_exe = b.addTest(.{

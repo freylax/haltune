@@ -9,12 +9,12 @@
 
 const std = @import("std");
 const testing = std.testing;
-const c = @import("../../src/ffi/c.zig").c;
-const safe = @import("../../src/ffi/safe.zig");
-const HalError = @import("../../src/ffi/errors.zig").HalError;
+const c = @import("ffi/c.zig").c;
+const safe = @import("ffi/safe.zig");
+const HalError = @import("ffi/errors.zig").HalError;
 
 // Helper function to initialize HAL for testing
-fn initTestComponent() !c.hal_comp_t {
+fn initTestComponent() !c_int {
     const comp_id = try safe.halInit("pin-test-component");
     errdefer safe.halExit(comp_id);
     _ = try safe.halReady(comp_id);
