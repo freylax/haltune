@@ -2,6 +2,7 @@ const std = @import("std");
 const vxfw = @import("vaxis").vxfw;
 const StateStore = @import("../state/cache.zig").StateStore;
 const SubscriptionManager = @import("../state/pubsub.zig").SubscriptionManager;
+const drawTwoPanelLayout = @import("layout.zig").drawTwoPanelLayout;
 
 /// Model holds all application state for the TUI
 pub const Model = struct {
@@ -63,15 +64,7 @@ pub const Model = struct {
         ptr: *anyopaque,
         ctx: vxfw.DrawContext,
     ) std.mem.Allocator.Error!vxfw.Surface {
-        _ = ptr;
-        _ = ctx;
-
-        // Placeholder - will implement in Task 3 with layout.zig
-        return .{
-            .size = .{ .width = 80, .height = 24 },
-            .widget = undefined,
-            .buffer = &.{},
-            .children = &.{},
-        };
+        // Delegate to layout module for two-panel split
+        return drawTwoPanelLayout(ptr, ctx);
     }
 };
