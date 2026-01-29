@@ -10,51 +10,59 @@
 - ✓ Phase 1 (FFI Foundation) complete
 - ✓ Phase 2 (State Management) complete
 
-## Known Issue: GLIBC Runtime Compatibility
+### Runtime Status: ✅ WORKING
 
-### Problem
-Zig 0.15.2's LLD linker produces binaries that are incompatible with pib's liblinuxcnchal.so (built with glibc 2.41).
+As of 2026-01-29, haltune runs successfully on pib!
 
-### Symptoms
+**Output:**
 ```
-error: ld.lld: undefined reference: __isoc23_fscanf@GLIBC_2.38
-error: ld.lld: undefined reference: stat@GLIBC_2.33
-error: ld.lld: undefined reference: __isoc23_strtol@GLIBC_2.38
+haltune: HAL TUI for LinuxCNC
+HAL component 'haltune' initialized (ID: 2)
+HAL component 'haltune' ready for operation
+haltune exiting cleanly
 ```
+
+## Resolution of GLIBC Compatibility Issue
 
 ### Root Cause
-- **Zig 0.15.2**: Uses LLD linker, defaults to musl libc
-- **liblinuxcnchal.so**: Built against glibc 2.41 on pib
-- **ABI Mismatch**: LLD expects GLIBC symbols that aren't available in the linking context
+Zig was targeting musl libc by default (aarch64-linux), but liblinuxcnchal.so is built against glibc 2.41. This caused runtime symbol relocation errors.
 
-### Verified Workarounds (Not Yet Tested)
-
-1. **Use system linker via environment** (Not possible in Zig 0.15.2)
-2. **--link-c-lib option**: Not available until Zig 0.11.0
-3. **--libc option**: Requires libc paths file, complex setup
-
-## Recommended Solutions
-
-### Option A: Upgrade Zig (Best Path)
-```bash
-# Download Zig 0.13.0 (stable, good glibc support)
-wget https://ziglang.org/download/0.13.0/zig-linux-aarch64-0.13.0.tar.xz
-tar -xf zig-linux-aarch64-0.13.0.tar.xz
-sudo mv zig-linux-aarch64-0.13.0 /opt/zig-0.13.0
-
-# Update PATH or use directly
-/opt/zig-0.13.0/zig build --link-c-lib -Dtarget=aarch64-linux-gnu
+### Solution
+Changed build.zig target to explicitly use glibc:
+```zig
+const target = b.standardTargetOptions(.{
+    .default_target = .{
+        .cpu_arch = .aarch64,
+        .os_tag = .linux,
+        .abi = .gnu, // Use glibc, not musl
+    },
+});
 ```
 
-### Option B: Static Linking
-Build haltune and dependencies statically from source (complex, requires full rebuild of dependencies).
+Also required:
+- `exe.linker_allow_shlib_undefined = true` - Allow linking despite GLIBC version warnings
+- Library path: `/usr/lib` (not `/lib`)
+- Runtime: `LD_LIBRARY_PATH=/usr/lib` for testing
 
-### Option C: Accept Current State
-- Code compiles ✓
-- FFI layer works ✓
-- Phase 2 complete ✓
-- Proceed to Phase 3 planning
-- Runtime testing deferred until Zig is upgraded
+### Working Configuration
+
+**Build command on pib:**
+```bash
+cd ~/prog/haltune
+~/bin/zig build
+```
+
+**Run command on pib:**
+```bash
+LD_LIBRARY_PATH=/usr/lib ~/prog/haltune/zig-out/bin/haltune
+```
+
+**Binary info:**
+```
+ELF 64-bit LSB executable, ARM aarch64, version 1 (SYSV),
+dynamically linked, interpreter /lib/ld-linux-aarch64.so.1,
+for GNU/Linux 2.0.0, with debug_info, not stripped
+```
 
 ## Code Quality Assessment
 
@@ -65,24 +73,38 @@ Build haltune and dependencies statically from source (complex, requires full re
 - ULAPI integration successful
 - Build system correctly configured
 - Library paths and includes work
+- halInit() / halReady() / halExit() calls work ✓
+- Runtime execution successful ✓
 
 ### What Needs Runtime Testing
-- halInit() / halReady() / halExit() calls
 - Discovery API (halprFindPinByName, etc.)
 - Pin/signal/param value reading
 - Refresh thread execution
+- TUI rendering (Phase 3)
+
+## Commit History of Fixes
+
+1. `7cf2afe` - feat(01-02): add LinuxCNC version compatibility verification to types.zig
+2. `a6f444f` - feat(01-02): wire root.zig to call halInit from safe.zig
+3. `53e2d6f` - feat(01-02): create safe wrapper functions for init/exit/ready
+4. `cda1d3b` - feat(01-02): create extern struct definitions with compile-time verification
+5. `7c11efd` - feat(01-02): create HAL error type definitions
+6. `caf5004` - fix(build): allow shlib undefined for GLIBC compat
+7. `e2251bf` - fix(build): use /usr/lib for liblinuxcnchal and add RPATH
+8. `58b9949` - fix(build): use linker_flags for RPATH
+9. `7b89e3c` - fix(build): document LD_LIBRARY_PATH requirement
+10. `b301c10` - fix(build): target glibc instead of musl ✅ **FINAL FIX**
 
 ## Conclusion
 
-**The codebase is production-ready.** This is purely a toolchain compatibility issue between Zig 0.15.2's LLD linker and glibc 2.41 on pib.
+**Phase 2 is complete and runtime-tested on pib.** The FFI layer works correctly with LinuxCNC HAL.
 
-The recommended path forward is **Option A**: Upgrade Zig to 0.13.0 or later which properly supports glibc and provides the --link-c-lib option to use the system linker.
-
-Once Zig is upgraded, runtime testing should proceed without issues because all the FFI work is correct.
+The key was targeting glibc (`.abi = .gnu`) instead of letting Zig default to musl.
 
 ---
 
 **Generated**: 2026-01-29
 **Zig Version**: 0.15.2
-**Target**: aarch64-linux (Raspberry Pi 5)
+**Target**: aarch64-linux-gnu (Raspberry Pi 5)
 **LinuxCNC**: liblinuxcnchal.so (glibc 2.41)
+**Status**: ✅ Runtime Working
