@@ -1,0 +1,96 @@
+// Signal creation dialog widget
+//
+// This module provides SignalDialog, a multi-step modal dialog for creating
+// HAL signals and linking pins. The dialog guides users through:
+// 1. Signal name input (with validation)
+// 2. Signal type selection (BIT/FLOAT/S32/U32)
+// 3. Pin selection (multi-select from matching type pins)
+// 4. Confirmation and creation
+//
+// Design principles:
+// - Modal overlay using vxfw SubSurface
+// - Step-by-step wizard with clear navigation
+// - Input validation with helpful error messages
+// - Memory-safe ArrayList/StringHashMap management
+// - FFI integration for signal creation and pin linking
+
+const std = @import("std");
+const vxfw = @import("vaxis").vxfw;
+const StateStore = @import("../../state/cache.zig").StateStore;
+const HalValue = @import("../../state/cache.zig").HalValue;
+const hal_type_t = @import("../../ffi/types.zig").hal_type_t;
+const ffi = @import("../../ffi/safe.zig");
+
+/// Dialog step enumeration
+pub const DialogStep = enum(u8) {
+    input_name = 1,
+    select_type = 2,
+    select_pins = 3,
+    confirm = 4,
+};
+
+/// Signal creation dialog widget
+pub const SignalDialog = struct {
+    allocator: std.mem.Allocator,
+    store: *StateStore,
+
+    // Dialog state
+    visible: bool = false,
+    current_step: DialogStep = .input_name,
+
+    // Step 1: Signal name input
+    signal_name: std.ArrayList(u8),
+
+    // Step 2: Signal type selection
+    signal_type: hal_type_t = .HAL_BIT,
+    type_index: usize = 0, // Index into TYPES array
+
+    // Step 3: Pin selection
+    available_pins: std.ArrayList([]const u8),
+    selected_pins: std.StringHashMap(void),
+    pin_cursor: usize = 0,
+
+    // Step 4: Confirmation
+    error_message: ?[]const u8 = null,
+
+    // Available types for selection (in display order)
+    const TYPES = [_]hal_type_t{
+        .HAL_BIT,
+        .HAL_FLOAT,
+        .HAL_S32,
+        .HAL_U32,
+    };
+
+    const TYPE_NAMES = [_][]const u8{
+        "BIT    (boolean)",
+        "FLOAT  (decimal)",
+        "S32    (signed integer)",
+        "U32    (unsigned integer)",
+    };
+
+    /// Initialize dialog
+    pub fn init(allocator: std.mem.Allocator, store: *StateStore) SignalDialog {
+        return .{
+            .allocator = allocator,
+            .store = store,
+            .signal_name = std.ArrayList(u8).init(allocator),
+            .available_pins = std.ArrayList([]const u8).init(allocator),
+            .selected_pins = std.StringHashMap(void).init(allocator),
+        };
+    }
+
+    /// Clean up dialog resources
+    pub fn deinit(self: *SignalDialog) void {
+        self.signal_name.deinit();
+        for (self.available_pins.items) |pin| {
+            self.allocator.free(pin);
+        }
+        self.available_pins.deinit();
+        self.selected_pins.deinit();
+        if (self.error_message) |msg| {
+            self.allocator.free(msg);
+        }
+    }
+
+    // TODO: Add open(), close(), draw(), handleKey(), createSignal(), loadAvailablePins() in subsequent tasks
+};
