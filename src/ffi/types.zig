@@ -31,11 +31,11 @@ pub const hal_type_t = enum(c_int) {
 /// This enum matches the hal_pin_dir_t enum from hal.h.
 pub const hal_pin_dir_t = enum(c_int) {
     /// Read-only pin (input to HAL component)
-    HAL_IN = 0,
+    HAL_IN = 16,
     /// Write-only pin (output from HAL component)
-    HAL_OUT = 1,
+    HAL_OUT = 32,
     /// Bidirectional pin (can read and write)
-    HAL_IO = 2,
+    HAL_IO = 48,
 };
 
 /// HAL data union for pin values
