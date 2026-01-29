@@ -78,14 +78,14 @@ pub fn main() !void {
 
     std.debug.print("\n=== Test Specific Pins ===\n", .{});
     // Try to find some known HAL pins (these may or may not exist)
-    const test_pins = [_][]const u8{
+    const test_pins = [_][:0]const u8{
         "motion.enable",
         "motion.adaptive-feed",
         "halui.program.is-running",
     };
 
     for (test_pins) |pin_name_str| {
-        const pin_ptr = safe.halprFindPinByName(pin_name_str.ptr);
+        const pin_ptr = safe.halprFindPinByName(pin_name_str);
         if (pin_ptr) |pin| {
             _ = pin;
             std.debug.print("✓ Found pin: {s}\n", .{pin_name_str});
