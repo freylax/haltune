@@ -123,6 +123,93 @@ pub const SubscriptionManager = struct {
         self.subscribers.deinit();
         self.* = undefined;
     }
+
+    /// Subscribe to notifications for a specific HAL item
+    ///
+    /// Registers a callback to be invoked whenever the specified item's value changes.
+    /// Multiple callbacks can subscribe to the same item (pubsub pattern).
+    ///
+    /// Parameters:
+    ///   - item_name: Name of the pin/signal/param to watch (e.g., "motion.digital-in-00")
+    ///   - callback: Function to call when value changes
+    ///
+    /// Returns:
+    ///   - void on success
+    ///   - error.OutOfMemory if allocator fails
+    ///
+    /// Thread safety:
+    ///   - Acquires mutex exclusively
+    ///   - Safe to call concurrently from multiple threads
+    ///
+    /// Example:
+    /// ```
+    /// fn myCallback(name: []const u8, old: ?HalValue, new: HalValue) void {
+    ///     std.debug.print("{s} changed\n", .{name});
+    /// }
+    ///
+    /// try manager.subscribe("motion.digital-in-00", myCallback);
+    /// ```
+    pub fn subscribe(self: *SubscriptionManager, item_name: []const u8, callback: Callback) !void {
+        self.mutex.lock();
+        defer self.mutex.unlock();
+
+        // Get or create subscriber list for this item
+        const entry = try self.subscribers.getOrPut(item_name);
+        if (!entry.found_existing) {
+            // New entry: initialize ArrayList
+            entry.value_ptr.* = SubscriberList.init(self.allocator);
+        }
+
+        // Add callback to subscriber list
+        try entry.value_ptr.append(callback);
+    }
+
+    /// Unsubscribe from notifications for a specific HAL item
+    ///
+    /// Removes a previously registered callback. If the callback is not found
+    /// or the item doesn't exist, returns error.NotFound.
+    ///
+    /// Parameters:
+    ///   - item_name: Name of the pin/signal/param to stop watching
+    ///   - callback: Function to remove from subscriber list
+    ///
+    /// Returns:
+    ///   - void on success
+    ///   - error.NotFound if item or callback not found
+    ///
+    /// Thread safety:
+    ///   - Acquires mutex exclusively
+    ///   - Safe to call concurrently from multiple threads
+    ///
+    /// Example:
+    /// ```
+    /// try manager.unsubscribe("motion.digital-in-00", myCallback);
+    /// ```
+    pub fn unsubscribe(self: *SubscriptionManager, item_name: []const u8, callback: Callback) !void {
+        self.mutex.lock();
+        defer self.mutex.unlock();
+
+        // Find subscriber list for this item
+        const list = self.subscribers.get(item_name) orelse return error.NotFound;
+
+        // Find and remove the callback
+        var found = false;
+        for (list.items, 0..) |cb, i| {
+            if (cb == callback) {
+                _ = list.orderedRemove(i);
+                found = true;
+                break;
+            }
+        }
+
+        if (!found) return error.NotFound;
+
+        // If list is now empty, remove the entry from HashMap
+        if (list.items.len == 0) {
+            _ = self.subscribers.remove(item_name);
+            list.deinit();
+        }
+    }
 };
 
 // Compile-time tests to verify API surface
@@ -132,6 +219,10 @@ comptime {
 
     // Verify deinit is callable
     _ = SubscriptionManager.deinit;
+
+    // Verify subscribe/unsubscribe operations exist
+    _ = SubscriptionManager.subscribe;
+    _ = SubscriptionManager.unsubscribe;
 
     // Verify Callback type is a function pointer
     _ = Callback;
