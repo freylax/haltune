@@ -167,6 +167,34 @@ pub const StateStore = struct {
         try self.pins.put(name, value);
     }
 
+    /// Add a new pin to the cache
+    ///
+    /// This function adds a newly discovered pin to the cache with its initial value.
+    /// Used by the refresh thread when discovering pins from dynamically loaded components.
+    ///
+    /// Parameters:
+    ///   - name: Pin name to add
+    ///   - value: Initial value for the pin
+    ///
+    /// Returns:
+    ///   - void on success
+    ///   - error.OutOfMemory if allocator fails
+    ///
+    /// Thread safety:
+    ///   - Acquires exclusive lock (blocks all readers)
+    ///
+    /// Example:
+    /// ```
+    /// // Discovered new pin via HAL enumeration
+    /// try store.addPin("new-component.pin-0", .{.float = 0.0});
+    /// ```
+    pub fn addPin(self: *StateStore, name: []const u8, value: HalValue) !void {
+        self.rwlock.lock();
+        defer self.rwlock.unlock();
+
+        try self.pins.put(name, value);
+    }
+
     /// Get a signal value by name
     ///
     /// Retrieves the current value of a signal from the cache.
@@ -390,6 +418,7 @@ comptime {
     // Verify get/update operations exist
     _ = StateStore.getPin;
     _ = StateStore.updatePin;
+    _ = StateStore.addPin;
     _ = StateStore.getSignal;
     _ = StateStore.updateSignal;
     _ = StateStore.getParam;

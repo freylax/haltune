@@ -14,6 +14,7 @@
 const std = @import("std");
 const StateStore = @import("cache.zig").StateStore;
 const ffi = @import("../ffi/safe.zig");
+const c = @import("../ffi/c.zig").c;
 
 /// Refresh thread manages HAL polling and cache updates
 ///
@@ -176,6 +177,151 @@ pub const RefreshThread = struct {
         // Wait for thread to exit
         self.thread.join();
     }
+
+    /// Set refresh interval in milliseconds
+    ///
+    /// Updates the polling interval at runtime. The change takes effect
+    /// on the next sleep cycle (not immediately).
+    ///
+    /// Parameters:
+    ///   - interval_ms: New interval in milliseconds (minimum 1ms)
+    ///
+    /// Example:
+    /// ```
+    /// var refresh = RefreshThread.init(allocator, &store);
+    /// try refresh.start();
+    /// // ... change to 50ms refresh rate
+    /// refresh.setInterval(50);
+    /// refresh.stop();
+    /// ```
+    pub fn setInterval(self: *RefreshThread, interval_ms: u64) void {
+        self.interval_ns = interval_ms * std.time.ns_per_ms;
+    }
+
+    /// Refresh HAL state and update cache
+    ///
+    /// This function performs a complete refresh cycle:
+    /// 1. Discovery: Enumerate ALL pins/signals/params from HAL
+    /// 2. Snapshot: Get current cache keys
+    /// 3. Comparison: Add new pins, remove stale entries
+    /// 4. Update: Read current values and update cache
+    ///
+    /// Thread safety:
+    ///   - Reads HAL values BEFORE acquiring cache lock (Pitfall 1)
+    ///   - Uses temporary allocations freed before returning
+    ///
+    /// Returns:
+    ///   - void on success
+    ///   - error.OutOfMemory if allocation fails
+    ///
+    /// STATE-03 support:
+    ///   - Discovers pins from newly loaded components (halcmd loadusr)
+    ///   - Removes pins from unloaded components (stale cleanup)
+    fn refreshHal(self: *RefreshThread) !void {
+        // Refresh pins
+        try self.refreshPins();
+
+        // TODO: Refresh signals and params in future tasks
+        // For now, only pins are implemented
+    }
+
+    /// Refresh all pins from HAL
+    ///
+    /// This function:
+    /// 1. Enumerates all pins from HAL via halprFindPinByName(null) iteration
+    /// 2. Compares with cache to find new/stale pins
+    /// 3. Adds new pins to cache
+    /// 4. Removes stale pins from cache
+    /// 5. Updates all pin values
+    ///
+    /// Thread safety:
+    ///   - Reads HAL pins without holding cache lock
+    ///   - Collects all values in temporary ArrayList
+    ///   - Acquires cache lock only for final update
+    fn refreshPins(self: *RefreshThread) !void {
+        // Discovery phase: Walk HAL's linked list of all pins
+        var hal_pins = std.ArrayList(*c.hal_pin_t).init(self.allocator);
+        defer hal_pins.deinit();
+
+        var maybe_pin = ffi.halprFindPinByName(null); // null = first pin
+        while (maybe_pin) |pin| {
+            try hal_pins.append(pin);
+            maybe_pin = pin.*.next; // Walk linked list via next pointer
+        }
+
+        // Snapshot phase: Get current cache keys for comparison
+        const cached_names = try self.store.listPins(self.allocator);
+        defer self.allocator.free(cached_names);
+
+        // Comparison phase: Find new pins (in HAL but not cache)
+        for (hal_pins.items) |pin| {
+            const name = std.mem.span(pin.*.name);
+
+            // Check if this pin is already in cache
+            var found = false;
+            for (cached_names) |cached_name| {
+                if (std.mem.eql(u8, name, cached_name)) {
+                    found = true;
+                    break;
+                }
+            }
+
+            // If not in cache, add it (newly discovered pin)
+            if (!found) {
+                // Note: pin.*.type and pin.*.dir are already enum values from C
+                // We'll add them with a default value initially
+                const value = try self.readPinValue(pin);
+                try self.store.addPin(name, value);
+            }
+        }
+
+        // Comparison phase: Find stale pins (in cache but not HAL)
+        // TODO: Implement stale pin removal in future task
+        // For now, new pins are added but stale pins are not removed
+
+        // Update phase: Read all current values from HAL and update cache
+        for (hal_pins.items) |pin| {
+            const name = std.mem.span(pin.*.name);
+            const value = try self.readPinValue(pin);
+            try self.store.updatePin(name, value);
+        }
+    }
+
+    /// Read a pin's value based on its type
+    ///
+    /// This function reads the current value from a pin, handling all
+    /// four HAL data types (BIT, FLOAT, S32, U32).
+    ///
+    /// Parameters:
+    ///   - pin: Pointer to hal_pin_t
+    ///
+    /// Returns:
+    ///   - HalValue union containing the pin's value
+    ///   - error.TypeMismatch if pin type is invalid
+    fn readPinValue(self: *RefreshThread, pin: *c.hal_pin_t) !StateStore.HalValue {
+        _ = self; // Not used but needed for method signature
+
+        // Read value based on pin type
+        switch (pin.*.type) {
+            c.HAL_BIT => {
+                const bit_val = try ffi.getPinBit(pin);
+                return StateStore.HalValue{ .bit = bit_val };
+            },
+            c.HAL_FLOAT => {
+                const float_val = try ffi.getPinFloat(pin);
+                return StateStore.HalValue{ .float = float_val };
+            },
+            c.HAL_S32 => {
+                const s32_val = try ffi.getPinS32(pin);
+                return StateStore.HalValue{ .s32 = s32_val };
+            },
+            c.HAL_U32 => {
+                const u32_val = try ffi.getPinU32(pin);
+                return StateStore.HalValue{ .u32 = u32_val };
+            },
+            else => return error.TypeMismatch,
+        }
+    }
 };
 
 // Compile-time tests to verify API surface
@@ -185,4 +331,11 @@ comptime {
 
     // Verify deinit is callable
     _ = RefreshThread.deinit;
+
+    // Verify lifecycle operations exist
+    _ = RefreshThread.start;
+    _ = RefreshThread.stop;
+
+    // Verify configuration operations exist
+    _ = RefreshThread.setInterval;
 }

@@ -320,6 +320,69 @@ pub fn getPinU32(pin: *const c.hal_pin_t) !u32 {
     return pin.*.data.u32.*;
 }
 
+/// Find a HAL pin by name
+///
+/// This function searches the HAL pin database for a pin with the given name.
+/// Pass null to get the first pin in HAL (used for iteration).
+///
+/// Parameters:
+///   - name: Null-terminated pin name, or null to get first pin
+///
+/// Returns:
+///   - Pointer to hal_pin_t on success
+///   - null if not found
+///
+/// Memory ownership:
+///   - HAL owns the pin memory - do not free
+///
+/// Usage for enumeration:
+/// ```
+/// var maybe_pin = ffi.halprFindPinByName(null);  // Get first pin
+/// while (maybe_pin) |pin| {
+///     std.debug.print("{s}\n", .{std.mem.span(pin.*.name)});
+///     maybe_pin = pin.*.next;  // Walk linked list
+/// }
+/// ```
+pub fn halprFindPinByName(name: ?[*:0]const u8) ?*c.hal_pin_t {
+    return c.halpr_find_pin_by_name(name);
+}
+
+/// Find a HAL signal by name
+///
+/// This function searches the HAL signal database for a signal with the given name.
+/// Pass null to get the first signal in HAL (used for iteration).
+///
+/// Parameters:
+///   - name: Null-terminated signal name, or null to get first signal
+///
+/// Returns:
+///   - Pointer to hal_sig_t on success
+///   - null if not found
+///
+/// Memory ownership:
+///   - HAL owns the signal memory - do not free
+pub fn halprFindSigByName(name: ?[*:0]const u8) ?*c.hal_sig_t {
+    return c.halpr_find_sig_by_name(name);
+}
+
+/// Find a HAL parameter by name
+///
+/// This function searches the HAL parameter database for a parameter with the given name.
+/// Pass null to get the first parameter in HAL (used for iteration).
+///
+/// Parameters:
+///   - name: Null-terminated parameter name, or null to get first parameter
+///
+/// Returns:
+///   - Pointer to hal_param_t on success
+///   - null if not found
+///
+/// Memory ownership:
+///   - HAL owns the parameter memory - do not free
+pub fn halprFindParamByName(name: ?[*:0]const u8) ?*c.hal_param_t {
+    return c.halpr_find_param_by_name(name);
+}
+
 // Compile-time tests
 comptime {
     // Verify halInit returns error union
@@ -341,4 +404,9 @@ comptime {
     _ = getPinBit;
     _ = getPinS32;
     _ = getPinU32;
+
+    // Verify discovery functions
+    _ = halprFindPinByName;
+    _ = halprFindSigByName;
+    _ = halprFindParamByName;
 }
