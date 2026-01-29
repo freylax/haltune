@@ -6,33 +6,34 @@ See: .planning/PROJECT.md (updated 2025-01-28)
 
 **Core value:** Make LinuxCNC HAL manipulation and machine setup efficient through an intuitive TUI interface, replacing cryptic halcmd commands with structured workflows for machine configuration and tuning.
 
-**Current focus:** Phase 1: FFI Foundation
+**Current focus:** Phase 2: State Management
 
 ## Current Position
 
-Phase: 1 of 6 (FFI Foundation)
-Plan: 3 of 3 in current phase
-Status: Phase complete
-Last activity: 2026-01-29 — Completed 01-03-PLAN.md (Safe Pin Operations)
+Phase: 2 of 6 (State Management)
+Plan: 1 of 3 in current phase
+Status: In progress
+Last activity: 2026-01-29 — Completed 02-01-PLAN.md (State Cache)
 
-Progress: [██████████] 100%
+Progress: [███░░░░░░] 33%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 3
-- Average duration: 27.7 min
-- Total execution time: 1.4 hours
+- Total plans completed: 4
+- Average duration: 23.5 min
+- Total execution time: 1.5 hours
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 01-ffi-foundation | 3 | 3 | 27.7 min |
+| 02-state-management | 1 | 3 | 6.0 min |
 
 **Recent Trend:**
-- Last 5 plans: 27.7 min (01-01: 8.2min, 01-02: 66min, 01-03: 6min)
-- Trend: 01-03 was quick - pin operations built on solid FFI foundation from 01-02
+- Last 5 plans: 23.5 min avg (01-01: 8.2min, 01-02: 66min, 01-03: 6min, 02-01: 6min)
+- Trend: 02-01 was quick - state cache built directly on FFI foundation
 
 *Updated after each plan completion*
 
@@ -64,6 +65,13 @@ Recent decisions affecting current work:
 - HAL-allocated pin memory is never freed by Zig
 - C types used directly via @cImport wrappers (simpler than extern struct)
 
+**From 02-01 (State Cache):**
+- Single RwLock per StateStore (not per HashMap) - simpler lock hierarchy, prevents deadlock
+- Read operations use lockShared() - allows concurrent TUI access without blocking
+- Write operations use lock() - blocks all readers during atomic updates
+- List functions snapshot keys while holding lock, return owned slice - prevents iterator invalidation (RESEARCH.md Pitfall 3)
+- Never call HAL functions while holding rwlock - prevents deadlock with HAL mutex (RESEARCH.md Pitfall 1)
+
 ### Pending Todos
 
 None yet.
@@ -78,10 +86,13 @@ None yet.
 
 **From 01-03:**
 - None - pin operations complete with thread-safe mutex locking and leak-free tests
-- Ready to move to Phase 2 (TUI Foundation) or implement signal operations
+
+**From 02-01:**
+- None - state cache complete with thread-safe RwLock and HashMap snapshot pattern
+- Ready for refresh thread (02-02) to poll HAL and update cache
 
 ## Session Continuity
 
-Last session: 2026-01-29 (01-03 execution)
-Stopped at: Completed 01-03-PLAN.md (Safe Pin Operations), Phase 1 complete
+Last session: 2026-01-29 (02-01 execution)
+Stopped at: Completed 02-01-PLAN.md (State Cache)
 Resume file: None
