@@ -13,6 +13,7 @@
 const std = @import("std");
 const vxfw = @import("vaxis").vxfw;
 const StateStore = @import("../../state/cache.zig").StateStore;
+const glob = @import("glob");
 
 /// Node type enumeration
 pub const NodeType = enum {
@@ -101,6 +102,16 @@ pub const TreeView = struct {
     /// List of visible nodes (built during draw, respecting expand/collapse)
     visible_nodes: std.ArrayList(*Node),
 
+    /// Current search pattern (glob pattern for filtering)
+    /// Owned slice allocated by allocator
+    search_pattern: []const u8,
+
+    /// Whether search input mode is active
+    search_input: bool,
+
+    /// Buffer for building search patterns
+    search_buffer: std.ArrayList(u8),
+
     /// Initialize a new TreeView
     pub fn init(allocator: std.mem.Allocator, store: *StateStore) !TreeView {
         var tree_view = TreeView{
@@ -111,6 +122,9 @@ pub const TreeView = struct {
             .checked_items = std.StringHashMap(void).init(allocator),
             .cursor_index = 0,
             .visible_nodes = std.ArrayList(*Node).init(allocator),
+            .search_pattern = "",
+            .search_input = false,
+            .search_buffer = std.ArrayList(u8).init(allocator),
         };
 
         // Build the tree from HAL data
@@ -131,6 +145,9 @@ pub const TreeView = struct {
         self.expanded_nodes.deinit();
         self.checked_items.deinit();
         self.visible_nodes.deinit();
+
+        // Free search buffer
+        self.search_buffer.deinit();
     }
 
     /// Recursively free a node and its children
@@ -166,8 +183,13 @@ pub const TreeView = struct {
             component_map.deinit();
         };
 
-        // Group pins by component
+        // Group pins by component (filter by search pattern if set)
         for (pins) |pin_name| {
+            // Skip if search pattern is set and doesn't match
+            if (self.search_pattern.len > 0) {
+                if (!glob.match(self.search_pattern, pin_name)) continue;
+            }
+
             const component_name = try extractComponentName(self.allocator, pin_name);
             defer self.allocator.free(component_name);
 
@@ -178,8 +200,13 @@ pub const TreeView = struct {
             try gop.value_ptr.pins.append(pin_name);
         }
 
-        // Group signals by component
+        // Group signals by component (filter by search pattern if set)
         for (signals) |signal_name| {
+            // Skip if search pattern is set and doesn't match
+            if (self.search_pattern.len > 0) {
+                if (!glob.match(self.search_pattern, signal_name)) continue;
+            }
+
             const component_name = try extractComponentName(self.allocator, signal_name);
             defer self.allocator.free(component_name);
 
@@ -190,8 +217,13 @@ pub const TreeView = struct {
             try gop.value_ptr.signals.append(signal_name);
         }
 
-        // Group params by component
+        // Group params by component (filter by search pattern if set)
         for (params) |param_name| {
+            // Skip if search pattern is set and doesn't match
+            if (self.search_pattern.len > 0) {
+                if (!glob.match(self.search_pattern, param_name)) continue;
+            }
+
             const component_name = try extractComponentName(self.allocator, param_name);
             defer self.allocator.free(component_name);
 
@@ -290,6 +322,17 @@ pub const TreeView = struct {
         // Get maximum available size
         const max = ctx.max.size() orelse .{ .width = 25, .height = 24 };
 
+        // Build list of widgets
+        var widgets = std.ArrayList(vxfw.Widget).init(ctx.arena);
+        defer widgets.deinit();
+
+        // Show search input if in search mode
+        if (self.search_input) {
+            const search_text = try std.fmt.allocPrint(ctx.arena, "/{s}", .{self.search_pattern});
+            const search_style = vxfw.Style{ .bold = true, .fg = .{ .index = 3 } }; // Yellow
+            try widgets.append(vxfw.Text.asWidget(search_text, .{ .style = search_style }));
+        }
+
         // Clear and rebuild visible nodes list
         self.visible_nodes.clearRetainingCapacity();
         try self.buildVisibleNodes(&self.visible_nodes);
@@ -300,7 +343,6 @@ pub const TreeView = struct {
         }
 
         // Build text lines for each visible node
-        const lines = try ctx.arena.alloc(vxfw.TextWidget, self.visible_nodes.len);
         for (self.visible_nodes.items, 0..) |node, i| {
             const is_checked = self.checked_items.get(node.full_name) != null;
             const is_cursor = i == self.cursor_index;
@@ -324,15 +366,25 @@ pub const TreeView = struct {
             );
 
             // Create text widget with styling
-            lines[i] = vxfw.TextWidget.init(text);
+            // Highlight cursor line
+            const style = if (is_cursor) vxfw.Style{ .reverse = true } else vxfw.Style{};
+            try widgets.append(vxfw.Text.asWidget(text, .{ .style = style }));
         }
 
         // Create surface with all text widgets
+        const children = try ctx.arena.alloc(vxfw.SubSurface, widgets.items.len);
+        for (widgets.items, 0..) |widget, i| {
+            children[i] = .{
+                .origin = .{ .row = @intCast(i), .col = 0 },
+                .surface = try widget.draw(ctx),
+            };
+        }
+
         return .{
-            .size = max,
+            .size = .{ .width = max.width, .height = @intCast(widgets.items.len) },
             .widget = self.widget(),
             .buffer = &.{},
-            .children = &.{},
+            .children = children,
         };
     }
 
@@ -363,6 +415,71 @@ pub const TreeView = struct {
         switch (event) {
             // Handle key presses
             .key_press => |key| {
+                // Search input mode handling
+                if (self.search_input) {
+                    // Escape: exit search mode and clear pattern
+                    if (key.matches(vxfw.Key.escape, .{})) {
+                        self.search_input = false;
+                        self.search_buffer.clearRetainingCapacity();
+                        self.search_pattern = "";
+                        try self.buildTree();
+                        ctx.consumeAndRedraw();
+                        return;
+                    }
+
+                    // Enter: apply search pattern and exit input mode
+                    if (key.matches(vxfw.Key.enter, .{})) {
+                        self.search_input = false;
+                        // Keep search buffer as-is for pattern matching
+                        try self.buildTree(); // Rebuild tree with filter applied
+                        ctx.consumeAndRedraw();
+                        return;
+                    }
+
+                    // Backspace: remove last character from pattern
+                    if (key.codepoint == 127) { // ASCII DEL (backspace)
+                        if (self.search_buffer.items.len > 0) {
+                            // Find last UTF-8 code point start
+                            var i = self.search_buffer.items.len;
+                            while (i > 0) : (i -= 1) {
+                                if (self.search_buffer.items[i - 1] >> 6 != 0b10) {
+                                    // Found start of UTF-8 character
+                                    break;
+                                }
+                            }
+                            self.search_buffer.shrinkRetainingCapacity(i);
+                            self.search_pattern = self.search_buffer.items;
+                            try self.buildTree();
+                            ctx.consumeAndRedraw();
+                        }
+                        return;
+                    }
+
+                    // Regular character: add to search pattern
+                    if (key.codepoint >= 32 and key.codepoint < 127) {
+                        // Only accept printable ASCII
+                        const new_char = @as(u8, @intCast(key.codepoint));
+                        try self.search_buffer.append(new_char);
+                        self.search_pattern = self.search_buffer.items;
+                        try self.buildTree();
+                        ctx.consumeAndRedraw();
+                        return;
+                    }
+
+                    return; // Ignore other keys in search mode
+                }
+
+                // Normal mode handling
+
+                // "/": Enter search input mode
+                if (key.matches('/', .{})) {
+                    self.search_input = true;
+                    self.search_buffer.clearRetainingCapacity();
+                    self.search_pattern = "";
+                    ctx.consumeAndRedraw();
+                    return;
+                }
+
                 // Arrow Up: move cursor up
                 if (key.matches(vxfw.Key.up, .{})) {
                     if (self.cursor_index > 0) {
