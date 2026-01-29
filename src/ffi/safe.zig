@@ -343,7 +343,9 @@ pub fn halReady(comp_id: c_int) !void {
 /// }
 /// ```
 pub fn halprFindPinByName(name: ?[*:0]const u8) ?*hal_pin_t {
-    return @import("c.zig").halpr_find_pin_by_name(name);
+    const c = @import("c.zig");
+    const ptr = c.halpr_find_pin_by_name(name);
+    return if (ptr) |p| @ptrCast(?*hal_pin_t, p) else null;
 }
 
 /// Find a HAL signal by name
@@ -361,7 +363,9 @@ pub fn halprFindPinByName(name: ?[*:0]const u8) ?*hal_pin_t {
 /// Memory ownership:
 ///   - HAL owns the signal memory - do not free
 pub fn halprFindSigByName(name: ?[*:0]const u8) ?*hal_sig_t {
-    return @import("c.zig").halpr_find_sig_by_name(name);
+    const c = @import("c.zig");
+    const ptr = c.halpr_find_sig_by_name(name);
+    return if (ptr) |p| @ptrCast(?*hal_sig_t, p) else null;
 }
 
 /// Find a HAL parameter by name
@@ -379,7 +383,9 @@ pub fn halprFindSigByName(name: ?[*:0]const u8) ?*hal_sig_t {
 /// Memory ownership:
 ///   - HAL owns the parameter memory - do not free
 pub fn halprFindParamByName(name: ?[*:0]const u8) ?*hal_param_t {
-    return @import("c.zig").halpr_find_param_by_name(name);
+    const c = @import("c.zig");
+    const ptr = c.halpr_find_param_by_name(name);
+    return if (ptr) |p| @ptrCast(?*hal_param_t, p) else null;
 }
 
 /// Read from a HAL signal
