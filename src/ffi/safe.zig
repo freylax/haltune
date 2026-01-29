@@ -412,8 +412,8 @@ pub fn halprFindParamByName(name: ?[*:0]const u8) ?*hal_param_t {
 /// Thread safety:
 ///   - Does not acquire mutex (reads are lock-free)
 ///   - Value may be updated concurrently by HAL real-time thread
-pub fn getSignalValue(sig: *const hal_sig_t) !@import("state-cache").HalValue {
-    const HalValue = @import("state-cache").HalValue;
+pub fn getSignalValue(sig: *const hal_sig_t) !@import("../state/cache.zig").HalValue {
+    const HalValue = @import("../state/cache.zig").HalValue;
 
     // Read value based on signal type
     switch (sig.*.type) {
@@ -448,8 +448,8 @@ pub fn getSignalValue(sig: *const hal_sig_t) !@import("state-cache").HalValue {
 /// Thread safety:
 ///   - Does not acquire mutex (reads are lock-free)
 ///   - Value may be updated concurrently by HAL real-time thread
-pub fn getParamValue(param: *const hal_param_t) !@import("state-cache").HalValue {
-    const HalValue = @import("state-cache").HalValue;
+pub fn getParamValue(param: *const hal_param_t) !@import("../state/cache.zig").HalValue {
+    const HalValue = @import("../state/cache.zig").HalValue;
 
     // Read value based on parameter type
     switch (param.*.type) {
