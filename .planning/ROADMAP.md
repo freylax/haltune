@@ -36,12 +36,12 @@ Decimal phases appear between their surrounding integers in numeric order.
 4. HAL mutex lock/unlock is correctly paired for all write operations (no deadlocks or data races in multi-threaded scenarios)
 5. Code compiles against both LinuxCNC 2.9.7+ and 2.10 APIs without breaking changes
 
-**Plans**: TBD
+**Plans:** 3 plans in 3 waves
 
 Plans:
-- [ ] 01-01: TBD
-- [ ] 01-02: TBD
-- [ ] 01-03: TBD
+- [ ] 01-01-PLAN.md — Create build.zig, src/root.zig, src/ffi/c.zig (project scaffolding and C header imports)
+- [ ] 01-02-PLAN.md — Create src/ffi/types.zig, src/ffi/errors.zig, src/ffi/safe.zig (types, errors, and init/exit wrappers)
+- [ ] 01-03-PLAN.md — Pin wrapper functions with mutex locking and unit tests with leak detection
 
 ### Phase 2: State Management
 
@@ -162,7 +162,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. FFI Foundation | 0/0 | Not started | - |
+| 1. FFI Foundation | 0/3 | Planned, ready to execute | - |
 | 2. State Management | 0/0 | Not started | - |
 | 3. TUI Core | 0/0 | Not started | - |
 | 4. Configuration & Editing | 0/0 | Not started | - |
