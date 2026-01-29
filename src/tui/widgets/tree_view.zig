@@ -352,16 +352,86 @@ pub const TreeView = struct {
         }
     }
 
-    /// Event handler placeholder (will implement in Task 3)
+    /// Event handler for keyboard navigation and interaction
     fn typeErasedEventHandler(
         ptr: *anyopaque,
         ctx: *vxfw.EventContext,
         event: vxfw.Event,
     ) anyerror!void {
-        _ = ptr;
-        _ = ctx;
-        _ = event;
-        // Placeholder - will implement in Task 3
+        const self: *TreeView = @ptrCast(@alignCast(ptr));
+
+        switch (event) {
+            // Handle key presses
+            .key_press => |key| {
+                // Arrow Up: move cursor up
+                if (key.matches(vxfw.Key.up, .{})) {
+                    if (self.cursor_index > 0) {
+                        self.cursor_index -= 1;
+                        ctx.consumeAndRedraw();
+                    }
+                    return;
+                }
+
+                // Arrow Down: move cursor down
+                if (key.matches(vxfw.Key.down, .{})) {
+                    if (self.cursor_index < self.visible_nodes.len - 1) {
+                        self.cursor_index += 1;
+                        ctx.consumeAndRedraw();
+                    }
+                    return;
+                }
+
+                // Enter: toggle expand/collapse or toggle checkbox
+                if (key.matches(vxfw.Key.enter, .{})) {
+                    if (self.visible_nodes.items.len > 0) {
+                        const node = self.visible_nodes.items[self.cursor_index];
+
+                        // For component nodes: toggle expand/collapse
+                        if (node.isExpandable()) {
+                            const gop = try self.expanded_nodes.getOrPut(node.full_name);
+                            if (gop.found_existing) {
+                                // Collapse: remove from expanded set
+                                self.expanded_nodes.remove(node.full_name);
+                            } else {
+                                // Expand: add to expanded set
+                                gop.value_ptr.* = {};
+                            }
+                            ctx.consumeAndRedraw();
+                            return;
+                        }
+
+                        // For leaf nodes: toggle checkbox
+                        try self.toggleCheckbox(node.full_name);
+                        ctx.consumeAndRedraw();
+                        return;
+                    }
+                }
+
+                // Space: toggle checkbox for current node
+                if (key.matches(' ', .{})) {
+                    if (self.visible_nodes.items.len > 0) {
+                        const node = self.visible_nodes.items[self.cursor_index];
+                        try self.toggleCheckbox(node.full_name);
+                        ctx.consumeAndRedraw();
+                        return;
+                    }
+                }
+            },
+
+            else => {},
+        }
+    }
+
+    /// Toggle checkbox state for an item
+    fn toggleCheckbox(self: *TreeView, full_name: []const u8) !void {
+        const gop = try self.checked_items.getOrPut(full_name);
+        if (gop.found_existing) {
+            // Uncheck: remove from checked set
+            self.checked_items.remove(full_name);
+        } else {
+            // Check: add to checked set
+            gop.value_ptr.* = {};
+        }
     }
 };
 
