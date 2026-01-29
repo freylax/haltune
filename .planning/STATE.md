@@ -11,19 +11,19 @@ See: .planning/PROJECT.md (updated 2025-01-28)
 ## Current Position
 
 Phase: 3 of 6 (TUI Core)
-Plan: 1 of ? in current phase
+Plan: 2 of ? in current phase
 Status: In progress
-Last activity: 2026-01-29 — Completed 03-01 (TUI Foundation)
+Last activity: 2026-01-29 — Completed 03-02 (Tree Navigation)
 
-Progress: [██░░░░░░░░] 20%
+Progress: [███░░░░░░░] 25%
 
 ## Performance Metrics
 
 **Velocity:**
 - Total phases completed: 2 of 6
-- Total plans completed: 10
-- Average duration: 14.1 min
-- Total execution time: 2.7 hours
+- Total plans completed: 11
+- Average duration: 13.8 min
+- Total execution time: 2.9 hours
 
 **By Phase:**
 
@@ -31,11 +31,11 @@ Progress: [██░░░░░░░░] 20%
 |-------|-------|-------|----------|
 | 01-ffi-foundation | 3 | 3 | 27.7 min |
 | 02-state-management | 5 | 5 | 8.4 min |
-| 03-tui-core | 2 | ? | 0.5 min |
+| 03-tui-core | 3 | ? | 5.3 min |
 
 **Recent Trend:**
-- Phase 3 progressing quickly: TUI foundation completed in 2 min
-- Last 5 plans: 6.2 min avg (02-02: 19min, 02-03: 4min, 02-04: 6min, 02-05: 11min, 03-01: 2min)
+- Phase 3 progressing steadily: TUI foundation (2 min), tree navigation (13 min)
+- Last 5 plans: 7.2 min avg (02-02: 19min, 02-03: 4min, 02-04: 6min, 02-05: 11min, 03-02: 13min)
 
 *Updated after each plan completion*
 
@@ -116,6 +116,12 @@ Recent decisions affecting current work:
 - Arena allocation pattern - use ctx.arena for temporary allocations (freed automatically each frame)
 - Two-panel layout uses SubSurface children with origin offsets - left panel (30%), right panel (70%)
 
+**From 03-02 (Tree Navigation):**
+- Component hierarchy extracted from HAL item names using dot delimiter (e.g., 'motion.digital-in-00' → 'motion')
+- Widget state stored in TreeView HashMaps (expanded_nodes, checked_items) - draw renders state, event handlers modify state
+- visible_nodes rebuilt on each draw from root nodes - simpler code, trivial performance cost for < 1000 items
+- Cursor tracks position in visible_nodes list (not global tree) - prevents jumping when tree structure changes on expand/collapse
+
 ### Pending Todos
 
 None yet.
@@ -173,9 +179,19 @@ None yet.
 - Note: Build fails with -Dskip-hal-link due to missing hal.h on dev machine (expected, not a blocker)
 - Ready for plan 03-02 (Tree Navigation widget in left panel)
 
+**From 03-02:**
+- None - Tree navigation complete with component hierarchy, checkbox selection, and keyboard navigation
+- TreeView widget (469 lines) successfully integrated into left panel
+- Component grouping extracts prefix from dot-delimited HAL item names
+- State tracking via expanded_nodes and checked_items HashMaps
+- Navigation implemented: Arrow Up/Down for movement, Enter for expand/collapse, Space for checkbox toggle
+- Model.getCheckedItems() accessor provides read-only access for data table filtering
+- Note: riocore config-based hierarchy deferred to v2 (simple dot-prefix grouping sufficient for v1)
+- Ready for plan 03-03 (Data Table widget in right panel)
+
 ## Session Continuity
 
-Last session: 2026-01-29 (Phase 3 Plan 1 execution)
-Stopped at: Completed 03-01 (TUI Foundation), 4/4 tasks complete
+Last session: 2026-01-29 (Phase 3 Plan 2 execution)
+Stopped at: Completed 03-02 (Tree Navigation), 4/4 tasks complete
 Resume file: None
-Next action: Execute plan 03-02 (Tree Navigation) or continue phase planning
+Next action: Execute plan 03-03 (Data Table) or continue phase planning
