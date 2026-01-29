@@ -229,6 +229,27 @@ pub const Model = struct {
                     return;
                 }
 
+                // 'n' to open signal creation dialog
+                if (key.matches('n', .{}) and !self.signal_dialog.visible) {
+                    self.openSignalDialog() catch |err| {
+                        std.log.err("Failed to open signal dialog: {}", .{err});
+                    };
+                    ctx.consumeAndRedraw();
+                    return;
+                }
+
+                // Pass key to signal dialog if visible
+                if (self.signal_dialog.visible) {
+                    const handled = self.signal_dialog.handleKey(key) catch |err| {
+                        std.log.err("Signal dialog key error: {}", .{err});
+                        return false;
+                    };
+                    if (handled) {
+                        ctx.consumeAndRedraw();
+                        return;
+                    }
+                }
+
                 // Check if redraw flag is set (value changed via pubsub)
                 if (self.redraw_flag.load(.acquire)) {
                     ctx.consumeAndRedraw();
