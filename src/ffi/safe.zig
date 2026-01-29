@@ -137,7 +137,7 @@ pub fn halReady(comp_id: c_int) !void {
 /// const value = pin.*;  // Read value
 /// ```
 pub fn pinFloatNew(comp_id: c_int, name: [:0]const u8, dir: hal_pin_dir_t) ![*c]volatile f64 {
-    var pin_ptr: [*c]volatile f64 = undefined;
+    var pin_ptr: [*c]volatile f64 = null;
     const rc = c.hal_pin_float_new(name, @intFromEnum(dir), &pin_ptr, comp_id);
     if (rc != 0) return HalError.InitFailed;
     return pin_ptr;
@@ -156,7 +156,7 @@ pub fn pinFloatNew(comp_id: c_int, name: [:0]const u8, dir: hal_pin_dir_t) ![*c]
 ///   - Pointer to pin data (use for reading/writing)
 ///   - error.InitFailed if pin creation fails
 pub fn pinBitNew(comp_id: c_int, name: [:0]const u8, dir: hal_pin_dir_t) ![*c]volatile u8 {
-    var pin_ptr: [*c]volatile u8 = undefined;
+    var pin_ptr: [*c]volatile u8 = null;
     const rc = c.hal_pin_bit_new(name, @intFromEnum(dir), &pin_ptr, comp_id);
     if (rc != 0) return HalError.InitFailed;
     return pin_ptr;
@@ -166,7 +166,7 @@ pub fn pinBitNew(comp_id: c_int, name: [:0]const u8, dir: hal_pin_dir_t) ![*c]vo
 ///
 /// This function creates a new signed 32-bit integer pin in the HAL.
 pub fn pinS32New(comp_id: c_int, name: [:0]const u8, dir: hal_pin_dir_t) ![*c]volatile i32 {
-    var pin_ptr: [*c]volatile i32 = undefined;
+    var pin_ptr: [*c]volatile i32 = null;
     const rc = c.hal_pin_s32_new(name, @intFromEnum(dir), &pin_ptr, comp_id);
     if (rc != 0) return HalError.InitFailed;
     return pin_ptr;
@@ -176,7 +176,7 @@ pub fn pinS32New(comp_id: c_int, name: [:0]const u8, dir: hal_pin_dir_t) ![*c]vo
 ///
 /// This function creates a new unsigned 32-bit integer pin in the HAL.
 pub fn pinU32New(comp_id: c_int, name: [:0]const u8, dir: hal_pin_dir_t) ![*c]volatile u32 {
-    var pin_ptr: [*c]volatile u32 = undefined;
+    var pin_ptr: [*c]volatile u32 = null;
     const rc = c.hal_pin_u32_new(name, @intFromEnum(dir), &pin_ptr, comp_id);
     if (rc != 0) return HalError.InitFailed;
     return pin_ptr;
