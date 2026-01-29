@@ -107,6 +107,153 @@ pub const StateStore = struct {
         self.params.deinit();
         self.* = undefined;
     }
+
+    /// Get a pin value by name
+    ///
+    /// Retrieves the current value of a pin from the cache.
+    /// Multiple TUI threads can call this simultaneously.
+    ///
+    /// Parameters:
+    ///   - name: Pin name to look up (e.g., "motion.digital-in-00")
+    ///
+    /// Returns:
+    ///   - HalValue on success
+    ///   - error.NotFound if pin doesn't exist in cache
+    ///
+    /// Thread safety:
+    ///   - Acquires shared lock (allows concurrent reads)
+    ///
+    /// Example:
+    /// ```
+    /// const value = try store.getPin("motion.digital-in-00");
+    /// std.debug.print("Pin value: {}\n", .{value});
+    /// ```
+    pub fn getPin(self: *StateStore, name: []const u8) !HalValue {
+        self.rwlock.lockShared();
+        defer self.rwlock.unlockShared();
+
+        return self.pins.get(name) orelse return error.NotFound;
+    }
+
+    /// Update a pin value in the cache
+    ///
+    /// Stores or updates a pin value. Called by refresh thread
+    /// after reading from HAL.
+    ///
+    /// Parameters:
+    ///   - name: Pin name to update
+    ///   - value: New value to store
+    ///
+    /// Returns:
+    ///   - void on success
+    ///   - error.OutOfMemory if allocator fails
+    ///
+    /// Thread safety:
+    ///   - Acquires exclusive lock (blocks all readers)
+    ///   - IMPORTANT: Call HAL functions BEFORE acquiring lock
+    ///
+    /// Example:
+    /// ```
+    /// // Read from HAL first (no lock held)
+    /// const pin_value = try ffi.getPinFloat(pin);
+    ///
+    /// // Then update cache with lock
+    /// try store.updatePin("motion.digital-in-00", .{.float = pin_value});
+    /// ```
+    pub fn updatePin(self: *StateStore, name: []const u8, value: HalValue) !void {
+        self.rwlock.lock();
+        defer self.rwlock.unlock();
+
+        try self.pins.put(name, value);
+    }
+
+    /// Get a signal value by name
+    ///
+    /// Retrieves the current value of a signal from the cache.
+    /// Multiple TUI threads can call this simultaneously.
+    ///
+    /// Parameters:
+    ///   - name: Signal name to look up
+    ///
+    /// Returns:
+    ///   - HalValue on success
+    ///   - error.NotFound if signal doesn't exist in cache
+    ///
+    /// Thread safety:
+    ///   - Acquires shared lock (allows concurrent reads)
+    pub fn getSignal(self: *StateStore, name: []const u8) !HalValue {
+        self.rwlock.lockShared();
+        defer self.rwlock.unlockShared();
+
+        return self.signals.get(name) orelse return error.NotFound;
+    }
+
+    /// Update a signal value in the cache
+    ///
+    /// Stores or updates a signal value. Called by refresh thread
+    /// after reading from HAL.
+    ///
+    /// Parameters:
+    ///   - name: Signal name to update
+    ///   - value: New value to store
+    ///
+    /// Returns:
+    ///   - void on success
+    ///   - error.OutOfMemory if allocator fails
+    ///
+    /// Thread safety:
+    ///   - Acquires exclusive lock (blocks all readers)
+    ///   - IMPORTANT: Call HAL functions BEFORE acquiring lock
+    pub fn updateSignal(self: *StateStore, name: []const u8, value: HalValue) !void {
+        self.rwlock.lock();
+        defer self.rwlock.unlock();
+
+        try self.signals.put(name, value);
+    }
+
+    /// Get a parameter value by name
+    ///
+    /// Retrieves the current value of a parameter from the cache.
+    /// Multiple TUI threads can call this simultaneously.
+    ///
+    /// Parameters:
+    ///   - name: Parameter name to look up
+    ///
+    /// Returns:
+    ///   - HalValue on success
+    ///   - error.NotFound if parameter doesn't exist in cache
+    ///
+    /// Thread safety:
+    ///   - Acquires shared lock (allows concurrent reads)
+    pub fn getParam(self: *StateStore, name: []const u8) !HalValue {
+        self.rwlock.lockShared();
+        defer self.rwlock.unlockShared();
+
+        return self.params.get(name) orelse return error.NotFound;
+    }
+
+    /// Update a parameter value in the cache
+    ///
+    /// Stores or updates a parameter value. Called by refresh thread
+    /// after reading from HAL.
+    ///
+    /// Parameters:
+    ///   - name: Parameter name to update
+    ///   - value: New value to store
+    ///
+    /// Returns:
+    ///   - void on success
+    ///   - error.OutOfMemory if allocator fails
+    ///
+    /// Thread safety:
+    ///   - Acquires exclusive lock (blocks all readers)
+    ///   - IMPORTANT: Call HAL functions BEFORE acquiring lock
+    pub fn updateParam(self: *StateStore, name: []const u8, value: HalValue) !void {
+        self.rwlock.lock();
+        defer self.rwlock.unlock();
+
+        try self.params.put(name, value);
+    }
 };
 
 // Compile-time tests to verify API surface
@@ -116,6 +263,14 @@ comptime {
 
     // Verify deinit is callable
     _ = StateStore.deinit;
+
+    // Verify get/update operations exist
+    _ = StateStore.getPin;
+    _ = StateStore.updatePin;
+    _ = StateStore.getSignal;
+    _ = StateStore.updateSignal;
+    _ = StateStore.getParam;
+    _ = StateStore.updateParam;
 
     // Verify HalValue union has all expected fields
     _ = HalValue.bit;
