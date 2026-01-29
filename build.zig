@@ -53,4 +53,33 @@ pub fn build(b: *std.Build) void {
 
     const run_step = b.step("run", "Run the app");
     run_step.dependOn(&run_cmd.step);
+
+    // ===== Test Configuration =====
+
+    // Create test module
+    const test_module = b.createModule(.{
+        .root_source_file = b.path("tests/ffi/pin_test.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+
+    // Add LinuxCNC HAL include path for @cImport
+    test_module.addIncludePath(.{ .cwd_relative = linuxcnc_include });
+
+    // Create test executable
+    const test_exe = b.addTest(.{
+        .root_module = test_module,
+    });
+
+    // Link test against LinuxCNC HAL library
+    if (!skip_hal_link) {
+        test_exe.linkSystemLibrary("hal");
+        test_exe.linkSystemLibrary("rt");
+    }
+
+    // Create test step
+    const run_test = b.addRunArtifact(test_exe);
+
+    const test_step = b.step("test", "Run all tests");
+    test_step.dependOn(&run_test.step);
 }
