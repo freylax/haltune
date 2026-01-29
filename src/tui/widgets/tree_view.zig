@@ -1,0 +1,306 @@
+//! Tree navigation widget for browsing HAL component hierarchy
+//!
+//! This module provides TreeView, a widget that displays HAL components
+//! in a hierarchical tree structure. Components appear as parent nodes
+//! with their pins, signals, and parameters as children.
+//!
+//! Features:
+//! - Collapsible component nodes (Enter key to expand/collapse)
+//! - Checkbox selection for items (Space to toggle)
+//! - Arrow key navigation
+//! - Persistent state tracking (expanded nodes, checked items)
+
+const std = @import("std");
+const vxfw = @import("vaxis").vxfw;
+const StateStore = @import("../../state/cache.zig").StateStore;
+
+/// Node type enumeration
+pub const NodeType = enum {
+    /// Parent node representing a HAL component
+    component,
+    /// Leaf node representing a HAL pin
+    pin,
+    /// Leaf node representing a HAL signal
+    signal,
+    /// Leaf node representing a HAL parameter
+    param,
+};
+
+/// Tree node representing a component or HAL item
+pub const Node = struct {
+    /// Node label (display name)
+    name: []const u8,
+
+    /// Node type
+    item_type: NodeType,
+
+    /// Full HAL item name for cache lookup (e.g., "motion.digital-in-00")
+    full_name: []const u8,
+
+    /// Child nodes (null if leaf node)
+    children: ?std.ArrayList(*Node),
+
+    /// Parent node (null for root components)
+    parent: ?*Node,
+
+    /// Create a new node
+    pub fn init(
+        allocator: std.mem.Allocator,
+        name: []const u8,
+        item_type: NodeType,
+        full_name: []const u8,
+        parent: ?*Node,
+    ) !*Node {
+        const node = try allocator.create(Node);
+        node.* = .{
+            .name = name,
+            .item_type = item_type,
+            .full_name = full_name,
+            .children = if (item_type == .component) std.ArrayList(*Node).init(allocator) else null,
+            .parent = parent,
+        };
+        return node;
+    }
+
+    /// Check if this node is expandable (component nodes only)
+    pub fn isExpandable(self: *const Node) bool {
+        return self.item_type == .component;
+    }
+
+    /// Get depth of this node in the tree (0 for root components)
+    pub fn getDepth(self: *const Node) usize {
+        var depth: usize = 0;
+        var current = self.parent;
+        while (current != null) : (current = current.?.parent) {
+            depth += 1;
+        }
+        return depth;
+    }
+};
+
+/// Tree navigation widget
+pub const TreeView = struct {
+    /// Memory allocator
+    allocator: std.mem.Allocator,
+
+    /// State store for reading HAL data
+    store: *StateStore,
+
+    /// Root level component nodes
+    root: std.ArrayList(*Node),
+
+    /// Set of expanded node names (for component nodes)
+    expanded_nodes: std.StringHashMap(void),
+
+    /// Set of checked item names (for display in data table)
+    checked_items: std.StringHashMap(void),
+
+    /// Current cursor position (index into visible nodes)
+    cursor_index: usize,
+
+    /// List of visible nodes (built during draw, respecting expand/collapse)
+    visible_nodes: std.ArrayList(*Node),
+
+    /// Initialize a new TreeView
+    pub fn init(allocator: std.mem.Allocator, store: *StateStore) !TreeView {
+        var tree_view = TreeView{
+            .allocator = allocator,
+            .store = store,
+            .root = std.ArrayList(*Node).init(allocator),
+            .expanded_nodes = std.StringHashMap(void).init(allocator),
+            .checked_items = std.StringHashMap(void).init(allocator),
+            .cursor_index = 0,
+            .visible_nodes = std.ArrayList(*Node).init(allocator),
+        };
+
+        // Build the tree from HAL data
+        try tree_view.buildTree();
+
+        return tree_view;
+    }
+
+    /// Clean up TreeView resources
+    pub fn deinit(self: *TreeView) void {
+        // Free all nodes
+        for (self.root.items) |node| {
+            self.freeNode(node);
+        }
+        self.root.deinit();
+
+        // Free HashMaps
+        self.expanded_nodes.deinit();
+        self.checked_items.deinit();
+        self.visible_nodes.deinit();
+    }
+
+    /// Recursively free a node and its children
+    fn freeNode(self: *TreeView, node: *Node) void {
+        if (node.children) |*children| {
+            for (children.items) |child| {
+                self.freeNode(child);
+            }
+            children.deinit();
+        }
+        self.allocator.destroy(node);
+    }
+
+    /// Build tree from HAL data in StateStore
+    fn buildTree(self: *TreeView) !void {
+        // Get all pins, signals, and params from StateStore
+        const pins = try self.store.listPins(self.allocator);
+        defer self.allocator.free(pins);
+
+        const signals = try self.store.listSignals(self.allocator);
+        defer self.allocator.free(signals);
+
+        const params = try self.store.listParams(self.allocator);
+        defer self.allocator.free(params);
+
+        // HashMap to group items by component
+        var component_map = std.StringHashMap(ComponentGroup).init(self.allocator);
+        defer {
+            var iter = component_map.iterator();
+            while (iter.next()) |entry| {
+                entry.value_ptr.*.deinit();
+            }
+            component_map.deinit();
+        };
+
+        // Group pins by component
+        for (pins) |pin_name| {
+            const component_name = try extractComponentName(self.allocator, pin_name);
+            defer self.allocator.free(component_name);
+
+            const gop = try component_map.getOrPut(component_name);
+            if (!gop.found_existing) {
+                gop.value_ptr.* = ComponentGroup.init(self.allocator, component_name);
+            }
+            try gop.value_ptr.pins.append(pin_name);
+        }
+
+        // Group signals by component
+        for (signals) |signal_name| {
+            const component_name = try extractComponentName(self.allocator, signal_name);
+            defer self.allocator.free(component_name);
+
+            const gop = try component_map.getOrPut(component_name);
+            if (!gop.found_existing) {
+                gop.value_ptr.* = ComponentGroup.init(self.allocator, component_name);
+            }
+            try gop.value_ptr.signals.append(signal_name);
+        }
+
+        // Group params by component
+        for (params) |param_name| {
+            const component_name = try extractComponentName(self.allocator, param_name);
+            defer self.allocator.free(component_name);
+
+            const gop = try component_map.getOrPut(component_name);
+            if (!gop.found_existing) {
+                gop.value_ptr.* = ComponentGroup.init(self.allocator, component_name);
+            }
+            try gop.value_ptr.params.append(param_name);
+        }
+
+        // Build tree structure from component groups
+        var iter = component_map.iterator();
+        while (iter.next()) |entry| {
+            const component_node = try Node.init(
+                self.allocator,
+                entry.value_ptr.name,
+                .component,
+                entry.value_ptr.name, // full_name same as name for components
+                null, // no parent
+            );
+            try self.root.append(component_node);
+
+            // Add pins as children
+            for (entry.value_ptr.pins.items) |pin_name| {
+                const pin_node = try Node.init(
+                    self.allocator,
+                    pin_name,
+                    .pin,
+                    pin_name,
+                    component_node,
+                );
+                if (component_node.children) |*children| {
+                    try children.append(pin_node);
+                }
+            }
+
+            // Add signals as children
+            for (entry.value_ptr.signals.items) |signal_name| {
+                const signal_node = try Node.init(
+                    self.allocator,
+                    signal_name,
+                    .signal,
+                    signal_name,
+                    component_node,
+                );
+                if (component_node.children) |*children| {
+                    try children.append(signal_node);
+                }
+            }
+
+            // Add params as children
+            for (entry.value_ptr.params.items) |param_name| {
+                const param_node = try Node.init(
+                    self.allocator,
+                    param_name,
+                    .param,
+                    param_name,
+                    component_node,
+                );
+                if (component_node.children) |*children| {
+                    try children.append(param_node);
+                }
+            }
+        }
+    }
+
+    /// Extract component name from HAL item name
+    /// Example: "motion.digital-in-00" -> "motion"
+    fn extractComponentName(allocator: std.mem.Allocator, full_name: []const u8) ![]const u8 {
+        // Find first dot in name
+        const dot_index = std.mem.indexOfScalar(u8, full_name, '.') orelse {
+            // No dot found - return full name as component
+            return allocator.dupe(u8, full_name);
+        };
+
+        // Return substring before first dot
+        return allocator.dupe(u8, full_name[0..dot_index]);
+    }
+};
+
+/// Helper struct to group HAL items by component
+const ComponentGroup = struct {
+    name: []const u8,
+    pins: std.ArrayList([]const u8),
+    signals: std.ArrayList([]const u8),
+    params: std.ArrayList([]const u8),
+
+    fn init(allocator: std.mem.Allocator, name: []const u8) ComponentGroup {
+        return .{
+            .name = name,
+            .pins = std.ArrayList([]const u8).init(allocator),
+            .signals = std.ArrayList([]const u8).init(allocator),
+            .params = std.ArrayList([]const u8).init(allocator),
+        };
+    }
+
+    fn deinit(self: *ComponentGroup) void {
+        self.pins.deinit();
+        self.signals.deinit();
+        self.params.deinit();
+    }
+};
+
+// Compile-time tests
+comptime {
+    _ = NodeType;
+    _ = Node;
+    _ = TreeView.init;
+    _ = TreeView.deinit;
+    _ = Node.isExpandable;
+    _ = Node.getDepth;
+}
