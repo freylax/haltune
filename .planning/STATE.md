@@ -11,19 +11,19 @@ See: .planning/PROJECT.md (updated 2025-01-28)
 ## Current Position
 
 Phase: 3 of 6 (TUI Core)
-Plan: 2 of ? in current phase
+Plan: 3 of 5 in current phase
 Status: In progress
-Last activity: 2026-01-29 — Completed 03-02 (Tree Navigation)
+Last activity: 2026-01-29 — Completed 03-03 (Data Table with Real-Time Updates)
 
-Progress: [███░░░░░░░] 25%
+Progress: [████░░░░░░] 30%
 
 ## Performance Metrics
 
 **Velocity:**
 - Total phases completed: 2 of 6
-- Total plans completed: 11
-- Average duration: 13.8 min
-- Total execution time: 2.9 hours
+- Total plans completed: 12
+- Average duration: 12.8 min
+- Total execution time: 3.1 hours
 
 **By Phase:**
 
@@ -31,11 +31,11 @@ Progress: [███░░░░░░░] 25%
 |-------|-------|-------|----------|
 | 01-ffi-foundation | 3 | 3 | 27.7 min |
 | 02-state-management | 5 | 5 | 8.4 min |
-| 03-tui-core | 3 | ? | 5.3 min |
+| 03-tui-core | 4 | 5 | 5.3 min |
 
 **Recent Trend:**
-- Phase 3 progressing steadily: TUI foundation (2 min), tree navigation (13 min)
-- Last 5 plans: 7.2 min avg (02-02: 19min, 02-03: 4min, 02-04: 6min, 02-05: 11min, 03-02: 13min)
+- Phase 3 progressing quickly: TUI foundation (2 min), tree navigation (13 min), data table (5 min)
+- Last 5 plans: 6.8 min avg (02-02: 19min, 02-03: 4min, 02-04: 6min, 02-05: 11min, 03-03: 5min)
 
 *Updated after each plan completion*
 
@@ -122,6 +122,13 @@ Recent decisions affecting current work:
 - visible_nodes rebuilt on each draw from root nodes - simpler code, trivial performance cost for < 1000 items
 - Cursor tracks position in visible_nodes list (not global tree) - prevents jumping when tree structure changes on expand/collapse
 
+**From 03-03 (Data Table with Real-Time Updates):**
+- Use global variable (GLOBAL_REDRAW_FLAG) for pubsub callback access - simpler than closure capture in Zig's function pointers
+- Determine editability via name heuristics for now (direction not in cache yet) - pins with "-out" or "-io" are OUT/I/O, all params assumed writable
+- Read values from StateStore cache (lock-free) instead of calling HAL FFI directly - prevents blocking TUI thread
+- Pubsub-driven redraws - SubscriptionManager callbacks set redraw_flag, key_press handler checks flag and calls ctx.consumeAndRedraw()
+- Color-coded editability indicators - green (index 2) for editable items, dim gray (index 8) for read-only items
+
 ### Pending Todos
 
 None yet.
@@ -189,9 +196,19 @@ None yet.
 - Note: riocore config-based hierarchy deferred to v2 (simple dot-prefix grouping sufficient for v1)
 - Ready for plan 03-03 (Data Table widget in right panel)
 
+**From 03-03:**
+- None - Data table complete with real-time updates, color indicators, and RefreshThread integration
+- DataTable widget (371 lines) displays checked items with Name, Type, Direction, Value columns
+- Real-time value updates via SubscriptionManager pubsub notifications trigger atomic redraw_flag
+- Color-coded editability: green (editable), dim gray (read-only) based on name heuristics
+- RefreshThread starts on .init event, stops cleanly on app shutdown
+- Table integrated into right panel (70% width) via createRightPanel()
+- Model.updateTable() method available for syncing when tree selection changes
+- Ready for plan 03-04 (Search, Filter, and In-Place Editing)
+
 ## Session Continuity
 
-Last session: 2026-01-29 (Phase 3 Plan 2 execution)
-Stopped at: Completed 03-02 (Tree Navigation), 4/4 tasks complete
+Last session: 2026-01-29 (Phase 3 Plan 3 execution)
+Stopped at: Completed 03-03 (Data Table with Real-Time Updates), 4/4 tasks complete
 Resume file: None
-Next action: Execute plan 03-03 (Data Table) or continue phase planning
+Next action: Execute plan 03-04 (Search, Filter, and In-Place Editing) or continue phase planning
