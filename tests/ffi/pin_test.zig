@@ -12,11 +12,11 @@ const c = @import("ffi/c.zig").c;
 const safe = @import("ffi/safe.zig");
 const hal_pin_dir_t = @import("ffi/types.zig").hal_pin_dir_t;
 
-// Helper function to initialize HAL for testing
+// Helper function to initialize HAL for testing (does NOT call hal_ready)
 fn initTestComponent() !c_int {
     const comp_id = try safe.halInit("pin-test-component");
-    errdefer safe.halExit(comp_id);
-    _ = try safe.halReady(comp_id);
+    // Note: Do NOT call hal_ready here - pins must be created before hal_ready
+    // The caller is responsible for calling halReady after creating pins
     return comp_id;
 }
 
@@ -24,8 +24,11 @@ test "pinFloatNew creates float pin and returns pointer" {
     const comp_id = try initTestComponent();
     defer safe.halExit(comp_id);
 
-    // Create float pin
+    // Create float pin (before hal_ready!)
     const pin = try safe.pinFloatNew(comp_id, "test-float-pin", hal_pin_dir_t.HAL_OUT);
+
+    // Now call hal_ready
+    _ = try safe.halReady(comp_id);
 
     // Verify pin is not null
     try testing.expect(pin != null);
@@ -44,6 +47,9 @@ test "pinBitNew creates bit pin and returns pointer" {
 
     // Create bit pin
     const pin = try safe.pinBitNew(comp_id, "test-bit-pin", hal_pin_dir_t.HAL_OUT);
+
+    // Now call hal_ready
+    _ = try safe.halReady(comp_id);
 
     // Verify pin is not null
     try testing.expect(pin != null);
@@ -64,6 +70,9 @@ test "pinS32New creates s32 pin and returns pointer" {
     // Create s32 pin
     const pin = try safe.pinS32New(comp_id, "test-s32-pin", hal_pin_dir_t.HAL_OUT);
 
+    // Now call hal_ready
+    _ = try safe.halReady(comp_id);
+
     // Verify pin is not null
     try testing.expect(pin != null);
 
@@ -81,6 +90,9 @@ test "pinU32New creates u32 pin and returns pointer" {
     // Create u32 pin
     const pin = try safe.pinU32New(comp_id, "test-u32-pin", hal_pin_dir_t.HAL_OUT);
 
+    // Now call hal_ready
+    _ = try safe.halReady(comp_id);
+
     // Verify pin is not null
     try testing.expect(pin != null);
 
@@ -95,8 +107,11 @@ test "pin direction - HAL_IN" {
     const comp_id = try initTestComponent();
     defer safe.halExit(comp_id);
 
-    // Create input pin
+    // Create input pin (before hal_ready!)
     const pin = try safe.pinFloatNew(comp_id, "test-input-pin", hal_pin_dir_t.HAL_IN);
+
+    // Now call hal_ready
+    _ = try safe.halReady(comp_id);
 
     // Verify pin was created
     try testing.expect(pin != null);
@@ -109,8 +124,11 @@ test "pin direction - HAL_IO" {
     const comp_id = try initTestComponent();
     defer safe.halExit(comp_id);
 
-    // Create IO pin
+    // Create IO pin (before hal_ready!)
     const pin = try safe.pinFloatNew(comp_id, "test-io-pin", hal_pin_dir_t.HAL_IO);
+
+    // Now call hal_ready
+    _ = try safe.halReady(comp_id);
 
     // Verify pin was created
     try testing.expect(pin != null);
@@ -123,11 +141,14 @@ test "multiple pins same component" {
     const comp_id = try initTestComponent();
     defer safe.halExit(comp_id);
 
-    // Create multiple pins of different types
+    // Create multiple pins of different types (before hal_ready!)
     const float_pin = try safe.pinFloatNew(comp_id, "multi-float", hal_pin_dir_t.HAL_OUT);
     const bit_pin = try safe.pinBitNew(comp_id, "multi-bit", hal_pin_dir_t.HAL_OUT);
     const s32_pin = try safe.pinS32New(comp_id, "multi-s32", hal_pin_dir_t.HAL_OUT);
     const u32_pin = try safe.pinU32New(comp_id, "multi-u32", hal_pin_dir_t.HAL_OUT);
+
+    // Now call hal_ready after all pins are created
+    _ = try safe.halReady(comp_id);
 
     // Write values to all pins
     float_pin.* = 1.0;
@@ -146,10 +167,13 @@ test "concurrent pin writes - basic sanity check" {
     const comp_id = try initTestComponent();
     defer safe.halExit(comp_id);
 
-    // Create multiple pins
+    // Create multiple pins (before hal_ready!)
     const pin1 = try safe.pinFloatNew(comp_id, "concurrent-1", hal_pin_dir_t.HAL_OUT);
     const pin2 = try safe.pinFloatNew(comp_id, "concurrent-2", hal_pin_dir_t.HAL_OUT);
     const pin3 = try safe.pinFloatNew(comp_id, "concurrent-3", hal_pin_dir_t.HAL_OUT);
+
+    // Now call hal_ready after all pins are created
+    _ = try safe.halReady(comp_id);
 
     // Write to all pins rapidly
     var i: usize = 0;
