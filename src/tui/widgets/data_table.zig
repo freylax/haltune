@@ -167,6 +167,15 @@ pub const DataTable = struct {
     /// Pending edit items (waiting for refresh)
     pending_edits: std.StringHashMap(void),
 
+    /// Error message to display at bottom of table
+    error_message: ?[]const u8,
+
+    /// Error message owner (allocated memory)
+    error_message_owner: ?[]const u8,
+
+    /// Error timeout timestamp (0 = no timeout set)
+    error_timeout: u64,
+
     /// Initialize a new DataTable
     ///
     /// Parameters:
@@ -191,6 +200,9 @@ pub const DataTable = struct {
             .edit_item = null,
             .edit_buffer = std.ArrayList(u8).init(allocator),
             .pending_edits = std.StringHashMap(void).init(allocator),
+            .error_message = null,
+            .error_message_owner = null,
+            .error_timeout = 0,
         };
     }
 
@@ -200,6 +212,9 @@ pub const DataTable = struct {
         self.component_buffer.deinit();
         self.edit_buffer.deinit();
         self.pending_edits.deinit();
+        if (self.error_message_owner) |msg| {
+            self.allocator.free(msg);
+        }
         self.* = undefined;
     }
 
@@ -383,6 +398,46 @@ pub const DataTable = struct {
         }
     }
 
+    /// Set an error message to display
+    /// Error message will auto-clear after 5 seconds
+    fn setError(self: *DataTable, msg: []const u8) !void {
+        // Free old error message if exists
+        if (self.error_message_owner) |old_msg| {
+            self.allocator.free(old_msg);
+        }
+
+        // Allocate and store new error message
+        const msg_copy = try self.allocator.dupe(u8, msg);
+        self.error_message_owner = msg_copy;
+        self.error_message = msg_copy;
+
+        // Set timeout (5 seconds from now)
+        const now = std.time.milliTimestamp();
+        self.error_timeout = @intCast(now + 5000);
+    }
+
+    /// Clear the current error message
+    fn clearError(self: *DataTable) void {
+        if (self.error_message_owner) |msg| {
+            self.allocator.free(msg);
+        }
+        self.error_message_owner = null;
+        self.error_message = null;
+        self.error_timeout = 0;
+    }
+
+    /// Check if error timeout has expired and clear if so
+    fn checkErrorTimeout(self: *DataTable) bool {
+        if (self.error_timeout == 0) return false;
+
+        const now = std.time.milliTimestamp();
+        if (now >= self.error_timeout) {
+            self.clearError();
+            return true;
+        }
+        return false;
+    }
+
     /// Return a vxfw.Widget for this DataTable
     pub fn widget(self: *DataTable) vxfw.Widget {
         return .{
@@ -402,6 +457,11 @@ pub const DataTable = struct {
 
         switch (event) {
             .key_press => |key| {
+                // Check error timeout before handling key press
+                if (self.checkErrorTimeout()) {
+                    ctx.consumeAndRedraw();
+                }
+
                 // Component filter input mode handling
                 if (self.component_filter_input) {
                     // Escape: exit component filter mode and clear
@@ -469,23 +529,40 @@ pub const DataTable = struct {
                                     self.writeValue(item, HalValue{ .bit = value })
                                 },
                                 .float => {
-                                    const value = try std.fmt.parseFloat(f64, input);
+                                    const value = std.fmt.parseFloat(f64, input) catch {
+                                        try self.setError("Invalid float: expected numeric value");
+                                        ctx.consumeAndRedraw();
+                                        continue;
+                                    };
                                     self.writeValue(item, HalValue{ .float = value })
                                 },
                                 .s32 => {
-                                    const value = try std.fmt.parseInt(i32, input, 10);
+                                    const value = std.fmt.parseInt(i32, input, 10) catch {
+                                        try self.setError("Invalid integer: expected whole number");
+                                        ctx.consumeAndRedraw();
+                                        continue;
+                                    };
                                     self.writeValue(item, HalValue{ .s32 = value })
                                 },
                                 .u32 => {
-                                    const value = try std.fmt.parseInt(u32, input, 10);
+                                    const value = std.fmt.parseInt(u32, input, 10) catch {
+                                        try self.setError("Invalid unsigned: expected positive whole number");
+                                        ctx.consumeAndRedraw();
+                                        continue;
+                                    };
                                     self.writeValue(item, HalValue{ .u32 = value })
                                 },
                             };
 
-                            // Mark as pending and clear edit mode
-                            if (write_result == null) {
-                                try self.pending_edits.put(item.name, {});
+                            // Handle write errors
+                            if (write_result) |err| {
+                                try self.setError("Write failed");
+                                ctx.consumeAndRedraw();
+                                return;
                             }
+
+                            // Mark as pending and clear edit mode
+                            try self.pending_edits.put(item.name, {});
                             self.edit_mode = false;
                             self.edit_item = null;
                             self.edit_buffer.clearRetainingCapacity();
@@ -548,18 +625,32 @@ pub const DataTable = struct {
                         const item = &self.items.items[0];
 
                         if (!item.is_writable) {
-                            // Item is read-only - don't edit
+                            // Item is read-only - show error
+                            try self.setError("Cannot edit read-only item");
+                            ctx.consumeAndRedraw();
                             return;
                         }
 
                         if (item.hal_type == .bit) {
                             // Boolean: toggle value
-                            const current_value = try self.getItemValue(item.*);
+                            const current_value = self.getItemValue(item.*) catch |err| {
+                                try self.setError("Failed to read value");
+                                ctx.consumeAndRedraw();
+                                return;
+                            };
                             const new_value = switch (current_value) {
                                 .bit => |v| !v,
-                                else => return, // Should not happen
+                                else => {
+                                    try self.setError("Type mismatch");
+                                    ctx.consumeAndRedraw();
+                                    return;
+                                },
                             };
-                            try self.writeValue(item.*, HalValue{ .bit = new_value });
+                            self.writeValue(item.*, HalValue{ .bit = new_value }) catch |err| {
+                                try self.setError("Write failed");
+                                ctx.consumeAndRedraw();
+                                return;
+                            };
                             try self.pending_edits.put(item.name, {});
                             ctx.consumeAndRedraw();
                             return;
@@ -700,6 +791,12 @@ pub const DataTable = struct {
             });
 
             try widgets.append(vxfw.Text.asWidget(row_text, .{ .style = final_style }));
+        }
+
+        // Show error message at bottom if present
+        if (self.error_message) |msg| {
+            const error_style = vxfw.Style{ .fg = .{ .index = 1 }, .bold = true }; // Red
+            try widgets.append(vxfw.Text.asWidget(msg, .{ .style = error_style }));
         }
 
         // Create surface with widgets as children

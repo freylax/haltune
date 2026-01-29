@@ -16,18 +16,22 @@ pub fn drawTwoPanelLayout(
     // Get maximum available size
     const max = ctx.max.size() orelse .{ .width = 80, .height = 24 };
 
+    // Reserve one row at bottom for help text
+    const help_height: u16 = 1;
+    const panel_height = if (max.height > help_height) max.height - help_height else max.height;
+
     // Calculate panel sizes: 30% left, 70% right
     const left_width = max.width / 3;
     const right_width = max.width - left_width;
 
     // Create left panel surface (tree navigation area)
-    const left_surface = try createLeftPanel(self, ctx, left_width, max.height);
+    const left_surface = try createLeftPanel(self, ctx, left_width, panel_height);
 
     // Create right panel surface (data table area)
-    const right_surface = try createRightPanel(self, ctx, right_width, max.height);
+    const right_surface = try createRightPanel(self, ctx, right_width, panel_height);
 
-    // Allocate children array in arena
-    const children = try ctx.arena.alloc(vxfw.SubSurface, 2);
+    // Allocate children array in arena (panels + help text)
+    const children = try ctx.arena.alloc(vxfw.SubSurface, 3);
 
     // Left panel: positioned at origin
     children[0] = .{
@@ -41,13 +45,29 @@ pub fn drawTwoPanelLayout(
         .surface = right_surface,
     };
 
-    // Return the root surface with two children
+    // Help text at bottom
+    const help_text = try createHelpText(ctx);
+    children[2] = .{
+        .origin = .{ .row = panel_height, .col = 0 },
+        .surface = help_text,
+    };
+
+    // Return the root surface with children
     return .{
         .size = max,
         .widget = self.widget(),
         .buffer = &.{},
         .children = children,
     };
+}
+
+/// Create help text widget at bottom of screen
+fn createHelpText(ctx: vxfw.DrawContext) std.mem.Allocator.Error!vxfw.Surface {
+    const help_str = "Enter=Edit/Toggle, /=Search, t=Filter Type, c=Filter Comp, Ctrl+C=Quit";
+    const help_style = vxfw.Style{ .dim = true };
+    const help_widget = vxfw.Text.asWidget(help_str, .{ .style = help_style });
+
+    return try help_widget.draw(ctx);
 }
 
 /// Create left panel surface (30% width)

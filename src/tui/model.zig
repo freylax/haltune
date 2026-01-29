@@ -41,6 +41,15 @@ pub const Model = struct {
     /// Set to true when any subscribed value changes, triggering a redraw
     redraw_flag: std.atomic.Value(bool),
 
+    /// Error message to display (null = no error)
+    error_message: ?[]const u8,
+
+    /// Error message owner (allocated memory)
+    error_message_owner: ?[]const u8,
+
+    /// Error timeout timestamp (0 = no timeout set)
+    error_timeout: u64,
+
     /// Initialize a new Model instance
     pub fn init(
         allocator: std.mem.Allocator,
@@ -66,6 +75,9 @@ pub const Model = struct {
             .data_table = data_table,
             .refresh_thread = null,
             .redraw_flag = redraw_flag,
+            .error_message = null,
+            .error_message_owner = null,
+            .error_timeout = 0,
         };
     }
 
@@ -75,6 +87,11 @@ pub const Model = struct {
         self.allocator.destroy(self.tree_view);
         self.data_table.deinit();
         self.allocator.destroy(self.data_table);
+
+        // Free error message if allocated
+        if (self.error_message_owner) |msg| {
+            self.allocator.free(msg);
+        }
     }
 
     /// Get list of checked item names
@@ -102,6 +119,46 @@ pub const Model = struct {
         defer self.allocator.free(checked_items);
 
         try self.data_table.setItems(checked_items);
+    }
+
+    /// Set an error message to display
+    /// Error message will auto-clear after 5 seconds
+    pub fn setError(self: *Model, msg: []const u8) !void {
+        // Free old error message if exists
+        if (self.error_message_owner) |old_msg| {
+            self.allocator.free(old_msg);
+        }
+
+        // Allocate and store new error message
+        const msg_copy = try self.allocator.dupe(u8, msg);
+        self.error_message_owner = msg_copy;
+        self.error_message = msg_copy;
+
+        // Set timeout (5 seconds from now)
+        const now = std.time.milliTimestamp();
+        self.error_timeout = @intCast(now + 5000);
+    }
+
+    /// Clear the current error message
+    pub fn clearError(self: *Model) void {
+        if (self.error_message_owner) |msg| {
+            self.allocator.free(msg);
+        }
+        self.error_message_owner = null;
+        self.error_message = null;
+        self.error_timeout = 0;
+    }
+
+    /// Check if error timeout has expired and clear if so
+    pub fn checkErrorTimeout(self: *Model) bool {
+        if (self.error_timeout == 0) return false;
+
+        const now = std.time.milliTimestamp();
+        if (now >= self.error_timeout) {
+            self.clearError();
+            return true;
+        }
+        return false;
     }
 
     /// Return a vxfw.Widget for this Model
@@ -144,6 +201,11 @@ pub const Model = struct {
 
             // Handle key presses
             .key_press => |key| {
+                // Check error timeout before handling key press
+                if (self.checkErrorTimeout()) {
+                    ctx.consumeAndRedraw();
+                }
+
                 // Ctrl+C to quit
                 if (key.matches('c', .{ .ctrl = true })) {
                     ctx.quit = true;
