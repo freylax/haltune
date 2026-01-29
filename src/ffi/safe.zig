@@ -627,6 +627,13 @@ pub fn getParamValue(param: *const hal_param_t) !@import("../state/cache.zig").H
     }
 }
 
+// Verify signal functions exist at compile time
+comptime {
+    _ = halSignalNew;
+    _ = halLink;
+    _ = halUnlink;
+}
+
 // Compile-time tests
 comptime {
     // Verify halInit returns error union
