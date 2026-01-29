@@ -135,21 +135,16 @@ pub fn halReady(comp_id: c_int) !void {
 /// // pin is now ready to use
 /// ```
 // pub fn pinNew( // DISABLED: hal_pin_t is opaque in ULAPI
-    comp_id: c_int,
-    name: [:0]const u8,
-    pin_type: hal_type_t,
-    dir: hal_pin_dir_t,
-) !*c.hal_pin_t {
-    var pin_ptr: ?*c.hal_pin_t = undefined;
-
-    // hal_pin_new_ff is the type-safe version that takes explicit type/dir
-    // Returns 0 on success, negative on error
-    const rc = c.hal_pin_new_ff(name, @intFromEnum(pin_type), @intFromEnum(dir), &pin_ptr, comp_id);
-
-    if (rc != 0) return HalError.PinCreationFailed;
-
-    return pin_ptr orelse HalError.PinCreationFailed;
-}
+//     comp_id: c_int,
+//     name: [:0]const u8,
+//     pin_type: hal_type_t,
+//     dir: hal_pin_dir_t,
+// ) !*c.hal_pin_t {
+//     var pin_ptr: ?*c.hal_pin_t = undefined;
+//     const rc = c.hal_pin_new_ff(name, @intFromEnum(pin_type), @intFromEnum(dir), &pin_ptr, comp_id);
+//     if (rc != 0) return HalError.PinCreationFailed;
+//     return pin_ptr orelse HalError.PinCreationFailed;
+// }
 
 /// Write to a float pin (thread-safe)
 ///
