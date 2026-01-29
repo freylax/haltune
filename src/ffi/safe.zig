@@ -109,20 +109,18 @@ pub fn halReady(comp_id: c_int) !void {
     }
 }
 
-/// Create a new HAL pin
+/// Create a new HAL float pin
 ///
-/// This function creates a new pin in the HAL with the specified name, type, and direction.
-/// Pins are the primary mechanism for HAL components to exchange data.
+/// This function creates a new float pin in the HAL with the specified name and direction.
 ///
 /// Parameters:
 ///   - comp_id: Component ID from halInit()
 ///   - name: Null-terminated pin name (must be unique within component)
-///   - pin_type: Pin data type (HAL_BIT, HAL_FLOAT, HAL_S32, HAL_U32)
 ///   - dir: Pin direction (HAL_IN, HAL_OUT, HAL_IO)
 ///
 /// Returns:
-///   - Pin name on success (use for subsequent operations)
-///   - error.PinCreationFailed if pin creation fails
+///   - Pointer to pin data (use for reading/writing)
+///   - error.InitFailed if pin creation fails
 ///
 /// Memory ownership:
 ///   - HAL allocates memory for the pin
@@ -134,250 +132,54 @@ pub fn halReady(comp_id: c_int) !void {
 /// const comp_id = try halInit("mycomponent");
 /// defer halExit(comp_id);
 ///
-/// const pin_name = try pinNew(comp_id, "my-pin", c.HAL_FLOAT, c.HAL_OUT);
-/// // pin_name is now ready to use
+/// const pin = try pinFloatNew(comp_id, "my-float-pin", c.HAL_OUT);
+/// pin.* = 3.14159;  // Write value
+/// const value = pin.*;  // Read value
 /// ```
-pub fn pinNew(comp_id: c_int, name: [:0]const u8, pin_type: hal_type_t, dir: hal_pin_dir_t) ![:0]const u8 {
-    // For ULAPI with opaque types, we'll use a name-based approach
-    // Create the pin using typed functions
-    // Each HAL pin type needs a different data pointer type
-    var bit_ptr: [*c]volatile u8 = undefined;
-    var float_ptr: [*c]volatile f64 = undefined;
-    var s32_ptr: [*c]volatile i32 = undefined;
-    var u32_ptr: [*c]volatile u32 = undefined;
-
-    const rc = switch (@intFromEnum(pin_type)) {
-        c.HAL_BIT => c.hal_pin_bit_new(name, @intFromEnum(dir), &bit_ptr, comp_id),
-        c.HAL_FLOAT => c.hal_pin_float_new(name, @intFromEnum(dir), &float_ptr, comp_id),
-        c.HAL_S32 => c.hal_pin_s32_new(name, @intFromEnum(dir), &s32_ptr, comp_id),
-        c.HAL_U32 => c.hal_pin_u32_new(name, @intFromEnum(dir), &u32_ptr, comp_id),
-        else => return HalError.TypeMismatch,
-    };
-
+pub fn pinFloatNew(comp_id: c_int, name: [:0]const u8, dir: hal_pin_dir_t) ![*c]volatile f64 {
+    var pin_ptr: [*c]volatile f64 = undefined;
+    const rc = c.hal_pin_float_new(name, @intFromEnum(dir), &pin_ptr, comp_id);
     if (rc != 0) return HalError.InitFailed;
-
-    // Return the pin name (caller must keep track of the pin type)
-    return name;
+    return pin_ptr;
 }
 
-/// Write to a float pin (thread-safe, name-based)
+/// Create a new HAL bit pin
 ///
-/// This function writes a floating-point value to a HAL pin by name.
-/// Uses HAL's name-based API which works with opaque types in ULAPI.
+/// This function creates a new bit pin in the HAL with the specified name and direction.
 ///
 /// Parameters:
-///   - pin_name: Name of the pin to write to
-///   - value: Float value to write
+///   - comp_id: Component ID from halInit()
+///   - name: Null-terminated pin name (must be unique within component)
+///   - dir: Pin direction (HAL_IN, HAL_OUT, HAL_IO)
 ///
 /// Returns:
-///   - void on success
-///   - error.PinNotFound if pin doesn't exist or is wrong type
-///
-/// Thread safety:
-///   - HAL API handles mutex locking internally
-///
-/// Example:
-/// ```
-/// const pin_name = try pinNew(comp_id, "value", c.HAL_FLOAT, c.HAL_OUT);
-/// try setPinFloat(pin_name, 3.14159);
-/// ```
-pub fn setPinFloat(pin_name: [:0]const u8, value: f64) !void {
-    const rc = c.hal_pin_float_set(pin_name, value);
-    if (rc != 0) return HalError.PinNotFound;
+///   - Pointer to pin data (use for reading/writing)
+///   - error.InitFailed if pin creation fails
+pub fn pinBitNew(comp_id: c_int, name: [:0]const u8, dir: hal_pin_dir_t) ![*c]volatile u8 {
+    var pin_ptr: [*c]volatile u8 = undefined;
+    const rc = c.hal_pin_bit_new(name, @intFromEnum(dir), &pin_ptr, comp_id);
+    if (rc != 0) return HalError.InitFailed;
+    return pin_ptr;
 }
 
-/// Write to a bit pin (thread-safe, name-based)
+/// Create a new HAL s32 pin
 ///
-/// This function writes a boolean value to a HAL bit pin by name.
-/// Uses HAL's name-based API which works with opaque types in ULAPI.
-///
-/// Parameters:
-///   - pin_name: Name of the pin to write to
-///   - value: Boolean value to write
-///
-/// Returns:
-///   - void on success
-///   - error.PinNotFound if pin doesn't exist or is wrong type
-///
-/// Thread safety:
-///   - HAL API handles mutex locking internally
-///
-/// Example:
-/// ```
-/// const pin_name = try pinNew(comp_id, "enable", c.HAL_BIT, c.HAL_OUT);
-/// try setPinBit(pin_name, true);
-/// ```
-pub fn setPinBit(pin_name: [:0]const u8, value: bool) !void {
-    const rc = c.hal_pin_bit_set(pin_name, @intFromBool(value));
-    if (rc != 0) return HalError.PinNotFound;
+/// This function creates a new signed 32-bit integer pin in the HAL.
+pub fn pinS32New(comp_id: c_int, name: [:0]const u8, dir: hal_pin_dir_t) ![*c]volatile i32 {
+    var pin_ptr: [*c]volatile i32 = undefined;
+    const rc = c.hal_pin_s32_new(name, @intFromEnum(dir), &pin_ptr, comp_id);
+    if (rc != 0) return HalError.InitFailed;
+    return pin_ptr;
 }
 
-/// Write to a signed 32-bit integer pin (thread-safe, name-based)
+/// Create a new HAL u32 pin
 ///
-/// This function writes a signed integer value to a HAL s32 pin by name.
-/// Uses HAL's name-based API which works with opaque types in ULAPI.
-///
-/// Parameters:
-///   - pin_name: Name of the pin to write to
-///   - value: Signed 32-bit integer value to write
-///
-/// Returns:
-///   - void on success
-///   - error.PinNotFound if pin doesn't exist or is wrong type
-///
-/// Thread safety:
-///   - HAL API handles mutex locking internally
-///
-/// Example:
-/// ```
-/// const pin_name = try pinNew(comp_id, "count", c.HAL_S32, c.HAL_OUT);
-/// try setPinS32(pin_name, -42);
-/// ```
-pub fn setPinS32(pin_name: [:0]const u8, value: i32) !void {
-    const rc = c.hal_pin_s32_set(pin_name, value);
-    if (rc != 0) return HalError.PinNotFound;
-}
-
-/// Write to an unsigned 32-bit integer pin (thread-safe, name-based)
-///
-/// This function writes an unsigned integer value to a HAL u32 pin by name.
-/// Uses HAL's name-based API which works with opaque types in ULAPI.
-///
-/// Parameters:
-///   - pin_name: Name of the pin to write to
-///   - value: Unsigned 32-bit integer value to write
-///
-/// Returns:
-///   - void on success
-///   - error.PinNotFound if pin doesn't exist or is wrong type
-///
-/// Thread safety:
-///   - HAL API handles mutex locking internally
-///
-/// Example:
-/// ```
-/// const pin_name = try pinNew(comp_id, "status", c.HAL_U32, c.HAL_OUT);
-/// try setPinU32(pin_name, 123);
-/// ```
-pub fn setPinU32(pin_name: [:0]const u8, value: u32) !void {
-    const rc = c.hal_pin_u32_set(pin_name, value);
-    if (rc != 0) return HalError.PinNotFound;
-}
-
-/// Read from a float pin (name-based)
-///
-/// This function reads the current value from a HAL float pin by name.
-/// Uses HAL's name-based API which works with opaque types in ULAPI.
-///
-/// Parameters:
-///   - pin_name: Name of the pin to read from
-///
-/// Returns:
-///   - Float value on success
-///   - error.PinNotFound if pin doesn't exist or is wrong type
-///
-/// Thread safety:
-///   - Does not acquire mutex (reads are lock-free)
-///   - Value may be updated concurrently by HAL real-time thread
-///
-/// Example:
-/// ```
-/// const pin_name = try pinNew(comp_id, "value", c.HAL_FLOAT, c.HAL_OUT);
-/// try setPinFloat(pin_name, 3.14159);
-/// const value = try getPinFloat(pin_name);
-/// ```
-pub fn getPinFloat(pin_name: [:0]const u8) !f64 {
-    var value: f64 = undefined;
-    const rc = c.hal_pin_float_get(pin_name, &value);
-    if (rc != 0) return HalError.PinNotFound;
-    return value;
-}
-
-/// Read from a bit pin (name-based)
-///
-/// This function reads the current value from a HAL bit pin by name.
-/// Uses HAL's name-based API which works with opaque types in ULAPI.
-///
-/// Parameters:
-///   - pin_name: Name of the pin to read from
-///
-/// Returns:
-///   - Boolean value on success
-///   - error.PinNotFound if pin doesn't exist or is wrong type
-///
-/// Thread safety:
-///   - Does not acquire mutex (reads are lock-free)
-///   - Value may be updated concurrently by HAL real-time thread
-///
-/// Example:
-/// ```
-/// const pin_name = try pinNew(comp_id, "enable", c.HAL_BIT, c.HAL_OUT);
-/// try setPinBit(pin_name, true);
-/// const enabled = try getPinBit(pin_name);
-/// ```
-pub fn getPinBit(pin_name: [:0]const u8) !bool {
-    var value: c_int = undefined;
-    const rc = c.hal_pin_bit_get(pin_name, &value);
-    if (rc != 0) return HalError.PinNotFound;
-    return value != 0;
-}
-
-/// Read from a signed 32-bit integer pin (name-based)
-///
-/// This function reads the current value from a HAL s32 pin by name.
-/// Uses HAL's name-based API which works with opaque types in ULAPI.
-///
-/// Parameters:
-///   - pin_name: Name of the pin to read from
-///
-/// Returns:
-///   - Signed 32-bit integer value on success
-///   - error.PinNotFound if pin doesn't exist or is wrong type
-///
-/// Thread safety:
-///   - Does not acquire mutex (reads are lock-free)
-///   - Value may be updated concurrently by HAL real-time thread
-///
-/// Example:
-/// ```
-/// const pin_name = try pinNew(comp_id, "count", c.HAL_S32, c.HAL_OUT);
-/// try setPinS32(pin_name, -42);
-/// const count = try getPinS32(pin_name);
-/// ```
-pub fn getPinS32(pin_name: [:0]const u8) !i32 {
-    var value: i32 = undefined;
-    const rc = c.hal_pin_s32_get(pin_name, &value);
-    if (rc != 0) return HalError.PinNotFound;
-    return value;
-}
-
-/// Read from an unsigned 32-bit integer pin (name-based)
-///
-/// This function reads the current value from a HAL u32 pin by name.
-/// Uses HAL's name-based API which works with opaque types in ULAPI.
-///
-/// Parameters:
-///   - pin_name: Name of the pin to read from
-///
-/// Returns:
-///   - Unsigned 32-bit integer value on success
-///   - error.PinNotFound if pin doesn't exist or is wrong type
-///
-/// Thread safety:
-///   - Does not acquire mutex (reads are lock-free)
-///   - Value may be updated concurrently by HAL real-time thread
-///
-/// Example:
-/// ```
-/// const pin_name = try pinNew(comp_id, "status", c.HAL_U32, c.HAL_OUT);
-/// try setPinU32(pin_name, 123);
-/// const status = try getPinU32(pin_name);
-/// ```
-pub fn getPinU32(pin_name: [:0]const u8) !u32 {
-    var value: u32 = undefined;
-    const rc = c.hal_pin_u32_get(pin_name, &value);
-    if (rc != 0) return HalError.PinNotFound;
-    return value;
+/// This function creates a new unsigned 32-bit integer pin in the HAL.
+pub fn pinU32New(comp_id: c_int, name: [:0]const u8, dir: hal_pin_dir_t) ![*c]volatile u32 {
+    var pin_ptr: [*c]volatile u32 = undefined;
+    const rc = c.hal_pin_u32_new(name, @intFromEnum(dir), &pin_ptr, comp_id);
+    if (rc != 0) return HalError.InitFailed;
+    return pin_ptr;
 }
 
 /// Find a HAL pin by name
@@ -542,17 +344,11 @@ comptime {
     // Verify halReady returns error union
     _ = halReady;
 
-    // Verify pin functions return error unions
-    // Now using name-based API which works with opaque types in ULAPI
-    _ = pinNew;
-    _ = setPinFloat;
-    _ = setPinBit;
-    _ = setPinS32;
-    _ = setPinU32;
-    _ = getPinFloat;
-    _ = getPinBit;
-    _ = getPinS32;
-    _ = getPinU32;
+    // Verify pin creation functions return error unions
+    _ = pinFloatNew;
+    _ = pinBitNew;
+    _ = pinS32New;
+    _ = pinU32New;
 
     // Verify discovery functions
     _ = halprFindPinByName;

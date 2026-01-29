@@ -1,7 +1,6 @@
 // Unit tests for HAL pin operations
 //
 // These tests verify pin creation, reading, writing, and type safety.
-// All tests use std.testing.allocator to detect memory leaks.
 //
 // Run tests with: zig build test
 //
@@ -11,9 +10,6 @@ const std = @import("std");
 const testing = std.testing;
 const c = @import("ffi/c.zig").c;
 const safe = @import("ffi/safe.zig");
-const HalError = @import("ffi/errors.zig").HalError;
-const hal_type_t = @import("ffi/types.zig").hal_type_t;
-const hal_pin_dir_t = @import("ffi/types.zig").hal_pin_dir_t;
 
 // Helper function to initialize HAL for testing
 fn initTestComponent() !c_int {
@@ -23,254 +19,147 @@ fn initTestComponent() !c_int {
     return comp_id;
 }
 
-test "pin creation and cleanup" {
-    const gpa = testing.allocator;
-
-    // Initialize HAL component
+test "pinFloatNew creates float pin and returns pointer" {
     const comp_id = try initTestComponent();
     defer safe.halExit(comp_id);
 
-    // Create a float pin (returns pin name, not pointer)
-    const pin_name = try safe.pinNew(comp_id, "test-float-pin", hal_type_t.HAL_FLOAT, hal_pin_dir_t.HAL_OUT);
+    // Create float pin
+    const pin = try safe.pinFloatNew(comp_id, "test-float-pin", hal_pin_dir_t.HAL_OUT);
 
-    // Verify pin name matches what we requested
-    try testing.expectEqualStrings("test-float-pin", pin_name);
-
-    // No leaks should be detected
-    try testing.allocator_check(gpa);
-}
-
-test "pin write and read - float" {
-    const gpa = testing.allocator;
-
-    const comp_id = try initTestComponent();
-    defer safe.halExit(comp_id);
-
-    // Create float pin (returns pin name)
-    const pin_name = try safe.pinNew(comp_id, "test-float-write", hal_type_t.HAL_FLOAT, hal_pin_dir_t.HAL_OUT);
+    // Verify pin is not null
+    try testing.expect(pin != null);
 
     // Write value
-    const test_value: f64 = 3.14159;
-    try safe.setPinFloat(pin_name, test_value);
+    pin.* = 3.14159;
 
     // Read back
-    const read_value = try safe.getPinFloat(pin_name);
-
-    // Verify value matches
-    try testing.expectEqual(test_value, read_value);
-
-    // No leaks
-    try testing.allocator_check(gpa);
+    const value = pin.*;
+    try testing.expectEqual(3.14159, value);
 }
 
-test "pin write and read - bit" {
-    const gpa = testing.allocator;
-
+test "pinBitNew creates bit pin and returns pointer" {
     const comp_id = try initTestComponent();
     defer safe.halExit(comp_id);
 
-    // Create bit pin (returns pin name)
-    const pin_name = try safe.pinNew(comp_id, "test-bit-write", hal_type_t.HAL_BIT, hal_pin_dir_t.HAL_OUT);
+    // Create bit pin
+    const pin = try safe.pinBitNew(comp_id, "test-bit-pin", hal_pin_dir_t.HAL_OUT);
+
+    // Verify pin is not null
+    try testing.expect(pin != null);
 
     // Write true
-    try safe.setPinBit(pin_name, true);
-    try testing.expectEqual(true, try safe.getPinBit(pin_name));
+    pin.* = 1;
+    try testing.expectEqual(@as(u8, 1), pin.*);
 
     // Write false
-    try safe.setPinBit(pin_name, false);
-    try testing.expectEqual(false, try safe.getPinBit(pin_name));
-
-    // No leaks
-    try testing.allocator_check(gpa);
+    pin.* = 0;
+    try testing.expectEqual(@as(u8, 0), pin.*);
 }
 
-test "pin write and read - s32" {
-    const gpa = testing.allocator;
-
+test "pinS32New creates s32 pin and returns pointer" {
     const comp_id = try initTestComponent();
     defer safe.halExit(comp_id);
 
-    // Create s32 pin (returns pin name)
-    const pin_name = try safe.pinNew(comp_id, "test-s32-write", hal_type_t.HAL_S32, hal_pin_dir_t.HAL_OUT);
+    // Create s32 pin
+    const pin = try safe.pinS32New(comp_id, "test-s32-pin", hal_pin_dir_t.HAL_OUT);
+
+    // Verify pin is not null
+    try testing.expect(pin != null);
 
     // Write value
-    const test_value: i32 = -12345;
-    try safe.setPinS32(pin_name, test_value);
+    pin.* = -12345;
 
     // Read back
-    const read_value = try safe.getPinS32(pin_name);
-
-    // Verify value matches
-    try testing.expectEqual(test_value, read_value);
-
-    // No leaks
-    try testing.allocator_check(gpa);
+    try testing.expectEqual(@as(i32, -12345), pin.*);
 }
 
-test "pin write and read - u32" {
-    const gpa = testing.allocator;
-
+test "pinU32New creates u32 pin and returns pointer" {
     const comp_id = try initTestComponent();
     defer safe.halExit(comp_id);
 
-    // Create u32 pin (returns pin name)
-    const pin_name = try safe.pinNew(comp_id, "test-u32-write", hal_type_t.HAL_U32, hal_pin_dir_t.HAL_OUT);
+    // Create u32 pin
+    const pin = try safe.pinU32New(comp_id, "test-u32-pin", hal_pin_dir_t.HAL_OUT);
+
+    // Verify pin is not null
+    try testing.expect(pin != null);
 
     // Write value
-    const test_value: u32 = 54321;
-    try safe.setPinU32(pin_name, test_value);
+    pin.* = 54321;
 
     // Read back
-    const read_value = try safe.getPinU32(pin_name);
-
-    // Verify value matches
-    try testing.expectEqual(test_value, read_value);
-
-    // No leaks
-    try testing.allocator_check(gpa);
+    try testing.expectEqual(@as(u32, 54321), pin.*);
 }
 
-test "type mismatch error - float pin with bit operation" {
-    const gpa = testing.allocator;
-
+test "pin direction - HAL_IN" {
     const comp_id = try initTestComponent();
     defer safe.halExit(comp_id);
 
-    // Create float pin (returns pin name)
-    const pin_name = try safe.pinNew(comp_id, "test-float-mismatch", hal_type_t.HAL_FLOAT, hal_pin_dir_t.HAL_OUT);
+    // Create input pin
+    const pin = try safe.pinFloatNew(comp_id, "test-input-pin", hal_pin_dir_t.HAL_IN);
 
-    // Try to use bit operation on float pin - should return PinNotFound (wrong type)
-    const result = safe.setPinBit(pin_name, true);
-
-    // Verify error is returned
-    try testing.expectError(HalError.PinNotFound, result);
-
-    // No leaks
-    try testing.allocator_check(gpa);
-}
-
-test "type mismatch error - bit pin with float operation" {
-    const gpa = testing.allocator;
-
-    const comp_id = try initTestComponent();
-    defer safe.halExit(comp_id);
-
-    // Create bit pin (returns pin name)
-    const pin_name = try safe.pinNew(comp_id, "test-bit-mismatch", hal_type_t.HAL_BIT, hal_pin_dir_t.HAL_OUT);
-
-    // Try to use float operation on bit pin - should return PinNotFound (wrong type)
-    const result = safe.setPinFloat(pin_name, 3.14);
-
-    // Verify error is returned
-    try testing.expectError(HalError.PinNotFound, result);
-
-    // No leaks
-    try testing.allocator_check(gpa);
-}
-
-test "type mismatch error - read wrong type" {
-    const gpa = testing.allocator;
-
-    const comp_id = try initTestComponent();
-    defer safe.halExit(comp_id);
-
-    // Create float pin (returns pin name)
-    const pin_name = try safe.pinNew(comp_id, "test-read-mismatch", hal_type_t.HAL_FLOAT, hal_pin_dir_t.HAL_OUT);
-
-    // Try to read as s32 - should return PinNotFound (wrong type)
-    const result = safe.getPinS32(pin_name);
-
-    // Verify error is returned
-    try testing.expectError(HalError.PinNotFound, result);
-
-    // No leaks
-    try testing.allocator_check(gpa);
-}
-
-test "pin direction - input pin" {
-    const gpa = testing.allocator;
-
-    const comp_id = try initTestComponent();
-    defer safe.halExit(comp_id);
-
-    // Create input pin (returns pin name)
-    const pin_name = try safe.pinNew(comp_id, "test-input-pin", hal_type_t.HAL_FLOAT, hal_pin_dir_t.HAL_IN);
+    // Verify pin was created
+    try testing.expect(pin != null);
 
     // Should be able to write to it (component sets input pins)
-    try safe.setPinFloat(pin_name, 1.23);
-
-    // No leaks
-    try testing.allocator_check(gpa);
+    pin.* = 1.23;
 }
 
-test "pin direction - IO pin" {
-    const gpa = testing.allocator;
-
+test "pin direction - HAL_IO" {
     const comp_id = try initTestComponent();
     defer safe.halExit(comp_id);
 
-    // Create IO pin (returns pin name)
-    const pin_name = try safe.pinNew(comp_id, "test-io-pin", hal_type_t.HAL_FLOAT, hal_pin_dir_t.HAL_IO);
+    // Create IO pin
+    const pin = try safe.pinFloatNew(comp_id, "test-io-pin", hal_pin_dir_t.HAL_IO);
+
+    // Verify pin was created
+    try testing.expect(pin != null);
 
     // Should be able to write to it
-    try safe.setPinFloat(pin_name, 4.56);
-
-    // No leaks
-    try testing.allocator_check(gpa);
+    pin.* = 4.56;
 }
 
 test "multiple pins same component" {
-    const gpa = testing.allocator;
-
     const comp_id = try initTestComponent();
     defer safe.halExit(comp_id);
 
-    // Create multiple pins of different types (returns pin names)
-    const float_pin = try safe.pinNew(comp_id, "multi-float", hal_type_t.HAL_FLOAT, hal_pin_dir_t.HAL_OUT);
-    const bit_pin = try safe.pinNew(comp_id, "multi-bit", hal_type_t.HAL_BIT, hal_pin_dir_t.HAL_OUT);
-    const s32_pin = try safe.pinNew(comp_id, "multi-s32", hal_type_t.HAL_S32, hal_pin_dir_t.HAL_OUT);
-    const u32_pin = try safe.pinNew(comp_id, "multi-u32", hal_type_t.HAL_U32, hal_pin_dir_t.HAL_OUT);
+    // Create multiple pins of different types
+    const float_pin = try safe.pinFloatNew(comp_id, "multi-float", hal_pin_dir_t.HAL_OUT);
+    const bit_pin = try safe.pinBitNew(comp_id, "multi-bit", hal_pin_dir_t.HAL_OUT);
+    const s32_pin = try safe.pinS32New(comp_id, "multi-s32", hal_pin_dir_t.HAL_OUT);
+    const u32_pin = try safe.pinU32New(comp_id, "multi-u32", hal_pin_dir_t.HAL_OUT);
 
     // Write values to all pins
-    try safe.setPinFloat(float_pin, 1.0);
-    try safe.setPinBit(bit_pin, true);
-    try safe.setPinS32(s32_pin, 100);
-    try safe.setPinU32(u32_pin, 200);
+    float_pin.* = 1.0;
+    bit_pin.* = 1;
+    s32_pin.* = 100;
+    u32_pin.* = 200;
 
     // Read back and verify
-    try testing.expectEqual(1.0, try safe.getPinFloat(float_pin));
-    try testing.expectEqual(true, try safe.getPinBit(bit_pin));
-    try testing.expectEqual(@as(i32, 100), try safe.getPinS32(s32_pin));
-    try testing.expectEqual(@as(u32, 200), try safe.getPinU32(u32_pin));
-
-    // No leaks
-    try testing.allocator_check(gpa);
+    try testing.expectEqual(1.0, float_pin.*);
+    try testing.expectEqual(@as(u8, 1), bit_pin.*);
+    try testing.expectEqual(@as(i32, 100), s32_pin.*);
+    try testing.expectEqual(@as(u32, 200), u32_pin.*);
 }
 
 test "concurrent pin writes - basic sanity check" {
-    const gpa = testing.allocator;
-
     const comp_id = try initTestComponent();
     defer safe.halExit(comp_id);
 
-    // Create multiple pins (returns pin names)
-    const pin1 = try safe.pinNew(comp_id, "concurrent-1", hal_type_t.HAL_FLOAT, hal_pin_dir_t.HAL_OUT);
-    const pin2 = try safe.pinNew(comp_id, "concurrent-2", hal_type_t.HAL_FLOAT, hal_pin_dir_t.HAL_OUT);
-    const pin3 = try safe.pinNew(comp_id, "concurrent-3", hal_type_t.HAL_FLOAT, hal_pin_dir_t.HAL_OUT);
+    // Create multiple pins
+    const pin1 = try safe.pinFloatNew(comp_id, "concurrent-1", hal_pin_dir_t.HAL_OUT);
+    const pin2 = try safe.pinFloatNew(comp_id, "concurrent-2", hal_pin_dir_t.HAL_OUT);
+    const pin3 = try safe.pinFloatNew(comp_id, "concurrent-3", hal_pin_dir_t.HAL_OUT);
 
-    // Write to all pins rapidly (simulates concurrent access)
+    // Write to all pins rapidly
     var i: usize = 0;
     while (i < 100) : (i += 1) {
-        try safe.setPinFloat(pin1, @as(f64, @floatFromInt(i)));
-        try safe.setPinFloat(pin2, @as(f64, @floatFromInt(i)) * 2.0);
-        try safe.setPinFloat(pin3, @as(f64, @floatFromInt(i)) * 3.0);
+        pin1.* = @as(f64, @floatFromInt(i));
+        pin2.* = @as(f64, @floatFromInt(i)) * 2.0;
+        pin3.* = @as(f64, @floatFromInt(i)) * 3.0;
     }
 
     // Verify final values
-    try testing.expectEqual(@as(f64, 99), try safe.getPinFloat(pin1));
-    try testing.expectEqual(@as(f64, 198), try safe.getPinFloat(pin2));
-    try testing.expectEqual(@as(f64, 297), try safe.getPinFloat(pin3));
-
-    // No leaks
-    try testing.allocator_check(gpa);
+    try testing.expectEqual(@as(f64, 99), pin1.*);
+    try testing.expectEqual(@as(f64, 198), pin2.*);
+    try testing.expectEqual(@as(f64, 297), pin3.*);
 }
