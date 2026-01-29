@@ -128,6 +128,7 @@ pub fn build(b: *std.Build) void {
     // Add FFI modules as imports so tests can access them
     test_module.addImport("ffi/c.zig", ffi_c);
     test_module.addImport("ffi/errors.zig", ffi_errors);
+    test_module.addImport("ffi/types.zig", ffi_types);
     test_module.addImport("ffi/safe.zig", ffi_safe);
 
     // Create test executable
