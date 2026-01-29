@@ -148,5 +148,79 @@ pub const SignalDialog = struct {
         }
     }
 
-    // TODO: Add draw(), handleKey(), createSignal(), loadAvailablePins() in subsequent tasks
+    /// Validate signal name
+    fn validateSignalName(name: []const u8) !void {
+        if (name.len == 0) return error.EmptyName;
+        if (name.len > 41) return error.NameTooLong; // HAL_NAME_LEN
+        for (name) |c| {
+            if (!std.ascii.isAlphanumeric(c) and c != '_' and c != '-' and c != '.') {
+                return error.InvalidCharacter;
+            }
+        }
+    }
+
+    /// Set error message (allocates copy)
+    fn setError(self: *SignalDialog, msg: []const u8) void {
+        if (self.error_message) |old| {
+            self.allocator.free(old);
+        }
+        self.error_message = self.allocator.dupe(u8, msg) catch null;
+    }
+
+    /// Handle key press in dialog
+    pub fn handleKey(self: *SignalDialog, key: vxfw.Key) !bool {
+        if (!self.visible) return false;
+
+        switch (self.current_step) {
+            .input_name => {
+                // Handle alphanumeric input
+                if (key == .Char) {
+                    const c = key.Char;
+                    if (std.ascii.isAlphanumeric(c) or c == '_' or c == '-' or c == '.') {
+                        try self.signal_name.append(c);
+                    }
+                    return true;
+                }
+                // Backspace
+                if (key.matchesChar(127, .{})) { // DEL/Backspace
+                    if (self.signal_name.popOrNull()) |_| {
+                        // Character removed
+                    }
+                    return true;
+                }
+                // Enter to advance
+                if (key == .Enter) {
+                    validateSignalName(self.signal_name.items) catch |err| {
+                        self.setError(switch (err) {
+                            error.EmptyName => "Name cannot be empty",
+                            error.NameTooLong => "Name too long (max 41 chars)",
+                            error.InvalidCharacter => "Use only letters, numbers, _, -, .",
+                            else => "Invalid name",
+                        });
+                        return true;
+                    };
+                    self.error_message = null;
+                    self.current_step = .select_type;
+                    return true;
+                }
+                // Escape to cancel
+                if (key == .Escape) {
+                    self.close();
+                    return true;
+                }
+            },
+            .select_type => {
+                // Handled in next task
+            },
+            .select_pins => {
+                // Handled in next task
+            },
+            .confirm => {
+                // Handled in next task
+            },
+        }
+        return true;
+    }
+
+    // TODO: Add draw(), createSignal(), loadAvailablePins() in subsequent tasks
 };
