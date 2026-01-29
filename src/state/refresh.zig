@@ -294,7 +294,7 @@ pub const RefreshThread = struct {
             // If not found in HAL, remove from cache (stale entry)
             if (!found_in_hal) {
                 self.store.removePin(cached_name) catch |err| {
-                    std.log.err("Failed to remove stale pin '{s}': {}", .{cached_name, err});
+                    std.log.err("Failed to remove stale pin '{s}': {}", .{ cached_name, err });
                 };
             }
         }
@@ -304,6 +304,15 @@ pub const RefreshThread = struct {
             const name = std.mem.span(pin.*.name);
             const value = try self.readPinValue(pin);
             try self.store.updatePin(name, value);
+
+            // TODO: Track pin->signal links for export
+            // In ULAPI, we need to iterate signals to find name from pointer
+            // The hal_pin_t structure has a 'signal' field pointing to linked signal
+            // Getting signal name from signal pointer requires:
+            //   1. Iterate all signals via halpr_find_sig_by_name(null)
+            //   2. Compare signal pointers with pin.*.signal
+            //   3. Call store.updatePinLink(name, signal_name) when match found
+            // For now, pin_links remains empty and export shows no connected pins
         }
     }
 
@@ -406,7 +415,7 @@ pub const RefreshThread = struct {
             // If not found in HAL, remove from cache (stale entry)
             if (!found_in_hal) {
                 self.store.removeSignal(cached_name) catch |err| {
-                    std.log.err("Failed to remove stale signal '{s}': {}", .{cached_name, err});
+                    std.log.err("Failed to remove stale signal '{s}': {}", .{ cached_name, err });
                 };
             }
         }
@@ -482,7 +491,7 @@ pub const RefreshThread = struct {
             // If not found in HAL, remove from cache (stale entry)
             if (!found_in_hal) {
                 self.store.removeParam(cached_name) catch |err| {
-                    std.log.err("Failed to remove stale param '{s}': {}", .{cached_name, err});
+                    std.log.err("Failed to remove stale param '{s}': {}", .{ cached_name, err });
                 };
             }
         }
