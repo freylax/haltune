@@ -157,6 +157,29 @@ pub fn halLink(pin_name: [:0]const u8, signal_name: [:0]const u8) !void {
     if (rc != 0) return HalError.LinkFailed;
 }
 
+/// Unlink a pin from its signal
+///
+/// This function removes the connection between a pin and its signal.
+/// After unlinking, the pin retains its last value as a dummy value.
+///
+/// Parameters:
+///   - pin_name: Null-terminated pin name to unlink
+///
+/// Returns:
+///   - void on success
+///   - error.UnlinkFailed if pin not found or not linked
+///
+/// Thread safety:
+///   - Acquires HAL mutex before unlinking
+///   - Safe to call from multiple threads
+pub fn halUnlink(pin_name: [:0]const u8) !void {
+    _ = c.hal_mutex_lock(c.hal_mutex.ptr);
+    defer c.hal_mutex_unlock(c.hal_mutex.ptr);
+
+    const rc = c.hal_unlink(pin_name);
+    if (rc != 0) return HalError.UnlinkFailed;
+}
+
 /// Create a new HAL float pin
 ///
 /// This function creates a new float pin in the HAL with the specified name and direction.
