@@ -221,7 +221,7 @@ pub const RefreshThread = struct {
     ///
     /// STATE-03 support:
     ///   - Discovers pins/signals/params from newly loaded components (halcmd loadusr)
-    ///   - Removes pins from unloaded components (stale cleanup)
+    ///   - Removes pins/signals/params from unloaded components (stale cleanup)
     fn refreshHal(self: *RefreshThread) !void {
         // Refresh all HAL data types
         try self.refreshPins();
@@ -347,9 +347,10 @@ pub const RefreshThread = struct {
     ///
     /// This function:
     /// 1. Enumerates all signals from HAL via halprFindSigByName(null) iteration
-    /// 2. Compares with cache to find new signals
+    /// 2. Compares with cache to find new/stale signals
     /// 3. Adds new signals to cache
-    /// 4. Updates all signal values
+    /// 4. Removes stale signals from cache
+    /// 5. Updates all signal values
     ///
     /// Thread safety:
     ///   - Reads HAL signals without holding cache lock
@@ -422,9 +423,10 @@ pub const RefreshThread = struct {
     ///
     /// This function:
     /// 1. Enumerates all parameters from HAL via halprFindParamByName(null) iteration
-    /// 2. Compares with cache to find new parameters
+    /// 2. Compares with cache to find new/stale parameters
     /// 3. Adds new parameters to cache
-    /// 4. Updates all parameter values
+    /// 4. Removes stale parameters from cache
+    /// 5. Updates all parameter values
     ///
     /// Thread safety:
     ///   - Reads HAL parameters without holding cache lock
