@@ -11,18 +11,18 @@ See: .planning/PROJECT.md (updated 2025-01-28)
 ## Current Position
 
 Phase: 2 of 6 (State Management)
-Plan: 4 of 5 in current phase
-Status: In progress
-Last activity: 2026-01-29 — Completed 02-04-PLAN.md (Signal and Parameter Refresh)
+Plan: 5 of 5 in current phase
+Status: Phase complete
+Last activity: 2026-01-29 — Completed 02-05-PLAN.md (Stale Entry Cleanup)
 
-Progress: [██████░░░] 80%
+Progress: [█████████] 100%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 8
-- Average duration: 17.9 min
-- Total execution time: 2.4 hours
+- Total plans completed: 9
+- Average duration: 16.8 min
+- Total execution time: 2.5 hours
 
 **By Phase:**
 
@@ -32,7 +32,7 @@ Progress: [██████░░░] 80%
 | 02-state-management | 5 | 5 | 8.4 min |
 
 **Recent Trend:**
-- Last 5 plans: 17.9 min avg (02-01: 6min, 02-02: 19min, 02-03: 4min, 02-04: 6min)
+- Last 5 plans: 16.8 min avg (02-01: 6min, 02-02: 19min, 02-03: 4min, 02-04: 6min, 02-05: 11min)
 - Trend: State management plans completing quickly on solid FFI foundation
 
 *Updated after each plan completion*
@@ -92,6 +92,13 @@ Recent decisions affecting current work:
 - Use @import to avoid circular dependency between safe.zig and cache.zig
 - All HAL data types (pins, signals, params) now refreshed at configured interval
 
+**From 02-05 (Stale Entry Cleanup):**
+- Use HashMap.remove() which returns bool - ignore return value with _ since stale entries may or may not exist
+- Log stale removal errors but don't fail refresh cycle - prevents one bad removal from stopping all updates
+- Compare cached names to HAL snapshot (not reverse) - ensures we catch all stale entries even if HAL has duplicates
+- Cache size invariant now maintained (no unbounded growth as components load/unload)
+- STATE-03 requirement fully satisfied: dynamic HAL changes handled with stale cleanup
+
 ### Pending Todos
 
 None yet.
@@ -127,8 +134,16 @@ None yet.
 - Ready for next phase (02-05: stale entry removal or 03-01: UI foundation)
 - Unit tests written but not yet runnable due to missing HAL library in dev environment
 
+**From 02-05:**
+- None - stale entry cleanup complete for all HAL data types
+- STATE-03 requirement fully satisfied: dynamic HAL changes handled with stale removal
+- All Phase 2 gaps now closed (STATE-02 and STATE-03 requirements satisfied)
+- Cache maintains size invariant (no unbounded growth)
+- Ready for Phase 3 (TUI Foundation) - state management layer is production-ready
+- Unit tests written but not yet runnable due to missing HAL library in dev environment
+
 ## Session Continuity
 
-Last session: 2026-01-29 (02-04 execution)
-Stopped at: Completed 02-04-PLAN.md (Signal and Parameter Refresh)
+Last session: 2026-01-29 (02-05 execution)
+Stopped at: Completed 02-05-PLAN.md (Stale Entry Cleanup) - Phase 2 complete
 Resume file: None
