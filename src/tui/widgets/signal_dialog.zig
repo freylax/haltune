@@ -92,5 +92,61 @@ pub const SignalDialog = struct {
         }
     }
 
-    // TODO: Add open(), close(), draw(), handleKey(), createSignal(), loadAvailablePins() in subsequent tasks
+    /// Open dialog for creating new signal
+    pub fn open(self: *SignalDialog) !void {
+        // Reset state
+        self.visible = true;
+        self.current_step = .input_name;
+        self.signal_name.clearRetainingCapacity();
+        self.type_index = 0;
+        self.signal_type = .HAL_BIT;
+        self.pin_cursor = 0;
+        self.error_message = null;
+
+        // Clear selected pins
+        {
+            var iter = self.selected_pins.iterator();
+            while (iter.next()) |entry| {
+                self.allocator.free(entry.key_ptr.*);
+            }
+        }
+        self.selected_pins.clearRetainingCapacity();
+
+        // Clear available pins
+        for (self.available_pins.items) |pin| {
+            self.allocator.free(pin);
+        }
+        self.available_pins.clearRetainingCapacity();
+    }
+
+    /// Close dialog and clean up state
+    pub fn close(self: *SignalDialog) void {
+        self.visible = false;
+
+        // Free selected pin names
+        {
+            var iter = self.selected_pins.iterator();
+            while (iter.next()) |entry| {
+                self.allocator.free(entry.key_ptr.*);
+            }
+        }
+        self.selected_pins.clearRetainingCapacity();
+
+        // Free available pin names
+        for (self.available_pins.items) |pin| {
+            self.allocator.free(pin);
+        }
+        self.available_pins.clearRetainingCapacity();
+
+        // Clear input buffer
+        self.signal_name.clearRetainingCapacity();
+
+        // Clear error
+        if (self.error_message) |msg| {
+            self.allocator.free(msg);
+            self.error_message = null;
+        }
+    }
+
+    // TODO: Add draw(), handleKey(), createSignal(), loadAvailablePins() in subsequent tasks
 };
