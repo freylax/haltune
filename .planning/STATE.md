@@ -11,28 +11,28 @@ See: .planning/PROJECT.md (updated 2025-01-28)
 ## Current Position
 
 Phase: 2 of 6 (State Management)
-Plan: 3 of 3 in current phase
+Plan: 4 of 5 in current phase
 Status: In progress
-Last activity: 2026-01-29 — Completed 02-03-PLAN.md (Pubsub Notifications)
+Last activity: 2026-01-29 — Completed 02-04-PLAN.md (Signal and Parameter Refresh)
 
-Progress: [█████░░░░] 67%
+Progress: [██████░░░] 80%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 7
-- Average duration: 19.9 min
-- Total execution time: 2.3 hours
+- Total plans completed: 8
+- Average duration: 17.9 min
+- Total execution time: 2.4 hours
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 01-ffi-foundation | 3 | 3 | 27.7 min |
-| 02-state-management | 4 | 3 | 5.5 min |
+| 02-state-management | 5 | 5 | 8.4 min |
 
 **Recent Trend:**
-- Last 5 plans: 19.9 min avg (02-01: 6min, 02-02: ?, 02-03: 4min)
+- Last 5 plans: 17.9 min avg (02-01: 6min, 02-02: 19min, 02-03: 4min, 02-04: 6min)
 - Trend: State management plans completing quickly on solid FFI foundation
 
 *Updated after each plan completion*
@@ -86,6 +86,12 @@ Recent decisions affecting current work:
 - waitForChange() uses while loop (not if) - correct spurious wakeup handling per RESEARCH.md
 - Unsubscribe removes empty lists from HashMap - prevents memory bloat from zombie items
 
+**From 02-04 (Signal and Parameter Refresh):**
+- Read signal/param values directly from hal_sig_t/hal_param_t structures (same as pins)
+- Follow exact same 4-phase refresh pattern as refreshPins() for consistency (discovery, snapshot, comparison, update)
+- Use @import to avoid circular dependency between safe.zig and cache.zig
+- All HAL data types (pins, signals, params) now refreshed at configured interval
+
 ### Pending Todos
 
 None yet.
@@ -115,8 +121,14 @@ None yet.
 - Ready for integration with StateStore to call notify() on value changes
 - Unit tests written but not yet runnable due to missing HAL library in dev environment
 
+**From 02-04:**
+- None - signal and parameter refresh complete with full HAL enumeration
+- STATE-02 requirement fully satisfied: all HAL data types refreshed at configured interval
+- Ready for next phase (02-05: stale entry removal or 03-01: UI foundation)
+- Unit tests written but not yet runnable due to missing HAL library in dev environment
+
 ## Session Continuity
 
-Last session: 2026-01-29 (02-02 execution)
-Stopped at: Completed 02-02-PLAN.md (Refresh Thread)
+Last session: 2026-01-29 (02-04 execution)
+Stopped at: Completed 02-04-PLAN.md (Signal and Parameter Refresh)
 Resume file: None
