@@ -11,19 +11,19 @@ See: .planning/PROJECT.md (updated 2025-01-28)
 ## Current Position
 
 Phase: 4 of 6 (Configuration & Editing)
-Plan: 0 of ? in current phase
-Status: Planning phase
-Last activity: 2026-01-29 — Completed Phase 3 (TUI Core) with 13/13 must-haves verified
+Plan: 1 of ? in current phase
+Status: In progress
+Last activity: 2026-01-29 — Completed 04-01 (HAL Signal FFI Wrappers) with 3/3 must-haves verified
 
-Progress: [██████████░] 50%
+Progress: [█████████░░] 53%
 
 ## Performance Metrics
 
 **Velocity:**
 - Total phases completed: 3 of 6
-- Total plans completed: 13
-- Average duration: 11.6 min
-- Total execution time: 2.5 hours
+- Total plans completed: 14
+- Average duration: 11.2 min
+- Total execution time: 2.6 hours
 
 **By Phase:**
 
@@ -32,10 +32,11 @@ Progress: [██████████░] 50%
 | 01-ffi-foundation | 3 | 3 | 27.7 min |
 | 02-state-management | 5 | 5 | 8.4 min |
 | 03-tui-core | 5 | 5 | 6.0 min |
+| 04-config-editing | 1 | ? | 3.0 min |
 
 **Recent Trend:**
-- Phase 3 completed: All TUI core features implemented (layout, tree, table, search, filter, edit)
-- Last 5 plans: 6.0 min avg (03-00: 2min, 03-01: 3min, 03-02: 13min, 03-03: 5min, 03-04: 8min)
+- Phase 4 started: HAL signal FFI wrappers complete (create, link, unlink)
+- Last 6 plans: 5.5 min avg (04-01: 3min, 03-00: 2min, 03-01: 3min, 03-02: 13min, 03-03: 5min, 03-04: 8min)
 
 *Updated after each plan completion*
 
@@ -45,6 +46,12 @@ Progress: [██████████░] 50%
 
 Decisions are logged in PROJECT.md Key Decisions table.
 Recent decisions affecting current work:
+
+**From 04-01 (HAL Signal FFI Wrappers):**
+- halSignalNew does NOT acquire mutex - C function (hal_signal_new) handles locking internally
+- halLink and halUnlink explicitly acquire HAL mutex following Phase 1 write function pattern
+- Added LinkFailed and UnlinkFailed error types for specific error discrimination (not generic InitFailed)
+- All signal functions follow existing documentation pattern (Parameters, Returns, Memory ownership, Thread safety)
 
 **From 03-04 (Search, Filter, and In-Place Editing):**
 - glob.zig library used for pattern matching (simpler than custom implementation)
@@ -142,6 +149,9 @@ None yet.
 
 ### Blockers/Concerns
 
+**From 04-01:**
+- None - HAL signal FFI wrappers complete and ready for TUI integration
+
 **From 03-04:**
 - None - search, filter, and edit functionality complete and ready for testing
 
@@ -178,7 +188,7 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-01-29 (Phase 3 execution and verification)
-Stopped at: Phase 3 complete with all 5 plans executed, 13/13 must-haves verified
+Last session: 2026-01-29 (Phase 4 plan 01 execution)
+Stopped at: Completed 04-01 (HAL Signal FFI Wrappers) - signal create/link/unlink functions ready
 Resume file: None
-Next action: Plan Phase 4 (Configuration & Editing) or perform user acceptance testing
+Next action: Execute 04-02 (TUI Signal Creation Dialog) or perform user acceptance testing
