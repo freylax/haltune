@@ -3,12 +3,12 @@ const std = @import("std");
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{
         .default_target = .{
-            // Target aarch64-linux for Raspberry Pi 5 compatibility
+            // Target aarch64-linux-gnu for Raspberry Pi 5 compatibility
+            // Must use glibc (GNU ABI) to link with liblinuxcnchal.so
+            // liblinuxcnchal.so is built against glibc 2.41
             .cpu_arch = .aarch64,
             .os_tag = .linux,
-            // Use musl - requires: apt install musl on target
-            // Note: This conflicts with liblinuxcnchal.so which is glibc-based
-            // To fix: either build LinuxCNC from source with musl, or use glibc build
+            .abi = .gnu, // Use glibc, not musl
         },
     });
 
