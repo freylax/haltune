@@ -74,8 +74,8 @@ pub const SignalDialog = struct {
         return .{
             .allocator = allocator,
             .store = store,
-            .signal_name = std.ArrayList(u8).initCapacity(allocator, 0) catch unreachable,
-            .available_pins = std.ArrayList([]const u8).initCapacity(allocator, 0) catch unreachable,
+            .signal_name = std.ArrayList(u8).init(allocator),
+            .available_pins = std.ArrayList([]const u8).init(allocator),
             .selected_pins = std.StringHashMap(void).init(allocator),
         };
     }

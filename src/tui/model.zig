@@ -13,7 +13,6 @@ const exportHal = @import("../hal/export.zig");
 const ffi = @import("../ffi/safe.zig");
 const HalError = @import("../ffi/errors.zig").HalError;
 
-
 /// Global redraw flag pointer for pubsub callbacks
 /// This is set by the Model during initialization and used by callbacks
 var GLOBAL_REDRAW_FLAG: ?*std.atomic.Value(bool) = null;
@@ -109,7 +108,7 @@ pub const Model = struct {
             .error_message = null,
             .error_message_owner = null,
             .error_timeout = 0,
-            .save_filename = std.ArrayList(u8).initCapacity(allocator, 0) catch unreachable,
+            .save_filename = std.ArrayList(u8).init(allocator),
         };
     }
 
@@ -148,7 +147,7 @@ pub const Model = struct {
     /// Get list of checked item names
     /// Returns a snapshot of all items selected in the tree view
     pub fn getCheckedItems(self: *const Model, allocator: std.mem.Allocator) ![][]const u8 {
-        var items = std.ArrayList([]const u8).initCapacity(allocator, 0) catch unreachable;
+        var items = std.ArrayList([]const u8).init(allocator);
 
         var iter = self.tree_view.checked_items.iterator();
         while (iter.next()) |entry| {

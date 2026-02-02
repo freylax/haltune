@@ -58,7 +58,7 @@ pub const Node = struct {
             .name = name,
             .item_type = item_type,
             .full_name = full_name,
-            .children = if (item_type == .component) std.ArrayList(*Node).initCapacity(allocator, 0) catch unreachable else null,
+            .children = if (item_type == .component) std.ArrayList(*Node).init(allocator) else null,
             .parent = parent,
         };
         return node;
@@ -118,14 +118,14 @@ pub const TreeView = struct {
         var tree_view = TreeView{
             .allocator = allocator,
             .store = store,
-            .root = std.ArrayList(*Node).initCapacity(allocator, 0) catch unreachable,
+            .root = std.ArrayList(*Node).init(allocator),
             .expanded_nodes = std.StringHashMap(void).init(allocator),
             .checked_items = std.StringHashMap(void).init(allocator),
             .cursor_index = 0,
-            .visible_nodes = std.ArrayList(*Node).initCapacity(allocator, 0) catch unreachable,
+            .visible_nodes = std.ArrayList(*Node).init(allocator),
             .search_pattern = "",
             .search_input = false,
-            .search_buffer = std.ArrayList(u8).initCapacity(allocator, 0) catch unreachable,
+            .search_buffer = std.ArrayList(u8).init(allocator),
         };
 
         // Build the tree from HAL data
@@ -324,7 +324,7 @@ pub const TreeView = struct {
         const max = ctx.max.size();
 
         // Build list of widgets
-        var widgets = std.ArrayList(vxfw.Widget).initCapacity(ctx.arena, 0) catch unreachable;
+        var widgets = std.ArrayList(vxfw.Widget).init(ctx.arena);
         defer widgets.deinit(ctx.arena);
 
         // Show search input if in search mode
@@ -578,9 +578,9 @@ const ComponentGroup = struct {
     fn init(allocator: std.mem.Allocator, name: []const u8) ComponentGroup {
         return .{
             .name = name,
-            .pins = std.ArrayList([]const u8).initCapacity(allocator, 0) catch unreachable,
-            .signals = std.ArrayList([]const u8).initCapacity(allocator, 0) catch unreachable,
-            .params = std.ArrayList([]const u8).initCapacity(allocator, 0) catch unreachable,
+            .pins = std.ArrayList([]const u8).init(allocator),
+            .signals = std.ArrayList([]const u8).init(allocator),
+            .params = std.ArrayList([]const u8).init(allocator),
             .allocator = allocator,
         };
     }

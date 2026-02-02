@@ -88,7 +88,7 @@ pub const TypeFilter = enum {
 /// Pin direction (for pins only)
 pub const PinDirection = enum {
     /// Input pin (read-only)
-    @"in",
+    in,
     /// Output pin (writable)
     out,
     /// Bidirectional pin (writable)
@@ -189,17 +189,17 @@ pub const DataTable = struct {
         return .{
             .allocator = allocator,
             .store = store,
-            .items = std.ArrayList(TableItem).initCapacity(allocator, 0) catch unreachable,
+            .items = std.ArrayList(TableItem).init(allocator),
             // Column widths: Name 40%, Type 10%, Direction 10%, Value 30%
             // Remaining 10% for spacing/padding
             .column_widths = .{ 40, 10, 10, 30 },
             .filter_type = .all,
             .filter_component = "",
-            .component_buffer = std.ArrayList(u8).initCapacity(allocator, 0) catch unreachable,
+            .component_buffer = std.ArrayList(u8).init(allocator),
             .component_filter_input = false,
             .edit_mode = false,
             .edit_item = null,
-            .edit_buffer = std.ArrayList(u8).initCapacity(allocator, 0) catch unreachable,
+            .edit_buffer = std.ArrayList(u8).init(allocator),
             .pending_edits = std.StringHashMap(void).init(allocator),
             .error_message = null,
             .error_message_owner = null,
@@ -294,7 +294,7 @@ pub const DataTable = struct {
                 std.mem.indexOf(u8, name, "-io") != null)
                 .out
             else if (std.mem.indexOf(u8, name, "-in") != null)
-                .@"in"
+                .in
             else
                 .none;
             is_writable = (direction == .out or direction == .io);
@@ -316,7 +316,7 @@ pub const DataTable = struct {
                     is_writable = true;
                 } else |err| {
                     // Item not found in any cache
-                    std.log.warn("Item '{s}' not found in cache: {}", .{name, err});
+                    std.log.warn("Item '{s}' not found in cache: {}", .{ name, err });
                     // Return a placeholder item
                     return TableItem{
                         .name = name,
@@ -682,12 +682,12 @@ pub const DataTable = struct {
         const value_width = (max.width * self.column_widths[3]) / 100;
 
         // Build list of text widgets for table content
-        var widgets = std.ArrayList(vxfw.Widget).initCapacity(ctx.arena, 0) catch unreachable;
+        var widgets = std.ArrayList(vxfw.Widget).init(ctx.arena);
         defer widgets.deinit(ctx.arena);
 
         // Show filter indicators if filters are active
         if (self.filter_type != .all or self.filter_component.len > 0 or self.component_filter_input) {
-            var filter_text = std.ArrayList(u8).initCapacity(ctx.arena, 0) catch unreachable;
+            var filter_text = std.ArrayList(u8).init(ctx.arena);
             try filter_text.append(ctx.arena, '[');
 
             // Type filter
@@ -713,7 +713,7 @@ pub const DataTable = struct {
         // Row 1: Header
         const header_style = vaxis.Style{ .bold = true };
         // Build header string manually to avoid format specifier issues
-        var header_buffer = std.ArrayList(u8).initCapacity(ctx.arena, 100) catch unreachable;
+        var header_buffer = std.ArrayList(u8).init(ctx.arena);
         try header_buffer.appendSlice(ctx.arena, "Name");
         {
             var i: usize = header_buffer.items.len;
@@ -744,11 +744,11 @@ pub const DataTable = struct {
         // Row 2: Separator
         const total_width = name_width + type_width + dir_width + value_width;
         // Create separator string by repeating '-' character
-        var sep_buffer = std.ArrayList(u8).initCapacity(ctx.arena, total_width) catch unreachable;
+        var sep_buffer = std.ArrayList(u8).init(ctx.arena);
         {
             var i: u16 = 0;
             while (i < total_width) : (i += 1) {
-                sep_buffer.append(ctx.arena, '-') catch unreachable;
+                try sep_buffer.append(ctx.arena, '-');
             }
         }
         const separator = sep_buffer.items;
@@ -782,7 +782,7 @@ pub const DataTable = struct {
 
             // Format direction
             const dir_str = switch (item.direction) {
-                .@"in" => "IN",
+                .in => "IN",
                 .out => "OUT",
                 .io => "IO",
                 .none => "",
@@ -802,14 +802,14 @@ pub const DataTable = struct {
 
                 // Otherwise show current value from StateStore
                 const value = self.getItemValue(item) catch |err| {
-                    std.log.warn("Failed to get value for '{s}': {}", .{item.name, err});
+                    std.log.warn("Failed to get value for '{s}': {}", .{ item.name, err });
                     break :blk "ERR";
                 };
                 break :blk formatHalValue(value, ctx.arena);
             };
 
             // Format row manually to avoid format specifier issues
-            var row_buffer = std.ArrayList(u8).initCapacity(ctx.arena, 200) catch unreachable;
+            var row_buffer = std.ArrayList(u8).init(ctx.arena);
 
             // Add name
             try row_buffer.appendSlice(ctx.arena, item.name);
