@@ -44,7 +44,7 @@ pub fn main() !void {
     // Create Model with allocator, store, and pubsub
     // The Model holds all application state and implements vxfw.Widget
     const model = try allocator.create(Model);
-    defer allocator.destroy(model);
+    errdefer allocator.destroy(model);
 
     // Initialize Model, catching HAL-specific errors
     model.* = Model.init(allocator, &store, &pubsub) catch |err| {

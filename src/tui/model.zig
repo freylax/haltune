@@ -82,10 +82,12 @@ pub const Model = struct {
 
         // Create TreeView widget
         const tree_view = try allocator.create(TreeView);
+        errdefer allocator.destroy(tree_view);
         tree_view.* = try TreeView.init(allocator, store);
 
         // Create DataTable widget
         const data_table = try allocator.create(DataTable);
+        errdefer allocator.destroy(data_table);
         data_table.* = DataTable.init(allocator, store);
 
         // Create SignalDialog widget
@@ -116,15 +118,30 @@ pub const Model = struct {
         // Stop RefreshThread FIRST (before any other cleanup)
         // This prevents the thread from accessing freed resources or HAL after shutdown
         if (self.refresh_thread) |refresh| {
-            refresh.stop();
+            // Signal thread to stop
+            refresh.running.store(false, .release);
+
+            // Wait for thread to exit (with timeout to prevent hang)
+            // The thread should exit within one refresh interval (100ms)
+            std.Thread.sleep(150 * std.time.ns_per_ms);
+
+            // Join the thread to ensure it has exited
+            refresh.thread.join();
+
+            // Free the thread memory
             self.allocator.destroy(refresh);
             self.refresh_thread = null;
         }
 
+        // Clean up TreeView
         self.tree_view.deinit();
         self.allocator.destroy(self.tree_view);
+
+        // Clean up DataTable
         self.data_table.deinit();
         self.allocator.destroy(self.data_table);
+
+        // Clean up SignalDialog (stack-allocated, just deinit)
         self.signal_dialog.deinit();
 
         // Free error message if allocated
