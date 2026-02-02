@@ -138,7 +138,7 @@ pub const Model = struct {
         }
 
         // Free save filename buffer
-        self.save_filename.deinit();
+        self.save_filename.deinit(self.allocator);
 
         // Exit HAL component
         ffi.halExit(self.hal_comp_id);

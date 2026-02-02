@@ -146,7 +146,7 @@ pub const TreeView = struct {
         for (self.root.items) |node| {
             self.freeNode(node);
         }
-        self.root.deinit();
+        self.root.deinit(self.allocator);
 
         // Free HashMaps
         self.expanded_nodes.deinit();

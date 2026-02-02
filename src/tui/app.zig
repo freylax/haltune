@@ -44,7 +44,6 @@ pub fn main() !void {
     // Create Model with allocator, store, and pubsub
     // The Model holds all application state and implements vxfw.Widget
     const model = try allocator.create(Model);
-    errdefer allocator.destroy(model);
 
     // Initialize Model, catching HAL-specific errors
     model.* = Model.init(allocator, &store, &pubsub) catch |err| {
@@ -66,6 +65,12 @@ pub fn main() !void {
         // For other errors, propagate normally
         return err;
     };
+    defer {
+        // Clean up Model resources (tree_view, data_table, signal_dialog, HAL)
+        model.deinit();
+        // Free the Model allocation itself
+        allocator.destroy(model);
+    }
 
     // Initialize Vxfw application
     // Vxfw manages the event loop, terminal I/O, and rendering
