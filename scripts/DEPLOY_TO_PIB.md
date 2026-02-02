@@ -116,3 +116,28 @@ export LD_LIBRARY_PATH=/usr/lib/linuxcnc:$LD_LIBRARY_PATH
 **Build works but tests fail**
 - Ensure LinuxCNC is running: `halcmd show pin`
 - Check permissions: may need to be in `hal` group
+
+**SSH Warning: "Please note that SSH may not work until a valid user has been set up"**
+This is a BENIGN warning from Raspberry Pi OS about the deleted default 'pi' user.
+The actual user 'cnc' is fully configured with SSH keys and works correctly.
+- SSH connection is functional (key-based auth working)
+- The warning can be safely ignored
+- To suppress the warning, see: http://rptl.io/newuser
+
+## SSH Configuration
+
+The development machine has SSH configured for seamless connections:
+- Host: `pib` (resolves to 192.168.2.114)
+- User: `cnc`
+- Authentication: SSH key-based (no password required)
+- Config file: `~/.ssh/config` contains:
+  ```
+  Host pib
+    HostName pib
+    User cnc
+    Compression yes
+  ```
+
+All deployment scripts work correctly. You can use either:
+- `ssh pib` (uses SSH config)
+- `ssh cnc@pib` (explicit user)
