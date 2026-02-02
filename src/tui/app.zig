@@ -3,6 +3,7 @@ const vxfw = @import("vaxis").vxfw;
 const Model = @import("model.zig").Model;
 const StateStore = @import("../state/cache.zig").StateStore;
 const SubscriptionManager = @import("../state/pubsub.zig").SubscriptionManager;
+const HalError = @import("../ffi/errors.zig").HalError;
 
 /// Main TUI application entry point
 ///
@@ -32,12 +33,12 @@ pub fn main() !void {
 
     // Initialize StateStore for HAL component caching
     // This provides thread-safe access to pins, signals, and parameters
-    var store = try StateStore.init(allocator);
+    var store = StateStore.init(allocator);
     defer store.deinit();
 
     // Initialize SubscriptionManager for pubsub notifications
     // This allows the TUI to receive updates when HAL values change
-    var pubsub = try SubscriptionManager.init(allocator);
+    var pubsub = SubscriptionManager.init(allocator);
     defer pubsub.deinit();
 
     // Create Model with allocator, store, and pubsub
@@ -45,12 +46,31 @@ pub fn main() !void {
     const model = try allocator.create(Model);
     defer allocator.destroy(model);
 
-    model.* = try Model.init(allocator, &store, &pubsub);
+    // Initialize Model, catching HAL-specific errors
+    model.* = Model.init(allocator, &store, &pubsub) catch |err| {
+        // Handle HAL not available error with helpful message
+        if (err == HalError.HalNotAvailable) {
+            std.debug.print(
+                \\ERROR: HAL is not available
+                \\
+                \\haltune requires LinuxCNC to be running to access the HAL.
+                \\
+                \\Please start LinuxCNC first:
+                \\  linuxcnc /path/to/your/config.ini
+                \\
+                \\Then run haltune again.
+                \\
+            , .{});
+            std.process.exit(1);
+        }
+        // For other errors, propagate normally
+        return err;
+    };
 
     // Stop RefreshThread before deinit (clean shutdown)
     // Ensure thread exits before we free resources
     if (model.refresh_thread) |*refresh| {
-        defer refresh.stop();
+        defer refresh.*.stop();
     }
 
     // Initialize Vxfw application

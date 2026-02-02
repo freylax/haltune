@@ -15,6 +15,10 @@ pub const HalError = error{
     /// This typically indicates HAL is not running or component name is invalid
     InitFailed,
 
+    /// HAL is not available - LinuxCNC is not running
+    /// HAL shared memory files in /dev/shm don't exist
+    HalNotAvailable,
+
     /// Component not found in HAL
     /// The specified component ID or name does not exist
     ComponentNotFound,
@@ -58,6 +62,10 @@ pub const HalError = error{
     /// Parameter not found in HAL
     /// The specified parameter name does not exist
     ParamNotFound,
+
+    /// Generic not found error
+    /// Used for FFI functions that return null pointers
+    NotFound,
 };
 
 /// Map HAL C return code to Zig error
@@ -99,4 +107,40 @@ pub fn mapHalError(rc: std.c.Int) HalError {
         // This is a conservative choice since we can't be more specific
         else => return HalError.InitFailed,
     }
+}
+
+/// Check if HAL is available by verifying shared memory files exist
+///
+/// HAL creates shared memory files in /dev/shm when LinuxCNC is running.
+/// This function checks for the presence of these files to determine if
+/// HAL is available before attempting to call hal_init().
+///
+/// Returns:
+///   - void on success (HAL is available)
+///   - error.HalNotAvailable if HAL shared memory files don't exist
+///
+/// Example:
+/// ```
+/// // Check HAL is available before initializing
+/// try checkHalAvailable();
+/// const comp_id = try halInit("mycomponent");
+/// ```
+pub fn checkHalAvailable() !void {
+    // HAL creates several shared memory files in /dev/shm
+    // The main file is /dev/shm/hal_shm which contains the HAL data structure
+    const hal_shm_path = "/dev/shm/hal_shm";
+
+    // Try to access the HAL shared memory file
+    // If it doesn't exist, HAL is not available
+    std.fs.accessAbsolute(hal_shm_path, .{}) catch |err| {
+        if (err == error.FileNotFound) {
+            return HalError.HalNotAvailable;
+        }
+        // Other errors (permission denied, etc.) also mean HAL isn't accessible
+        return HalError.HalNotAvailable;
+    };
+
+    // File exists - HAL is available
+    // Note: This doesn't guarantee hal_init() will succeed, but it means
+    // the HAL infrastructure is in place
 }

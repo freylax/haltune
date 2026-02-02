@@ -11,6 +11,8 @@ const SignalDialog = @import("widgets/signal_dialog.zig").SignalDialog;
 const drawTwoPanelLayout = @import("layout.zig").drawTwoPanelLayout;
 const exportHal = @import("../hal/export.zig");
 const ffi = @import("../ffi/safe.zig");
+const HalError = @import("../ffi/errors.zig").HalError;
+
 
 /// Global redraw flag pointer for pubsub callbacks
 /// This is set by the Model during initialization and used by callbacks
@@ -67,6 +69,10 @@ pub const Model = struct {
         store: *StateStore,
         pubsub: *SubscriptionManager,
     ) !Model {
+        // Check if HAL is available before attempting to initialize
+        // This prevents EINTR crashes when LinuxCNC is not running
+        try @import("../ffi/errors.zig").checkHalAvailable();
+
         // Initialize HAL component
         const comp_id = try ffi.halInit("haltune");
         errdefer ffi.halExit(comp_id);
