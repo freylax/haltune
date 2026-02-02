@@ -186,20 +186,25 @@ pub const DataTable = struct {
     /// Returns:
     ///   - Initialized DataTable with empty item list
     pub fn init(allocator: std.mem.Allocator, store: *StateStore) DataTable {
+        // Initialize ArrayLists
+        const items = std.ArrayList(TableItem).initCapacity(allocator, 0) catch unreachable;
+        const component_buffer = std.ArrayList(u8).initCapacity(allocator, 0) catch unreachable;
+        const edit_buffer = std.ArrayList(u8).initCapacity(allocator, 0) catch unreachable;
+
         return .{
             .allocator = allocator,
             .store = store,
-            .items = std.ArrayList(TableItem).init(allocator),
+            .items = items,
             // Column widths: Name 40%, Type 10%, Direction 10%, Value 30%
             // Remaining 10% for spacing/padding
             .column_widths = .{ 40, 10, 10, 30 },
             .filter_type = .all,
             .filter_component = "",
-            .component_buffer = std.ArrayList(u8).init(allocator),
+            .component_buffer = component_buffer,
             .component_filter_input = false,
             .edit_mode = false,
             .edit_item = null,
-            .edit_buffer = std.ArrayList(u8).init(allocator),
+            .edit_buffer = edit_buffer,
             .pending_edits = std.StringHashMap(void).init(allocator),
             .error_message = null,
             .error_message_owner = null,
@@ -682,12 +687,12 @@ pub const DataTable = struct {
         const value_width = (max.width * self.column_widths[3]) / 100;
 
         // Build list of text widgets for table content
-        var widgets = std.ArrayList(vxfw.Widget).init(ctx.arena);
+        var widgets = std.ArrayList(vxfw.Widget).initCapacity(ctx.arena, 0) catch unreachable;
         defer widgets.deinit(ctx.arena);
 
         // Show filter indicators if filters are active
         if (self.filter_type != .all or self.filter_component.len > 0 or self.component_filter_input) {
-            var filter_text = std.ArrayList(u8).init(ctx.arena);
+            var filter_text = std.ArrayList(u8).initCapacity(ctx.arena, 0) catch unreachable;
             try filter_text.append(ctx.arena, '[');
 
             // Type filter
@@ -713,7 +718,7 @@ pub const DataTable = struct {
         // Row 1: Header
         const header_style = vaxis.Style{ .bold = true };
         // Build header string manually to avoid format specifier issues
-        var header_buffer = std.ArrayList(u8).init(ctx.arena);
+        var header_buffer = std.ArrayList(u8).initCapacity(ctx.arena, 0) catch unreachable;
         try header_buffer.appendSlice(ctx.arena, "Name");
         {
             var i: usize = header_buffer.items.len;
@@ -744,7 +749,7 @@ pub const DataTable = struct {
         // Row 2: Separator
         const total_width = name_width + type_width + dir_width + value_width;
         // Create separator string by repeating '-' character
-        var sep_buffer = std.ArrayList(u8).init(ctx.arena);
+        var sep_buffer = std.ArrayList(u8).initCapacity(ctx.arena, 0) catch unreachable;
         {
             var i: u16 = 0;
             while (i < total_width) : (i += 1) {
@@ -809,7 +814,7 @@ pub const DataTable = struct {
             };
 
             // Format row manually to avoid format specifier issues
-            var row_buffer = std.ArrayList(u8).init(ctx.arena);
+            var row_buffer = std.ArrayList(u8).initCapacity(ctx.arena, 0) catch unreachable;
 
             // Add name
             try row_buffer.appendSlice(ctx.arena, item.name);

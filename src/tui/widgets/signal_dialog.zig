@@ -71,11 +71,14 @@ pub const SignalDialog = struct {
 
     /// Initialize dialog
     pub fn init(allocator: std.mem.Allocator, store: *StateStore) SignalDialog {
+        const signal_name = std.ArrayList(u8).initCapacity(allocator, 0) catch unreachable;
+        const available_pins = std.ArrayList([]const u8).initCapacity(allocator, 0) catch unreachable;
+
         return .{
             .allocator = allocator,
             .store = store,
-            .signal_name = std.ArrayList(u8).init(allocator),
-            .available_pins = std.ArrayList([]const u8).init(allocator),
+            .signal_name = signal_name,
+            .available_pins = available_pins,
             .selected_pins = std.StringHashMap(void).init(allocator),
         };
     }

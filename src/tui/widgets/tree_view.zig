@@ -58,7 +58,7 @@ pub const Node = struct {
             .name = name,
             .item_type = item_type,
             .full_name = full_name,
-            .children = if (item_type == .component) std.ArrayList(*Node).init(allocator) else null,
+            .children = if (item_type == .component) std.ArrayList(*Node).initCapacity(allocator, 0) catch return error.OutOfMemory else null,
             .parent = parent,
         };
         return node;
@@ -115,17 +115,23 @@ pub const TreeView = struct {
 
     /// Initialize a new TreeView
     pub fn init(allocator: std.mem.Allocator, store: *StateStore) !TreeView {
+        // Initialize ArrayLists using initCapacity
+        // Note: initCapacity(allocator, 0) never fails in practice
+        const root_list = std.ArrayList(*Node).initCapacity(allocator, 0) catch return error.OutOfMemory;
+        const visible_nodes_list = std.ArrayList(*Node).initCapacity(allocator, 0) catch return error.OutOfMemory;
+        const search_buffer_list = std.ArrayList(u8).initCapacity(allocator, 0) catch return error.OutOfMemory;
+
         var tree_view = TreeView{
             .allocator = allocator,
             .store = store,
-            .root = std.ArrayList(*Node).init(allocator),
+            .root = root_list,
             .expanded_nodes = std.StringHashMap(void).init(allocator),
             .checked_items = std.StringHashMap(void).init(allocator),
             .cursor_index = 0,
-            .visible_nodes = std.ArrayList(*Node).init(allocator),
+            .visible_nodes = visible_nodes_list,
             .search_pattern = "",
             .search_input = false,
-            .search_buffer = std.ArrayList(u8).init(allocator),
+            .search_buffer = search_buffer_list,
         };
 
         // Build the tree from HAL data
@@ -324,7 +330,7 @@ pub const TreeView = struct {
         const max = ctx.max.size();
 
         // Build list of widgets
-        var widgets = std.ArrayList(vxfw.Widget).init(ctx.arena);
+        var widgets = std.ArrayList(vxfw.Widget).initCapacity(ctx.arena, 0) catch unreachable;
         defer widgets.deinit(ctx.arena);
 
         // Show search input if in search mode
@@ -578,9 +584,9 @@ const ComponentGroup = struct {
     fn init(allocator: std.mem.Allocator, name: []const u8) ComponentGroup {
         return .{
             .name = name,
-            .pins = std.ArrayList([]const u8).init(allocator),
-            .signals = std.ArrayList([]const u8).init(allocator),
-            .params = std.ArrayList([]const u8).init(allocator),
+            .pins = std.ArrayList([]const u8).initCapacity(allocator, 0) catch unreachable,
+            .signals = std.ArrayList([]const u8).initCapacity(allocator, 0) catch unreachable,
+            .params = std.ArrayList([]const u8).initCapacity(allocator, 0) catch unreachable,
             .allocator = allocator,
         };
     }

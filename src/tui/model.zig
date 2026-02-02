@@ -108,7 +108,7 @@ pub const Model = struct {
             .error_message = null,
             .error_message_owner = null,
             .error_timeout = 0,
-            .save_filename = std.ArrayList(u8).init(allocator),
+            .save_filename = std.ArrayList(u8).initCapacity(allocator, 0) catch unreachable,
         };
     }
 
@@ -147,7 +147,7 @@ pub const Model = struct {
     /// Get list of checked item names
     /// Returns a snapshot of all items selected in the tree view
     pub fn getCheckedItems(self: *const Model, allocator: std.mem.Allocator) ![][]const u8 {
-        var items = std.ArrayList([]const u8).init(allocator);
+        var items = std.ArrayList([]const u8).initCapacity(allocator, 0) catch unreachable;
 
         var iter = self.tree_view.checked_items.iterator();
         while (iter.next()) |entry| {

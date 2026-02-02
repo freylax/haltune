@@ -158,7 +158,7 @@ pub const SubscriptionManager = struct {
         const entry = try self.subscribers.getOrPut(item_name);
         if (!entry.found_existing) {
             // New entry: initialize ArrayList
-            entry.value_ptr.* = SubscriberList.init(self.allocator);
+            entry.value_ptr.* = SubscriberList.initCapacity(self.allocator, 0) catch unreachable;
         }
 
         // Add callback to subscriber list

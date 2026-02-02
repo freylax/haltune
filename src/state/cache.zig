@@ -382,7 +382,7 @@ pub const StateStore = struct {
         defer self.rwlock.unlockShared();
 
         // Snapshot keys while holding lock
-        var keys = std.ArrayList([]const u8).init(allocator);
+        var keys = std.ArrayList([]const u8).initCapacity(allocator, 0) catch unreachable;
         var iter = self.pins.iterator();
         while (iter.next()) |entry| {
             try keys.append(allocator, entry.key_ptr.*);
@@ -423,7 +423,7 @@ pub const StateStore = struct {
         defer self.rwlock.unlockShared();
 
         // Snapshot keys while holding lock
-        var keys = std.ArrayList([]const u8).init(allocator);
+        var keys = std.ArrayList([]const u8).initCapacity(allocator, 0) catch unreachable;
         var iter = self.signals.iterator();
         while (iter.next()) |entry| {
             try keys.append(allocator, entry.key_ptr.*);
@@ -464,7 +464,7 @@ pub const StateStore = struct {
         defer self.rwlock.unlockShared();
 
         // Snapshot keys while holding lock
-        var keys = std.ArrayList([]const u8).init(allocator);
+        var keys = std.ArrayList([]const u8).initCapacity(allocator, 0) catch unreachable;
         var iter = self.params.iterator();
         while (iter.next()) |entry| {
             try keys.append(allocator, entry.key_ptr.*);
@@ -508,7 +508,7 @@ pub const StateStore = struct {
         self.rwlock.lockShared();
         defer self.rwlock.unlockShared();
 
-        var result = std.ArrayList([]const u8).init(allocator);
+        var result = std.ArrayList([]const u8).initCapacity(allocator, 0) catch unreachable;
 
         // Iterate through all pin_links and find pins linked to this signal
         var iter = self.pin_links.iterator();
