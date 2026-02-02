@@ -117,7 +117,7 @@ pub fn mapHalError(rc: std.c.Int) HalError {
 ///
 /// Returns:
 ///   - void on success (HAL is available)
-///   - error.HalNotAvailable if HAL shared memory files don't exist
+///   - error.HalNotAvailable if HAL cannot be initialized
 ///
 /// Example:
 /// ```
@@ -126,21 +126,21 @@ pub fn mapHalError(rc: std.c.Int) HalError {
 /// const comp_id = try halInit("mycomponent");
 /// ```
 pub fn checkHalAvailable() !void {
-    // HAL creates several shared memory files in /dev/shm
-    // The main file is /dev/shm/hal_shm which contains the HAL data structure
-    const hal_shm_path = "/dev/shm/hal_shm";
+    // The most reliable way to check if HAL is available is to try
+    // initializing a test component. This works with both:
+    // - Full LinuxCNC (creates /dev/shm/hal_shm)
+    // - halrun (interactive HAL, may use different mechanisms)
+    const c = @import("c.zig").c;
 
-    // Try to access the HAL shared memory file
-    // If it doesn't exist, HAL is not available
-    std.fs.accessAbsolute(hal_shm_path, .{}) catch |err| {
-        if (err == error.FileNotFound) {
-            return HalError.HalNotAvailable;
-        }
-        // Other errors (permission denied, etc.) also mean HAL isn't accessible
+    // Try to initialize a temporary test component
+    const test_comp_name = "haltune_check\x00";
+    const test_comp_id = c.hal_init(test_comp_name);
+
+    // If hal_init returns negative, HAL is not available
+    if (test_comp_id < 0) {
         return HalError.HalNotAvailable;
-    };
+    }
 
-    // File exists - HAL is available
-    // Note: This doesn't guarantee hal_init() will succeed, but it means
-    // the HAL infrastructure is in place
+    // Success! Clean up the test component immediately
+    _ = c.hal_exit(test_comp_id);
 }
