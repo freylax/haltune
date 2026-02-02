@@ -113,6 +113,14 @@ pub const Model = struct {
 
     /// Clean up Model resources
     pub fn deinit(self: *Model) void {
+        // Stop RefreshThread FIRST (before any other cleanup)
+        // This prevents the thread from accessing freed resources or HAL after shutdown
+        if (self.refresh_thread) |refresh| {
+            refresh.stop();
+            self.allocator.destroy(refresh);
+            self.refresh_thread = null;
+        }
+
         self.tree_view.deinit();
         self.allocator.destroy(self.tree_view);
         self.data_table.deinit();
@@ -127,7 +135,7 @@ pub const Model = struct {
         // Free save filename buffer
         self.save_filename.deinit();
 
-        // Exit HAL component
+        // Exit HAL component (after RefreshThread is stopped)
         ffi.halExit(self.hal_comp_id);
     }
 

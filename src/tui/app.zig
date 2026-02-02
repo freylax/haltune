@@ -67,12 +67,6 @@ pub fn main() !void {
         return err;
     };
 
-    // Stop RefreshThread before deinit (clean shutdown)
-    // Ensure thread exits before we free resources
-    if (model.refresh_thread) |*refresh| {
-        defer refresh.*.stop();
-    }
-
     // Initialize Vxfw application
     // Vxfw manages the event loop, terminal I/O, and rendering
     var app = try vxfw.App.init(allocator);
