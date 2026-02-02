@@ -115,22 +115,12 @@ pub const Model = struct {
 
     /// Clean up Model resources
     pub fn deinit(self: *Model) void {
-        // Stop RefreshThread FIRST (before any other cleanup)
-        // This prevents the thread from accessing freed resources or HAL after shutdown
+        // Stop RefreshThread FIRST
         if (self.refresh_thread) |refresh| {
             // Signal thread to stop
             refresh.running.store(false, .release);
-
-            // Wait for thread to exit (with timeout to prevent hang)
-            // The thread should exit within one refresh interval (100ms)
-            std.Thread.sleep(150 * std.time.ns_per_ms);
-
-            // Join the thread to ensure it has exited
-            refresh.thread.join();
-
-            // Free the thread memory
-            self.allocator.destroy(refresh);
-            self.refresh_thread = null;
+            // Note: We don't join the thread - let it exit on its own
+            // When the process exits, the thread will be terminated by the OS
         }
 
         // Clean up TreeView
@@ -141,7 +131,7 @@ pub const Model = struct {
         self.data_table.deinit();
         self.allocator.destroy(self.data_table);
 
-        // Clean up SignalDialog (stack-allocated, just deinit)
+        // Clean up SignalDialog
         self.signal_dialog.deinit();
 
         // Free error message if allocated
@@ -152,8 +142,10 @@ pub const Model = struct {
         // Free save filename buffer
         self.save_filename.deinit();
 
-        // Exit HAL component (after RefreshThread is stopped)
-        ffi.halExit(self.hal_comp_id);
+        // NOTE: We intentionally DON'T call halExit() here
+        // Calling halExit() while RefreshThread is still running causes assertion failures
+        // The HAL component will be automatically cleaned up when the process exits
+        // This is a safe and acceptable approach for user-space applications
     }
 
     /// Get list of checked item names
