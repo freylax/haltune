@@ -12,6 +12,7 @@
 
 const std = @import("std");
 const vxfw = @import("vaxis").vxfw;
+const vaxis = @import("vaxis");
 const StateStore = @import("../../state/cache.zig").StateStore;
 const glob = @import("glob");
 
@@ -57,7 +58,7 @@ pub const Node = struct {
             .name = name,
             .item_type = item_type,
             .full_name = full_name,
-            .children = if (item_type == .component) std.ArrayList(*Node).init(allocator) else null,
+            .children = if (item_type == .component) std.ArrayList(*Node).initCapacity(allocator, 0) catch unreachable else null,
             .parent = parent,
         };
         return node;
@@ -117,14 +118,14 @@ pub const TreeView = struct {
         var tree_view = TreeView{
             .allocator = allocator,
             .store = store,
-            .root = std.ArrayList(*Node).init(allocator),
+            .root = std.ArrayList(*Node).initCapacity(allocator, 0) catch unreachable,
             .expanded_nodes = std.StringHashMap(void).init(allocator),
             .checked_items = std.StringHashMap(void).init(allocator),
             .cursor_index = 0,
-            .visible_nodes = std.ArrayList(*Node).init(allocator),
+            .visible_nodes = std.ArrayList(*Node).initCapacity(allocator, 0) catch unreachable,
             .search_pattern = "",
             .search_input = false,
-            .search_buffer = std.ArrayList(u8).init(allocator),
+            .search_buffer = std.ArrayList(u8).initCapacity(allocator, 0) catch unreachable,
         };
 
         // Build the tree from HAL data
@@ -144,10 +145,10 @@ pub const TreeView = struct {
         // Free HashMaps
         self.expanded_nodes.deinit();
         self.checked_items.deinit();
-        self.visible_nodes.deinit();
+        self.visible_nodes.deinit(self.allocator);
 
         // Free search buffer
-        self.search_buffer.deinit();
+        self.search_buffer.deinit(self.allocator);
     }
 
     /// Recursively free a node and its children
@@ -156,7 +157,7 @@ pub const TreeView = struct {
             for (children.items) |child| {
                 self.freeNode(child);
             }
-            children.deinit();
+            children.deinit(self.allocator);
         }
         self.allocator.destroy(node);
     }
@@ -181,7 +182,7 @@ pub const TreeView = struct {
                 entry.value_ptr.*.deinit();
             }
             component_map.deinit();
-        };
+        }
 
         // Group pins by component (filter by search pattern if set)
         for (pins) |pin_name| {
@@ -197,7 +198,7 @@ pub const TreeView = struct {
             if (!gop.found_existing) {
                 gop.value_ptr.* = ComponentGroup.init(self.allocator, component_name);
             }
-            try gop.value_ptr.pins.append(pin_name);
+            try gop.value_ptr.pins.append(gop.value_ptr.allocator, pin_name);
         }
 
         // Group signals by component (filter by search pattern if set)
@@ -214,7 +215,7 @@ pub const TreeView = struct {
             if (!gop.found_existing) {
                 gop.value_ptr.* = ComponentGroup.init(self.allocator, component_name);
             }
-            try gop.value_ptr.signals.append(signal_name);
+            try gop.value_ptr.signals.append(gop.value_ptr.allocator, signal_name);
         }
 
         // Group params by component (filter by search pattern if set)
@@ -231,7 +232,7 @@ pub const TreeView = struct {
             if (!gop.found_existing) {
                 gop.value_ptr.* = ComponentGroup.init(self.allocator, component_name);
             }
-            try gop.value_ptr.params.append(param_name);
+            try gop.value_ptr.params.append(gop.value_ptr.allocator, param_name);
         }
 
         // Build tree structure from component groups
@@ -244,7 +245,7 @@ pub const TreeView = struct {
                 entry.value_ptr.name, // full_name same as name for components
                 null, // no parent
             );
-            try self.root.append(component_node);
+            try self.root.append(self.allocator, component_node);
 
             // Add pins as children
             for (entry.value_ptr.pins.items) |pin_name| {
@@ -256,7 +257,7 @@ pub const TreeView = struct {
                     component_node,
                 );
                 if (component_node.children) |*children| {
-                    try children.append(pin_node);
+                    try children.append(self.allocator, pin_node);
                 }
             }
 
@@ -270,7 +271,7 @@ pub const TreeView = struct {
                     component_node,
                 );
                 if (component_node.children) |*children| {
-                    try children.append(signal_node);
+                    try children.append(self.allocator, signal_node);
                 }
             }
 
@@ -284,7 +285,7 @@ pub const TreeView = struct {
                     component_node,
                 );
                 if (component_node.children) |*children| {
-                    try children.append(param_node);
+                    try children.append(self.allocator, param_node);
                 }
             }
         }
@@ -320,17 +321,18 @@ pub const TreeView = struct {
         const self: *TreeView = @ptrCast(@alignCast(ptr));
 
         // Get maximum available size
-        const max = ctx.max.size() orelse .{ .width = 25, .height = 24 };
+        const max = ctx.max.size();
 
         // Build list of widgets
-        var widgets = std.ArrayList(vxfw.Widget).init(ctx.arena);
-        defer widgets.deinit();
+        var widgets = std.ArrayList(vxfw.Widget).initCapacity(ctx.arena, 0) catch unreachable;
+        defer widgets.deinit(ctx.arena);
 
         // Show search input if in search mode
         if (self.search_input) {
             const search_text = try std.fmt.allocPrint(ctx.arena, "/{s}", .{self.search_pattern});
-            const search_style = vxfw.Style{ .bold = true, .fg = .{ .index = 3 } }; // Yellow
-            try widgets.append(vxfw.Text.asWidget(search_text, .{ .style = search_style }));
+            const search_style = vaxis.Style{ .bold = true, .fg = .{ .index = 3 } }; // Yellow
+            const search_widget = vxfw.Text{ .text = search_text, .style = search_style };
+            try widgets.append(ctx.arena, search_widget.widget());
         }
 
         // Clear and rebuild visible nodes list
@@ -338,8 +340,8 @@ pub const TreeView = struct {
         try self.buildVisibleNodes(&self.visible_nodes);
 
         // Ensure cursor is within bounds
-        if (self.visible_nodes.len > 0) {
-            self.cursor_index = @min(self.cursor_index, self.visible_nodes.len - 1);
+        if (self.visible_nodes.items.len > 0) {
+            self.cursor_index = @min(self.cursor_index, self.visible_nodes.items.len - 1);
         }
 
         // Build text lines for each visible node
@@ -350,7 +352,17 @@ pub const TreeView = struct {
             // Build line text with checkbox, expand indicator, indentation, and name
             const checkbox = if (is_checked) "[x]" else "[ ]";
             const depth = node.getDepth();
-            const indent = try std.fmt.allocPrint(ctx.arena, "{s: >[0]}", .{"", depth * 2});
+            // Build indent string (2 spaces per depth level)
+            var indent_buf: [32]u8 = undefined;
+            var indent_len: usize = 0;
+            if (depth > 0) {
+                const spaces = depth * 2;
+                if (spaces < indent_buf.len) {
+                    @memset(indent_buf[0..spaces], ' ');
+                    indent_len = spaces;
+                }
+            }
+            const indent = indent_buf[0..indent_len];
 
             // Add expand/collapse indicator for component nodes
             const indicator: []const u8 = if (node.isExpandable())
@@ -367,16 +379,19 @@ pub const TreeView = struct {
 
             // Create text widget with styling
             // Highlight cursor line
-            const style = if (is_cursor) vxfw.Style{ .reverse = true } else vxfw.Style{};
-            try widgets.append(vxfw.Text.asWidget(text, .{ .style = style }));
+            const style = if (is_cursor) vaxis.Style{ .reverse = true } else vaxis.Style{};
+            {
+                const text_widget = vxfw.Text{ .text = text, .style = style };
+                try widgets.append(ctx.arena, text_widget.widget());
+            }
         }
 
         // Create surface with all text widgets
         const children = try ctx.arena.alloc(vxfw.SubSurface, widgets.items.len);
-        for (widgets.items, 0..) |widget, i| {
+        for (widgets.items, 0..) |w, i| {
             children[i] = .{
                 .origin = .{ .row = @intCast(i), .col = 0 },
-                .surface = try widget.draw(ctx),
+                .surface = try w.draw(ctx),
             };
         }
 
@@ -391,13 +406,13 @@ pub const TreeView = struct {
     /// Build list of visible nodes (respecting expand/collapse state)
     fn buildVisibleNodes(self: *TreeView, list: *std.ArrayList(*Node)) !void {
         for (self.root.items) |node| {
-            try list.append(node);
+            try list.append(self.allocator, node);
 
             // If component is expanded, add its children
             if (node.isExpandable() and self.expanded_nodes.get(node.full_name) != null) {
                 if (node.children) |*children| {
                     for (children.items) |child| {
-                        try list.append(child);
+                        try list.append(self.allocator, child);
                     }
                 }
             }
@@ -418,7 +433,7 @@ pub const TreeView = struct {
                 // Search input mode handling
                 if (self.search_input) {
                     // Escape: exit search mode and clear pattern
-                    if (key.matches(vxfw.Key.escape, .{})) {
+                    if (key.matches(vaxis.Key.escape, .{})) {
                         self.search_input = false;
                         self.search_buffer.clearRetainingCapacity();
                         self.search_pattern = "";
@@ -428,7 +443,7 @@ pub const TreeView = struct {
                     }
 
                     // Enter: apply search pattern and exit input mode
-                    if (key.matches(vxfw.Key.enter, .{})) {
+                    if (key.matches(vaxis.Key.enter, .{})) {
                         self.search_input = false;
                         // Keep search buffer as-is for pattern matching
                         try self.buildTree(); // Rebuild tree with filter applied
@@ -459,7 +474,7 @@ pub const TreeView = struct {
                     if (key.codepoint >= 32 and key.codepoint < 127) {
                         // Only accept printable ASCII
                         const new_char = @as(u8, @intCast(key.codepoint));
-                        try self.search_buffer.append(new_char);
+                        try self.search_buffer.append(self.allocator, new_char);
                         self.search_pattern = self.search_buffer.items;
                         try self.buildTree();
                         ctx.consumeAndRedraw();
@@ -481,7 +496,7 @@ pub const TreeView = struct {
                 }
 
                 // Arrow Up: move cursor up
-                if (key.matches(vxfw.Key.up, .{})) {
+                if (key.matches(vaxis.Key.up, .{})) {
                     if (self.cursor_index > 0) {
                         self.cursor_index -= 1;
                         ctx.consumeAndRedraw();
@@ -490,8 +505,8 @@ pub const TreeView = struct {
                 }
 
                 // Arrow Down: move cursor down
-                if (key.matches(vxfw.Key.down, .{})) {
-                    if (self.cursor_index < self.visible_nodes.len - 1) {
+                if (key.matches(vaxis.Key.down, .{})) {
+                    if (self.cursor_index < self.visible_nodes.items.len - 1) {
                         self.cursor_index += 1;
                         ctx.consumeAndRedraw();
                     }
@@ -499,7 +514,7 @@ pub const TreeView = struct {
                 }
 
                 // Enter: toggle expand/collapse or toggle checkbox
-                if (key.matches(vxfw.Key.enter, .{})) {
+                if (key.matches(vaxis.Key.enter, .{})) {
                     if (self.visible_nodes.items.len > 0) {
                         const node = self.visible_nodes.items[self.cursor_index];
 
@@ -508,7 +523,7 @@ pub const TreeView = struct {
                             const gop = try self.expanded_nodes.getOrPut(node.full_name);
                             if (gop.found_existing) {
                                 // Collapse: remove from expanded set
-                                self.expanded_nodes.remove(node.full_name);
+                                _ = self.expanded_nodes.remove(node.full_name);
                             } else {
                                 // Expand: add to expanded set
                                 gop.value_ptr.* = {};
@@ -544,7 +559,7 @@ pub const TreeView = struct {
         const gop = try self.checked_items.getOrPut(full_name);
         if (gop.found_existing) {
             // Uncheck: remove from checked set
-            self.checked_items.remove(full_name);
+            _ = self.checked_items.remove(full_name);
         } else {
             // Check: add to checked set
             gop.value_ptr.* = {};
@@ -558,20 +573,22 @@ const ComponentGroup = struct {
     pins: std.ArrayList([]const u8),
     signals: std.ArrayList([]const u8),
     params: std.ArrayList([]const u8),
+    allocator: std.mem.Allocator,
 
     fn init(allocator: std.mem.Allocator, name: []const u8) ComponentGroup {
         return .{
             .name = name,
-            .pins = std.ArrayList([]const u8).init(allocator),
-            .signals = std.ArrayList([]const u8).init(allocator),
-            .params = std.ArrayList([]const u8).init(allocator),
+            .pins = std.ArrayList([]const u8).initCapacity(allocator, 0) catch unreachable,
+            .signals = std.ArrayList([]const u8).initCapacity(allocator, 0) catch unreachable,
+            .params = std.ArrayList([]const u8).initCapacity(allocator, 0) catch unreachable,
+            .allocator = allocator,
         };
     }
 
     fn deinit(self: *ComponentGroup) void {
-        self.pins.deinit();
-        self.signals.deinit();
-        self.params.deinit();
+        self.pins.deinit(self.allocator);
+        self.signals.deinit(self.allocator);
+        self.params.deinit(self.allocator);
     }
 };
 

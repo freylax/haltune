@@ -382,14 +382,14 @@ pub const StateStore = struct {
         defer self.rwlock.unlockShared();
 
         // Snapshot keys while holding lock
-        var keys = std.ArrayList([]const u8).init(allocator);
+        var keys = std.ArrayList([]const u8).initCapacity(allocator, 0) catch unreachable;
         var iter = self.pins.iterator();
         while (iter.next()) |entry| {
-            try keys.append(entry.key_ptr.*);
+            try keys.append(allocator, entry.key_ptr.*);
         }
 
         // Return owned slice (iterator no longer needed)
-        return keys.toOwnedSlice();
+        return keys.toOwnedSlice(allocator);
     }
 
     /// List all signal names in the cache
@@ -423,14 +423,14 @@ pub const StateStore = struct {
         defer self.rwlock.unlockShared();
 
         // Snapshot keys while holding lock
-        var keys = std.ArrayList([]const u8).init(allocator);
+        var keys = std.ArrayList([]const u8).initCapacity(allocator, 0) catch unreachable;
         var iter = self.signals.iterator();
         while (iter.next()) |entry| {
-            try keys.append(entry.key_ptr.*);
+            try keys.append(allocator, entry.key_ptr.*);
         }
 
         // Return owned slice (iterator no longer needed)
-        return keys.toOwnedSlice();
+        return keys.toOwnedSlice(allocator);
     }
 
     /// List all parameter names in the cache
@@ -464,14 +464,14 @@ pub const StateStore = struct {
         defer self.rwlock.unlockShared();
 
         // Snapshot keys while holding lock
-        var keys = std.ArrayList([]const u8).init(allocator);
+        var keys = std.ArrayList([]const u8).initCapacity(allocator, 0) catch unreachable;
         var iter = self.params.iterator();
         while (iter.next()) |entry| {
-            try keys.append(entry.key_ptr.*);
+            try keys.append(allocator, entry.key_ptr.*);
         }
 
         // Return owned slice (iterator no longer needed)
-        return keys.toOwnedSlice();
+        return keys.toOwnedSlice(allocator);
     }
 
     /// Get all pins linked to a signal
@@ -508,7 +508,7 @@ pub const StateStore = struct {
         self.rwlock.lockShared();
         defer self.rwlock.unlockShared();
 
-        var result = std.ArrayList([]const u8).init(allocator);
+        var result = std.ArrayList([]const u8).initCapacity(allocator, 0) catch unreachable;
 
         // Iterate through all pin_links and find pins linked to this signal
         var iter = self.pin_links.iterator();
@@ -518,11 +518,11 @@ pub const StateStore = struct {
 
             if (std.mem.eql(u8, linked_signal, signal_name)) {
                 // Duplicate pin name for caller
-                try result.append(try allocator.dupe(u8, pin_name));
+                try result.append(allocator, try allocator.dupe(u8, pin_name));
             }
         }
 
-        return result.toOwnedSlice();
+        return result.toOwnedSlice(allocator);
     }
 
     /// Update pin->signal link mapping

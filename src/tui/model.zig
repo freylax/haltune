@@ -116,11 +116,10 @@ pub const Model = struct {
     /// Clean up Model resources
     pub fn deinit(self: *Model) void {
         // Stop RefreshThread FIRST
-        if (self.refresh_thread) |refresh| {
-            // Signal thread to stop
-            refresh.running.store(false, .release);
-            // Note: We don't join the thread - let it exit on its own
-            // When the process exits, the thread will be terminated by the OS
+        // NOTE: Currently disabled due to assertion issues during startup
+        // RefreshThread is not started in .init event handler
+        if (false) { // Always false to prevent accessing refresh
+            _ = self.refresh_thread;
         }
 
         // Clean up TreeView
@@ -142,10 +141,8 @@ pub const Model = struct {
         // Free save filename buffer
         self.save_filename.deinit();
 
-        // NOTE: We intentionally DON'T call halExit() here
-        // Calling halExit() while RefreshThread is still running causes assertion failures
-        // The HAL component will be automatically cleaned up when the process exits
-        // This is a safe and acceptable approach for user-space applications
+        // Exit HAL component
+        ffi.halExit(self.hal_comp_id);
     }
 
     /// Get list of checked item names
@@ -269,18 +266,20 @@ pub const Model = struct {
         const self: *Model = @ptrCast(@alignCast(ptr));
 
         switch (event) {
-            // Initialize: start RefreshThread and subscribe to checked items
+            // Initialize: subscribe to checked items
             .init => {
                 // Set global redraw flag pointer for callbacks
                 GLOBAL_REDRAW_FLAG = &self.redraw_flag;
 
-                // Start RefreshThread if not already started
-                if (self.refresh_thread == null) {
-                    var refresh = try self.allocator.create(RefreshThread);
-                    refresh.* = RefreshThread.init(self.allocator, self.store);
-                    try refresh.start();
-                    self.refresh_thread = refresh;
-                }
+                // NOTE: RefreshThread disabled due to assertion issues
+                // TODO: Re-enable after fixing unreachable panic
+                // // Start RefreshThread if not already started
+                //if (self.refresh_thread == null) {
+                //    var refresh = try self.allocator.create(RefreshThread);
+                //    refresh.* = RefreshThread.init(self.allocator, self.store);
+                //    try refresh.start();
+                //    self.refresh_thread = refresh;
+                //}
 
                 // Subscribe to all currently checked items
                 // (empty initially, will be updated when tree selection changes)

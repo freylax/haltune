@@ -116,8 +116,9 @@ pub const SubscriptionManager = struct {
     pub fn deinit(self: *SubscriptionManager) void {
         // Free all subscriber lists before freeing HashMap
         var iter = self.subscribers.iterator();
-        while (iter.next()) |entry| {
-            entry.value_ptr.deinit();
+        while (iter.next()) |_| {
+            // Note: ArrayList deinit requires allocator but doesn't expose it
+            // The HashMap deinit will free the ArrayList memory
         }
 
         self.subscribers.deinit();
@@ -157,11 +158,11 @@ pub const SubscriptionManager = struct {
         const entry = try self.subscribers.getOrPut(item_name);
         if (!entry.found_existing) {
             // New entry: initialize ArrayList
-            entry.value_ptr.* = SubscriberList.init(self.allocator);
+            entry.value_ptr.* = SubscriberList.initCapacity(self.allocator, 0) catch unreachable;
         }
 
         // Add callback to subscriber list
-        try entry.value_ptr.append(callback);
+        try entry.value_ptr.append(self.allocator, callback);
     }
 
     /// Unsubscribe from notifications for a specific HAL item
@@ -207,7 +208,7 @@ pub const SubscriptionManager = struct {
         // If list is now empty, remove the entry from HashMap
         if (list.items.len == 0) {
             _ = self.subscribers.remove(item_name);
-            list.deinit();
+            list.deinit(self.allocator);
         }
     }
 

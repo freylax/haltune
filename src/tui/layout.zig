@@ -1,5 +1,6 @@
 const std = @import("std");
 const vxfw = @import("vaxis").vxfw;
+const vaxis = @import("vaxis");
 const Model = @import("model.zig").Model;
 const TreeView = @import("widgets/tree_view.zig").TreeView;
 const DataTable = @import("widgets/data_table.zig").DataTable;
@@ -14,7 +15,7 @@ pub fn drawTwoPanelLayout(
     const self: *Model = @ptrCast(@alignCast(ptr));
 
     // Get maximum available size
-    const max = ctx.max.size() orelse .{ .width = 80, .height = 24 };
+    const max = ctx.max.size();
 
     // TODO: Draw save dialog if visible
     // Draw centered modal box with filename input
@@ -77,10 +78,10 @@ pub fn drawTwoPanelLayout(
 /// Create help text widget at bottom of screen
 fn createHelpText(ctx: vxfw.DrawContext) std.mem.Allocator.Error!vxfw.Surface {
     const help_str = "Enter=Edit/Toggle, /=Search, t=Filter Type, c=Filter Comp, Ctrl+C=Quit";
-    const help_style = vxfw.Style{ .dim = true };
-    const help_widget = vxfw.Text.asWidget(help_str, .{ .style = help_style });
+    const help_style = vaxis.Style{ .dim = true };
+    const text_widget = vxfw.Text{ .text = help_str, .style = help_style };
 
-    return try help_widget.draw(ctx);
+    return try text_widget.widget().draw(ctx);
 }
 
 /// Create left panel surface (30% width)

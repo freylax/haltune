@@ -108,6 +108,8 @@ pub fn build(b: *std.Build) void {
     root_module.addImport("ffi/errors.zig", ffi_errors);
     root_module.addImport("ffi/types.zig", ffi_types);
     root_module.addImport("ffi/safe.zig", ffi_safe);
+    root_module.addImport("vaxis", vaxis.module("vaxis"));
+    root_module.addImport("glob", glob.module("glob"));
 
     // Add LinuxCNC HAL include path for @cImport
     root_module.addIncludePath(.{ .cwd_relative = linuxcnc_include });

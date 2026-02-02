@@ -4,8 +4,8 @@
 // to halcmd-compatible text format for backup and restoration.
 
 const std = @import("std");
-const StateStore = @import("state/cache.zig").StateStore;
-const HalValue = @import("state/cache.zig").HalValue;
+const StateStore = @import("../state/cache.zig").StateStore;
+const HalValue = @import("../state/cache.zig").HalValue;
 
 /// Export current HAL configuration to halcmd-compatible format
 ///

@@ -16,6 +16,7 @@
 
 const std = @import("std");
 const vxfw = @import("vaxis").vxfw;
+const vaxis = @import("vaxis");
 const StateStore = @import("../../state/cache.zig").StateStore;
 const HalValue = @import("../../state/cache.zig").HalValue;
 const hal_type_t = @import("../../ffi/types.zig").hal_type_t;
@@ -73,8 +74,8 @@ pub const SignalDialog = struct {
         return .{
             .allocator = allocator,
             .store = store,
-            .signal_name = std.ArrayList(u8).init(allocator),
-            .available_pins = std.ArrayList([]const u8).init(allocator),
+            .signal_name = std.ArrayList(u8).initCapacity(allocator, 0) catch unreachable,
+            .available_pins = std.ArrayList([]const u8).initCapacity(allocator, 0) catch unreachable,
             .selected_pins = std.StringHashMap(void).init(allocator),
         };
     }
@@ -168,34 +169,33 @@ pub const SignalDialog = struct {
     }
 
     /// Handle key press in dialog
-    pub fn handleKey(self: *SignalDialog, key: vxfw.Key) !bool {
+    pub fn handleKey(self: *SignalDialog, key: vaxis.Key) !bool {
         if (!self.visible) return false;
 
         switch (self.current_step) {
             .input_name => {
                 // Handle alphanumeric input
-                if (key == .Char) {
-                    const c = key.Char;
+                if (key.codepoint >= 32 and key.codepoint < 127) {
+                    const c = @as(u8, @intCast(key.codepoint));
                     if (std.ascii.isAlphanumeric(c) or c == '_' or c == '-' or c == '.') {
-                        try self.signal_name.append(c);
+                        try self.signal_name.append(self.allocator, c);
                     }
                     return true;
                 }
                 // Backspace
-                if (key.matchesChar(127, .{})) { // DEL/Backspace
-                    if (self.signal_name.popOrNull()) |_| {
+                if (key.matches(vaxis.Key.backspace, .{})) {
+                    if (self.signal_name.pop()) |_| {
                         // Character removed
                     }
                     return true;
                 }
                 // Enter to advance
-                if (key == .Enter) {
+                if (key.matches(vaxis.Key.enter, .{})) {
                     validateSignalName(self.signal_name.items) catch |err| {
                         self.setError(switch (err) {
                             error.EmptyName => "Name cannot be empty",
                             error.NameTooLong => "Name too long (max 41 chars)",
                             error.InvalidCharacter => "Use only letters, numbers, _, -, .",
-                            else => "Invalid name",
                         });
                         return true;
                     };
@@ -204,14 +204,14 @@ pub const SignalDialog = struct {
                     return true;
                 }
                 // Escape to cancel
-                if (key == .Escape) {
+                if (key.matches(vaxis.Key.escape, .{})) {
                     self.close();
                     return true;
                 }
             },
             .select_type => {
                 // Arrow keys to cycle types
-                if (key.matches('k', .{}) or key.matchesChar('A', .{ .ctrl = true })) {
+                if (key.matches('k', .{}) or key.matches(1, .{ .ctrl = true })) {
                     // Up arrow (Ctrl+A or 'k')
                     if (self.type_index == 0) {
                         self.type_index = TYPES.len - 1;
@@ -221,21 +221,21 @@ pub const SignalDialog = struct {
                     self.signal_type = TYPES[self.type_index];
                     return true;
                 }
-                if (key.matches('j', .{}) or key.matchesChar('B', .{ .ctrl = true })) {
+                if (key.matches('j', .{}) or key.matches(2, .{ .ctrl = true })) {
                     // Down arrow (Ctrl+B or 'j')
                     self.type_index = (self.type_index + 1) % TYPES.len;
                     self.signal_type = TYPES[self.type_index];
                     return true;
                 }
                 // Enter to advance
-                if (key == .Enter) {
+                if (key.matches(vaxis.Key.enter, .{})) {
                     // Load available pins of this type
                     try self.loadAvailablePins();
                     self.current_step = .select_pins;
                     return true;
                 }
                 // Escape to cancel
-                if (key == .Escape) {
+                if (key.matches(vaxis.Key.escape, .{})) {
                     self.close();
                     return true;
                 }
@@ -244,19 +244,19 @@ pub const SignalDialog = struct {
                 const pin_count = self.available_pins.items.len;
 
                 // Arrow keys to navigate
-                if (key.matches('k', .{}) or key.matchesChar('A', .{ .ctrl = true })) {
+                if (key.matches('k', .{}) or key.matches(1, .{ .ctrl = true })) {
                     // Up arrow
                     if (self.pin_cursor > 0) self.pin_cursor -= 1;
                     return true;
                 }
-                if (key.matches('j', .{}) or key.matchesChar('B', .{ .ctrl = true })) {
+                if (key.matches('j', .{}) or key.matches(2, .{ .ctrl = true })) {
                     // Down arrow
                     if (self.pin_cursor + 1 < pin_count) self.pin_cursor += 1;
                     return true;
                 }
 
                 // Space to toggle selection
-                if (key == .Space) {
+                if (key.matches(vaxis.Key.space, .{})) {
                     if (pin_count > 0) {
                         const pin = self.available_pins.items[self.pin_cursor];
                         if (self.selected_pins.get(pin)) |_| {
@@ -272,7 +272,7 @@ pub const SignalDialog = struct {
                 }
 
                 // Enter to advance (must have at least one pin selected)
-                if (key == .Enter) {
+                if (key.matches(vaxis.Key.enter, .{})) {
                     if (self.selected_pins.count() == 0) {
                         self.setError("Select at least one pin");
                         return true;
@@ -283,14 +283,14 @@ pub const SignalDialog = struct {
                 }
 
                 // Escape to cancel
-                if (key == .Escape) {
+                if (key.matches(vaxis.Key.escape, .{})) {
                     self.close();
                     return true;
                 }
             },
             .confirm => {
                 // 'y' to create signal
-                if (key.matchesChar('y', .{})) {
+                if (key.matches('y', .{})) {
                     self.error_message = null;
                     self.createSignal() catch |err| {
                         self.setError(switch (err) {
@@ -305,7 +305,7 @@ pub const SignalDialog = struct {
                     return true;
                 }
                 // 'n' or Escape to cancel
-                if (key.matchesChar('n', .{}) or key == .Escape) {
+                if (key.matches('n', .{}) or key.matches(vaxis.Key.escape, .{})) {
                     self.close();
                     return true;
                 }
@@ -336,7 +336,8 @@ pub const SignalDialog = struct {
                 .HAL_U32 => pin_value == .u32,
             };
             if (pin_matches) {
-                try self.available_pins.append(self.allocator.dupe(u8, pin_name));
+                const duped_name = try self.allocator.dupe(u8, pin_name);
+                try self.available_pins.append(self.allocator, duped_name);
             }
         }
     }
