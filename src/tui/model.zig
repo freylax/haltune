@@ -115,10 +115,12 @@ pub const Model = struct {
     /// Clean up Model resources
     pub fn deinit(self: *Model) void {
         // Stop RefreshThread FIRST
-        // NOTE: Currently disabled due to assertion issues during startup
-        // RefreshThread is not started in .init event handler
-        if (false) { // Always false to prevent accessing refresh
-            _ = self.refresh_thread;
+        // This must be done before cleaning up other resources
+        if (self.refresh_thread) |refresh| {
+            std.log.info("Stopping RefreshThread...", .{});
+            refresh.stop();
+            std.log.info("RefreshThread stopped", .{});
+            self.allocator.destroy(refresh);
         }
 
         // Clean up TreeView
@@ -270,15 +272,15 @@ pub const Model = struct {
                 // Set global redraw flag pointer for callbacks
                 GLOBAL_REDRAW_FLAG = &self.redraw_flag;
 
-                // NOTE: RefreshThread disabled due to assertion issues
-                // TODO: Re-enable after fixing unreachable panic
-                // // Start RefreshThread if not already started
-                //if (self.refresh_thread == null) {
-                //    var refresh = try self.allocator.create(RefreshThread);
-                //    refresh.* = RefreshThread.init(self.allocator, self.store);
-                //    try refresh.start();
-                //    self.refresh_thread = refresh;
-                //}
+                // Start RefreshThread if not already started
+                if (self.refresh_thread == null) {
+                    std.log.info("Starting RefreshThread...", .{});
+                    var refresh = try self.allocator.create(RefreshThread);
+                    refresh.* = RefreshThread.init(self.allocator, self.store);
+                    try refresh.start();
+                    self.refresh_thread = refresh;
+                    std.log.info("RefreshThread started successfully", .{});
+                }
 
                 // Subscribe to all currently checked items
                 // (empty initially, will be updated when tree selection changes)
