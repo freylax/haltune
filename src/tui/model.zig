@@ -143,7 +143,9 @@ pub const Model = struct {
         self.save_filename.deinit(self.allocator);
 
         // Exit HAL component
+        std.log.info("Exiting HAL component {d}...", .{self.hal_comp_id});
         ffi.halExit(self.hal_comp_id);
+        std.log.info("HAL component exited", .{});
     }
 
     /// Get list of checked item names
