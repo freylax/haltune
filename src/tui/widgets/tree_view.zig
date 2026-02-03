@@ -121,7 +121,7 @@ pub const TreeView = struct {
         const visible_nodes_list = std.ArrayList(*Node).initCapacity(allocator, 0) catch return error.OutOfMemory;
         const search_buffer_list = std.ArrayList(u8).initCapacity(allocator, 0) catch return error.OutOfMemory;
 
-        var tree_view = TreeView{
+        const tree_view = TreeView{
             .allocator = allocator,
             .store = store,
             .root = root_list,
@@ -134,8 +134,8 @@ pub const TreeView = struct {
             .search_buffer = search_buffer_list,
         };
 
-        // Build the tree from HAL data
-        try tree_view.buildTree();
+        // Note: Don't call buildTree() here - let the caller call it after adding data
+        // Model.init() calls buildTree() after adding test pins
 
         return tree_view;
     }
@@ -159,6 +159,10 @@ pub const TreeView = struct {
 
     /// Recursively free a node and its children
     fn freeNode(self: *TreeView, node: *Node) void {
+        // Free the duplicated names (all nodes have duplicated names now)
+        self.allocator.free(node.name);
+        self.allocator.free(node.full_name);
+
         if (node.children) |*children| {
             for (children.items) |child| {
                 self.freeNode(child);
@@ -169,7 +173,13 @@ pub const TreeView = struct {
     }
 
     /// Build tree from HAL data in StateStore
-    fn buildTree(self: *TreeView) !void {
+    pub fn buildTree(self: *TreeView) !void {
+        // Clean up existing tree before rebuilding
+        for (self.root.items) |node| {
+            self.freeNode(node);
+        }
+        self.root.clearRetainingCapacity();
+
         // Get all pins, signals, and params from StateStore
         const pins = try self.store.listPins(self.allocator);
         defer self.allocator.free(pins);
@@ -198,12 +208,16 @@ pub const TreeView = struct {
             }
 
             const component_name = try extractComponentName(self.allocator, pin_name);
-            defer self.allocator.free(component_name);
 
             const gop = try component_map.getOrPut(component_name);
             if (!gop.found_existing) {
                 gop.value_ptr.* = ComponentGroup.init(self.allocator, component_name);
+                // HashMap owns component_name now - don't free it
+            } else {
+                // Entry already existed, free our temporary component_name
+                self.allocator.free(component_name);
             }
+
             try gop.value_ptr.pins.append(gop.value_ptr.allocator, pin_name);
         }
 
@@ -215,12 +229,16 @@ pub const TreeView = struct {
             }
 
             const component_name = try extractComponentName(self.allocator, signal_name);
-            defer self.allocator.free(component_name);
 
             const gop = try component_map.getOrPut(component_name);
             if (!gop.found_existing) {
                 gop.value_ptr.* = ComponentGroup.init(self.allocator, component_name);
+                // HashMap owns component_name now - don't free it
+            } else {
+                // Entry already existed, free our temporary component_name
+                self.allocator.free(component_name);
             }
+
             try gop.value_ptr.signals.append(gop.value_ptr.allocator, signal_name);
         }
 
@@ -232,34 +250,42 @@ pub const TreeView = struct {
             }
 
             const component_name = try extractComponentName(self.allocator, param_name);
-            defer self.allocator.free(component_name);
 
             const gop = try component_map.getOrPut(component_name);
             if (!gop.found_existing) {
                 gop.value_ptr.* = ComponentGroup.init(self.allocator, component_name);
+                // HashMap owns component_name now - don't free it
+            } else {
+                // Entry already existed, free our temporary component_name
+                self.allocator.free(component_name);
             }
+
             try gop.value_ptr.params.append(gop.value_ptr.allocator, param_name);
         }
 
         // Build tree structure from component groups
         var iter = component_map.iterator();
         while (iter.next()) |entry| {
+            // Component name is owned by HashMap (as key), duplicate for Node
+            const comp_name = try self.allocator.dupe(u8, entry.value_ptr.name);
             const component_node = try Node.init(
                 self.allocator,
-                entry.value_ptr.name,
+                comp_name,
                 .component,
-                entry.value_ptr.name, // full_name same as name for components
+                comp_name, // full_name same as name for components
                 null, // no parent
             );
             try self.root.append(self.allocator, component_node);
 
             // Add pins as children
             for (entry.value_ptr.pins.items) |pin_name| {
+                // Duplicate name for safe independent lifecycle
+                const pin_name_copy = try self.allocator.dupe(u8, pin_name);
                 const pin_node = try Node.init(
                     self.allocator,
-                    pin_name,
+                    pin_name_copy,
                     .pin,
-                    pin_name,
+                    pin_name_copy,
                     component_node,
                 );
                 if (component_node.children) |*children| {
@@ -269,11 +295,13 @@ pub const TreeView = struct {
 
             // Add signals as children
             for (entry.value_ptr.signals.items) |signal_name| {
+                // Duplicate name for safe independent lifecycle
+                const signal_name_copy = try self.allocator.dupe(u8, signal_name);
                 const signal_node = try Node.init(
                     self.allocator,
-                    signal_name,
+                    signal_name_copy,
                     .signal,
-                    signal_name,
+                    signal_name_copy,
                     component_node,
                 );
                 if (component_node.children) |*children| {
@@ -283,11 +311,13 @@ pub const TreeView = struct {
 
             // Add params as children
             for (entry.value_ptr.params.items) |param_name| {
+                // Duplicate name for safe independent lifecycle
+                const param_name_copy = try self.allocator.dupe(u8, param_name);
                 const param_node = try Node.init(
                     self.allocator,
-                    param_name,
+                    param_name_copy,
                     .param,
-                    param_name,
+                    param_name_copy,
                     component_node,
                 );
                 if (component_node.children) |*children| {
@@ -582,6 +612,7 @@ const ComponentGroup = struct {
     allocator: std.mem.Allocator,
 
     fn init(allocator: std.mem.Allocator, name: []const u8) ComponentGroup {
+        // Store reference to name - HashMap owns it
         return .{
             .name = name,
             .pins = std.ArrayList([]const u8).initCapacity(allocator, 0) catch unreachable,
@@ -592,6 +623,7 @@ const ComponentGroup = struct {
     }
 
     fn deinit(self: *ComponentGroup) void {
+        // Don't free self.name - HashMap owns it
         self.pins.deinit(self.allocator);
         self.signals.deinit(self.allocator);
         self.params.deinit(self.allocator);
