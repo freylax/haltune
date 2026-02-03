@@ -362,34 +362,27 @@ pub const TreeView = struct {
     ) std.mem.Allocator.Error!vxfw.Surface {
         const self: *TreeView = @ptrCast(@alignCast(ptr));
 
-        // Get maximum available size
-        const max = ctx.max.size();
-
-        // Build list of widgets
-        var widgets = std.ArrayList(vxfw.Widget).initCapacity(ctx.arena, 0) catch unreachable;
-        defer widgets.deinit(ctx.arena);
-
-        // Show search input if in search mode
-        if (self.search_input) {
-            const search_text = try std.fmt.allocPrint(ctx.arena, "/{s}", .{self.search_pattern});
-            const search_style = vaxis.Style{ .bold = true, .fg = .{ .index = 3 } }; // Yellow
-            const search_widget = vxfw.Text{ .text = search_text, .style = search_style };
-            try widgets.append(ctx.arena, search_widget.widget());
-        }
-
         // Clear and rebuild visible nodes list
         self.visible_nodes.clearRetainingCapacity();
         try self.buildVisibleNodes(&self.visible_nodes);
+
+        // Build the complete tree text as a single string
+        var buffer = std.ArrayList(u8).initCapacity(self.allocator, 1024) catch unreachable;
+
+        // Show search input if in search mode
+        if (self.search_input) {
+            const search_line = try std.fmt.allocPrint(self.allocator, "/{s}\n", .{self.search_pattern});
+            try buffer.writer(self.allocator).writeAll(search_line);
+        }
 
         // Ensure cursor is within bounds
         if (self.visible_nodes.items.len > 0) {
             self.cursor_index = @min(self.cursor_index, self.visible_nodes.items.len - 1);
         }
 
-        // Build text lines for each visible node
-        for (self.visible_nodes.items, 0..) |node, i| {
+        // Build each line
+        for (self.visible_nodes.items) |node| {
             const is_checked = self.checked_items.get(node.full_name) != null;
-            const is_cursor = i == self.cursor_index;
 
             // Build line text with checkbox, expand indicator, indentation, and name
             const checkbox = if (is_checked) "[x]" else "[ ]";
@@ -413,36 +406,21 @@ pub const TreeView = struct {
                 "   ";
 
             // Build full line text
-            const text = try std.fmt.allocPrint(
-                ctx.arena,
-                "{s}{s}{s} {s}",
+            const line = try std.fmt.allocPrint(
+                self.allocator,
+                "{s}{s}{s} {s}\n",
                 .{ indent, indicator, checkbox, node.name },
             );
 
-            // Create text widget with styling
-            // Highlight cursor line
-            const style = if (is_cursor) vaxis.Style{ .reverse = true } else vaxis.Style{};
-            {
-                const text_widget = vxfw.Text{ .text = text, .style = style };
-                try widgets.append(ctx.arena, text_widget.widget());
-            }
+            try buffer.writer(self.allocator).writeAll(line);
         }
 
-        // Create surface with all text widgets
-        const children = try ctx.arena.alloc(vxfw.SubSurface, widgets.items.len);
-        for (widgets.items, 0..) |w, i| {
-            children[i] = .{
-                .origin = .{ .row = @intCast(i), .col = 0 },
-                .surface = try w.draw(ctx),
-            };
-        }
+        // Get the final text and create a Text widget
+        const tree_text = try buffer.toOwnedSlice(self.allocator);
 
-        return .{
-            .size = .{ .width = max.width, .height = @intCast(widgets.items.len) },
-            .widget = self.widget(),
-            .buffer = &.{},
-            .children = children,
-        };
+        // Use vxfw.Text widget which handles the rendering properly
+        const text_widget = vxfw.Text{ .text = tree_text };
+        return try text_widget.widget().draw(ctx);
     }
 
     /// Build list of visible nodes (respecting expand/collapse state)

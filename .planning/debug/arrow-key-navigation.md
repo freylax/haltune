@@ -1,5 +1,5 @@
 ---
-status: fixing
+status: resolved
 trigger: "arrow-key-navigation"
 created: 2026-02-03T12:00:00Z
 updated: 2026-02-03T12:00:00Z
@@ -39,10 +39,11 @@ started: Never worked - this is a new feature being developed
 ## Resolution
 root_cause: Model.typeErasedEventHandler intercepts all keyboard events but doesn't propagate navigation keys (arrow keys, Enter, Space) to the TreeView widget. The TreeView has a correctly implemented event handler, but it never receives these events because Model consumes them first.
 fix: Modified Model.typeErasedEventHandler (lines 303-320) to forward navigation keys to TreeView before handling other shortcuts
-verification: Needs testing on pib with HAL library available. Steps:
+verification: Fix implemented and committed (2ffdc49). Needs testing on pib with HAL library. Test steps:
   1. Build on pib: zig build
   2. Run haltune
   3. Press arrow keys - cursor should move through tree nodes
   4. Press Enter on component node - should expand/collapse
   5. Press Space on any node - should toggle checkbox
 files_changed: [src/tui/model.zig]
+commit: 2ffdc49

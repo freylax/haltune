@@ -311,10 +311,12 @@ pub const Model = struct {
                         key.matches('/', .{}))
                     {
                         // Forward to TreeView's event handler
-                        const tree_event: vxfw.Event = .{ .key_press = key };
-                        tree_widget.eventHandler(tree_widget.userdata, ctx, tree_event) catch |err| {
-                            std.log.err("TreeView event handler error: {}", .{err});
-                        };
+                        if (tree_widget.eventHandler) |handler| {
+                            const tree_event: vxfw.Event = .{ .key_press = key };
+                            handler(tree_widget.userdata, ctx, tree_event) catch |err| {
+                                std.log.err("TreeView event handler error: {}", .{err});
+                            };
+                        }
                         return;
                     }
                 }
