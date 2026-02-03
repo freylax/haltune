@@ -300,6 +300,25 @@ pub const Model = struct {
                     ctx.consumeAndRedraw();
                 }
 
+                // Forward navigation keys to TreeView if no modal dialogs are visible
+                if (!self.signal_dialog.visible and !self.save_dialog_visible) {
+                    // TreeView handles: arrow keys, Enter (expand/collapse), Space (checkbox), '/' (search)
+                    const tree_widget = self.tree_view.widget();
+                    if (key.matches(vaxis.Key.up, .{}) or
+                        key.matches(vaxis.Key.down, .{}) or
+                        key.matches(vaxis.Key.enter, .{}) or
+                        key.matches(' ', .{}) or
+                        key.matches('/', .{}))
+                    {
+                        // Forward to TreeView's event handler
+                        const tree_event: vxfw.Event = .{ .key_press = key };
+                        tree_widget.eventHandler(tree_widget.userdata, ctx, tree_event) catch |err| {
+                            std.log.err("TreeView event handler error: {}", .{err});
+                        };
+                        return;
+                    }
+                }
+
                 // Ctrl+C to quit
                 if (key.matches('c', .{ .ctrl = true })) {
                     ctx.quit = true;
