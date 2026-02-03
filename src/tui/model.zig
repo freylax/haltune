@@ -84,6 +84,18 @@ pub const Model = struct {
         errdefer allocator.destroy(tree_view);
         tree_view.* = try TreeView.init(allocator, store);
 
+        // Add test data to StateStore for testing
+        std.log.info("Adding test pins to store...", .{});
+        try store.addPin("test.pin-1", .{ .bit = true });
+        try store.addPin("test.pin-2", .{ .bit = false });
+        try store.addPin("motion.analog-in-00", .{ .float = 3.14159 });
+        try store.addPin("motion.digital-in-00", .{ .s32 = 42 });
+        std.log.info("Test pins added, rebuilding tree...", .{});
+
+        // Rebuild tree to show the new pins
+        try tree_view.buildTree();
+        std.log.info("Tree rebuilt successfully with {d} components", .{tree_view.root.items.len});
+
         // Create DataTable widget
         const data_table = try allocator.create(DataTable);
         errdefer allocator.destroy(data_table);
@@ -274,21 +286,11 @@ pub const Model = struct {
                 // Set global redraw flag pointer for callbacks
                 GLOBAL_REDRAW_FLAG = &self.redraw_flag;
 
-                // Start RefreshThread if not already started
-                if (self.refresh_thread == null) {
-                    std.log.info("Starting RefreshThread...", .{});
-                    var refresh = try self.allocator.create(RefreshThread);
-                    refresh.* = RefreshThread.init(self.allocator, self.store);
-                    try refresh.start();
-                    self.refresh_thread = refresh;
-                    std.log.info("RefreshThread started successfully", .{});
-                }
+                // Test pins already added in Model.init(), just log here
+                std.log.info(".init event: tree has {d} components", .{self.tree_view.root.items.len});
 
-                // Subscribe to all currently checked items
-                // (empty initially, will be updated when tree selection changes)
-                self.updateSubscriptions() catch |err| {
-                    std.log.err("Failed to update subscriptions: {}", .{err});
-                };
+                // Trigger redraw to show the tree
+                ctx.consumeAndRedraw();
             },
 
             // Handle key presses

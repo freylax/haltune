@@ -77,6 +77,32 @@ pub fn main() !void {
     var app = try vxfw.App.init(allocator);
     defer app.deinit();
 
+    // Validate terminal size before running the TUI
+    // vaxis will panic with division by zero if screen dimensions are 0
+    // This can happen when running via script/ssh without proper TTY allocation
+    {
+        const os = std.os.linux;
+        const winsize = extern struct { ws_row: u16, ws_col: u16, ws_xpixel: u16, ws_ypixel: u16 };
+        var ws: winsize = undefined;
+        const fd = std.posix.STDOUT_FILENO;
+        const TIOCGWINSZ = 0x5413;
+        const rc = os.ioctl(fd, TIOCGWINSZ, @intFromPtr(&ws));
+        if (rc != 0 or ws.ws_col == 0 or ws.ws_row == 0) {
+            std.debug.print(
+                \\ERROR: Terminal size unavailable or too small
+                \\
+                \\haltune requires a proper terminal with at least 1x1 characters.
+                \\
+                \\If running via SSH, make sure you're using an interactive session
+                \\with a TTY allocated (not piping input or using 'script' command).
+                \\
+                \\Direct console access: ssh pib, then run ./zig-out/bin/haltune
+                \\
+            , .{});
+            std.process.exit(1);
+        }
+    }
+
     // Run the application with our Model widget
     // This blocks until the user quits (Ctrl+C)
     try app.run(model.widget(), .{});

@@ -159,9 +159,13 @@ pub const TreeView = struct {
 
     /// Recursively free a node and its children
     fn freeNode(self: *TreeView, node: *Node) void {
-        // Free the duplicated names (all nodes have duplicated names now)
+        // Free the duplicated names
         self.allocator.free(node.name);
-        self.allocator.free(node.full_name);
+        // Only free full_name if it's a different allocation than name
+        // (component nodes use the same pointer for both)
+        if (node.full_name.ptr != node.name.ptr) {
+            self.allocator.free(node.full_name);
+        }
 
         if (node.children) |*children| {
             for (children.items) |child| {
@@ -195,6 +199,8 @@ pub const TreeView = struct {
         defer {
             var iter = component_map.iterator();
             while (iter.next()) |entry| {
+                // Free the key (component name string owned by HashMap)
+                self.allocator.free(entry.key_ptr.*);
                 entry.value_ptr.*.deinit();
             }
             component_map.deinit();

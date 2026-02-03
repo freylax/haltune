@@ -1,15 +1,13 @@
 ---
-status: verifying
+status: resolved
 trigger: "Double-free panic when handling keyboard input or exiting TUI app"
 created: 2026-02-03T00:00:00Z
 updated: 2026-02-03T00:00:00Z
+resolved: 2026-02-03T00:00:00Z
 ---
 
 ## Current Focus
-hypothesis: FIXED - buildTree() was called twice during initialization
-test: Created and ran test_tree_double_free.zig - PASSED
-expecting: Confirmed - TreeView.init() now creates empty tree, Model.init() calls buildTree() once
-next_action: Archive debug session and create git commit
+COMPLETED - Double-free bug fixed and committed (c269bad)
 
 ## Symptoms
 expected: Memory should be managed correctly - proper cleanup without crashes

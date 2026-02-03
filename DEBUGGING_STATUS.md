@@ -1,135 +1,126 @@
 # Haltune Debugging Status
 
-## Current State (2025-01-30)
+## Current State (2025-02-03)
 
-**Build:** ✓ Successful (4.5MB aarch64 binary)
-**Runtime:** ✗ Crashes on startup
+### What's Working ✅
+- Tree building is successful (2 components: `test` and `motion`)
+- Test pins are added to StateStore in Model.init()
+- Tree displays in left panel with component names
+- TUI starts and displays (no immediate crash)
+- **Memory management FIXED** - All issues resolved:
+  - Double-free fixed (name/full_name pointer comparison)
+  - HashMap key leaks fixed (free keys in defer block)
+- Clean shutdown without memory errors or leaks
+- Terminal size validation prevents division by zero
 
-## Recent Changes
+### What's NOT Working ❌
+- **Navigation untested** - Need to verify arrow keys/Enter work on proper TTY
+- ENXIO errors when running without proper TTY (expected behavior)
 
-### FFI Enhancements (`src/ffi/c.zig`)
-- Added `halpr_find_pin_by_owner(comp, start)` - iterate pins by component
-- Added `halpr_find_param_by_owner(comp, start)` - iterate params by component
-- Added `halpr_find_comp_by_owner(start)` - iterate components
-- Added `hal_comp_name(comp_id)` - get component name by ID
-- Added `HAL_NAME_LEN = 47` constant
+## RESOLVED ISSUES ✅
 
-### Safe Wrappers (`src/ffi/safe.zig`)
-- Added `getPinName(pin)` - extract name from opaque hal_pin_t (offset: 56)
-- Added `getSignalName(sig)` - extract name from opaque hal_sig_t (offset: 40)
-- Added `getParamName(param)` - extract name from opaque hal_param_t (offset: 48)
-- Added `getCompNameById(comp_id)` - wrapper around hal_comp_name()
-- Added `findPinByOwner(comp, start)` - iterate pins owned by component
-- Added `findParamByOwner(comp, start)` - iterate params owned by component
-- Added `findCompByName(name)`, `findCompById(id)`, `findCompByOwner(start)`
+### Double-Free (FIXED 2025-02-03)
 
-### Refresh Thread (`src/state/refresh.zig`)
-- Modified `refreshPins()` to seed cache with known pins when empty:
-  - `motion.analog-in-00`
-  - `motion.analog-in-01`
-  - `motion.digital-in-00`
-  - `motion.digital-in-01`
+**Root Cause 1:** `buildTree()` was being called twice - fixed by removing call from `TreeView.init()`.
 
-## Likely Crash Cause
+**Root Cause 2:** Component nodes had `name` and `full_name` pointing to the same memory, but `freeNode()` freed both.
 
-The name accessor functions use **hardcoded offsets** that may be incorrect:
+**Fix:** Added pointer comparison in `freeNode()`:
 ```zig
-const name_offset = 56; // For pins - may be wrong
-const name_offset = 40; // For signals - may be wrong
-const name_offset = 48; // For params - may be wrong
+self.allocator.free(node.name);
+// Only free full_name if it's a different allocation
+if (node.full_name.ptr != node.name.ptr) {
+    self.allocator.free(node.full_name);
+}
 ```
 
-If these offsets don't match the actual struct layout, reading the name will:
-1. Read garbage data as a string
-2. Potentially cause segfault if offset points outside valid memory
+**Commit:** c269bad + follow-up
 
-## Next Steps to Debug
+### Memory Leak (FIXED 2025-02-03)
 
-### 1. Get Crash Details
-```bash
-ssh pib "cd ~/prog/haltune && gdb -batch -ex 'run' -ex 'bt' --args ~/prog/haltune/zig-out/bin/haltune"
-# Or run with core dump:
-ssh pib "cd ~/prog/haltune && sudo -E ~/prog/haltune/zig-out/bin/haltune 2>&1 | tee crash.log"
-```
+**Root Cause:** `StringHashMap` doesn't automatically free key memory. The `component_map` stored keys allocated by `extractComponentName()`, but the defer block only freed values.
 
-### 2. Alternative: Disable Discovery Temporarily
-Comment out the discovery code in `refreshPins()` to isolate the issue:
+**Fix:** Added `self.allocator.free(entry.key_ptr.*)` to the defer block:
 ```zig
-// In src/state/refresh.zig, line 252-276
-// Comment out the entire if (cached_names.len == 0) { ... } block
+defer {
+    var iter = component_map.iterator();
+    while (iter.next()) |entry| {
+        self.allocator.free(entry.key_ptr.*);  // Free the key
+        entry.value_ptr.*.deinit();
+    }
+    component_map.deinit();
+}
 ```
 
-### 3. Fix Name Offsets (if crash is in name access)
+### Division by Zero (FIXED 2025-02-03)
 
-Calculate correct offsets by examining hal_priv.h struct layouts:
+**Root Cause:** vaxis `doLayout()` divides by screen width/height. When running via `script` or non-interactive SSH, terminal dimensions are 0x0, causing panic.
 
-```c
-// From hal_priv.h:
-struct hal_pin_t {
-    SHMFIELD(hal_pin_t) next_ptr;        // 8 bytes (offset as rtapi_intptr_t)
-    SHMFIELD(void*) data_ptr_addr;       // 8 bytes
-    SHMFIELD(hal_comp_t) owner_ptr;      // 8 bytes
-    SHMFIELD(hal_sig_t) signal;          // 8 bytes
-    hal_data_u dummysig;                  // 8 bytes (union)
-    SHMFIELD(hal_oldname_t) oldname;     // 8 bytes (offset)
-    hal_type_t type;                      // 4 bytes
-    hal_pin_dir_t dir;                    // 4 bytes
-    char name[HAL_NAME_LEN + 1];         // 48 bytes (offset 56?)
-};
-```
+**Fix:** Added terminal size validation in `src/tui/app.zig` before `app.run()`. Uses `ioctl(TIOCGWINSZ)` to get terminal dimensions and exits with helpful error if invalid.
 
-The SHMFIELD macro stores offsets (rtapi_intptr_t = 8 bytes on 64-bit).
+**Error message:** "ERROR: Terminal size unavailable or too small"
 
-**Correct offsets likely:**
-- `hal_pin_t.name`: 56 bytes (8*6 + 4 + 4 + padding?)
-- `hal_sig_t.name`: Need to calculate from hal_sig_t struct
-- `hal_param_t.name`: Need to calculate from hal_param_t struct
+## Current Error
 
-### 4. Better Solution: Use halcmd for Discovery
+None - app now validates terminal size before running TUI.
 
-Instead of wrestling with opaque structs, use halcmd to list pins:
+## How to Continue Next Session
+
+### Test Navigation on Proper TTY
 ```bash
-halcmd list 2>&1 | grep '^   '
+# Directly on pib console (not via ssh)
+ssh pib  # interactive login
+cd ~/prog/haltune
+./zig-out/bin/haltune
 ```
 
-Parse this output to get all pin names, then use `getPinValueByName()` for values.
-
-## Quick Recovery Commands
+## Build and Run Commands
 
 ```bash
-# Sync latest code
-rsync -avz --exclude='zig-cache' --exclude='zig-out' \
-  /home/robert/prog/zig/haltune/ pib:prog/haltune/
+# Sync from local to Pi
+rsync -av src/ pib:prog/haltune/src/
 
 # Build on Pi
 ssh pib 'cd ~/prog/haltune && ~/bin/zig build -Dtarget=aarch64-linux-gnu'
 
-# Test run (with output)
-ssh pib 'cd ~/prog/haltune && sudo -E ~/prog/haltune/zig-out/bin/haltune 2>&1'
+# Run on pib (direct console, not via script)
+ssh pib 'cd ~/prog/haltune && ./zig-out/bin/haltune'
+
+# Run with PTY for testing (may trigger division by zero)
+ssh pib 'cd ~/prog/haltune && echo "q" | script -q -c "timeout 3 ./zig-out/bin/haltune" /dev/null'
 ```
 
-## Files Modified This Session
+## Clean Up HAL (if stuck)
 
-- `src/ffi/c.zig` - Added discovery functions
-- `src/ffi/safe.zig` - Added name accessors and iteration functions
-- `src/state/refresh.zig` - Added cache seeding
-- `src/hal/export.zig` - Fixed import path (earlier)
-
-## Git Status
-
-Check what's changed:
 ```bash
-git status
-git diff src/ffi/c.zig
-git diff src/ffi/safe.zig
-git diff src/state/refresh.zig
+# Kill all processes
+pkill -9 -f 'haltune|halrun'
+
+# Clear shared memory
+ipcs -m | awk '/0x/{print $2}' | xargs -r ipcrm -m
 ```
 
-## When You Return
+## Git Status Summary
 
-1. Get the crash traceback/backtrace
-2. Check if crash is in name accessor (getPinName, etc.)
-3. Either fix offsets or disable discovery temporarily
-4. Consider using halcmd for discovery instead of FFI
+Key modified files:
+- `src/tui/widgets/tree_view.zig` - Memory management fixes, removed buildTree() from init
+- `src/tui/model.zig` - Test pin addition, single buildTree() call
+- `src/tui/layout.zig` - Layout rendering
 
-Good luck! 🍵
+## Next Session Goals
+
+1. ~~**Fix division by zero**~~ - DONE
+2. **Test navigation** - Verify arrow keys and Enter work on proper TTY
+3. **Enable RefreshThread** - Get live HAL data updates (disabled for testing)
+4. **Display actual HAL data** - Replace test pins with real HAL pins
+
+## Files to Check First
+
+1. ~~`src/tui/app.zig`~~ - Screen size validation added
+2. ~~`src/tui/widgets/tree_view.zig`~~ - Double-free fixed (pointer comparison)
+3. `src/tui/model.zig` - Event routing to widgets
+4. `src/tui/widgets/tree_view.zig` - Event handler and navigation (test on TTY)
+
+## Debug Session Reference
+
+- `.planning/debug/resolved/double-free-tree-view.md` - Full debug session with test case
