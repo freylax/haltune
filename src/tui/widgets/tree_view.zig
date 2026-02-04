@@ -383,7 +383,9 @@ pub const TreeView = struct {
             const depth = node.getDepth();
             const indent = depth * 2;
             const indicator_len: usize = if (node.isExpandable()) 3 else 0;
-            const line_len = indent + indicator_len + 5 + node.name.len; // "[x] " or "[ ] " is 4
+            const is_checked = self.checked_items.get(node.full_name) != null;
+            const asterisk_len: usize = if (is_checked) 2 else 0; // "* "
+            const line_len = 2 + indent + indicator_len + asterisk_len + node.name.len; // 2 for "> " or "  "
             max_width = @max(max_width, line_len);
         }
 
@@ -422,47 +424,67 @@ pub const TreeView = struct {
         }
 
         // Write each tree node
-        for (self.visible_nodes.items) |node| {
+        for (self.visible_nodes.items, 0..) |node, node_idx| {
             const is_checked = self.checked_items.get(node.full_name) != null;
+            const is_cursor = node_idx == self.cursor_index;
             const depth = node.getDepth();
             var col: u16 = 0;
+
+            // Cursor indicator ('>' with reverse style for cursor line)
+            const cursor_style = if (is_cursor) vaxis.Style{ .reverse = true } else vaxis.Style{};
+            const cursor_char = if (is_cursor) ">" else " ";
+            surface.writeCell(col, row, .{
+                .char = .{ .grapheme = cursor_char, .width = 1 },
+                .style = cursor_style,
+            });
+            col += 1;
+
+            // Space after cursor indicator
+            surface.writeCell(col, row, .{
+                .char = .{ .grapheme = " ", .width = 1 },
+                .style = cursor_style,
+            });
+            col += 1;
 
             // Write indentation (2 spaces per depth level)
             const spaces = depth * 2;
             var i: usize = 0;
             while (i < spaces) : (i += 1) {
-                surface.writeCell(col, row, .{ .char = .{ .grapheme = " ", .width = 1 }, .style = .{} });
+                surface.writeCell(col, row, .{ .char = .{ .grapheme = " ", .width = 1 }, .style = cursor_style });
                 col += 1;
             }
 
             // Write expand/collapse indicator for component nodes
             if (node.isExpandable()) {
                 const is_expanded = self.expanded_nodes.get(node.full_name) != null;
-                const indicator = if (is_expanded) "[-" else "[+";
+                const indicator = if (is_expanded) "[- " else "[+ ";
                 for (indicator) |c| {
-                    surface.writeCell(col, row, .{ .char = .{ .grapheme = &[_]u8{c}, .width = 1 }, .style = .{} });
+                    surface.writeCell(col, row, .{ .char = .{ .grapheme = &[_]u8{c}, .width = 1 }, .style = cursor_style });
                     col += 1;
                 }
             } else {
                 // Empty space for non-expandable nodes
-                surface.writeCell(col, row, .{ .char = .{ .grapheme = " ", .width = 1 }, .style = .{} });
+                surface.writeCell(col, row, .{ .char = .{ .grapheme = " ", .width = 1 }, .style = cursor_style });
                 col += 1;
-                surface.writeCell(col, row, .{ .char = .{ .grapheme = " ", .width = 1 }, .style = .{} });
+                surface.writeCell(col, row, .{ .char = .{ .grapheme = " ", .width = 1 }, .style = cursor_style });
                 col += 1;
-                surface.writeCell(col, row, .{ .char = .{ .grapheme = " ", .width = 1 }, .style = .{} });
-                col += 1;
-            }
-
-            // Write checkbox
-            const checkbox = if (is_checked) "[x]" else "[ ]";
-            for (checkbox) |c| {
-                surface.writeCell(col, row, .{ .char = .{ .grapheme = &[_]u8{c}, .width = 1 }, .style = .{} });
+                surface.writeCell(col, row, .{ .char = .{ .grapheme = " ", .width = 1 }, .style = cursor_style });
                 col += 1;
             }
 
-            // Write space before name
-            surface.writeCell(col, row, .{ .char = .{ .grapheme = " ", .width = 1 }, .style = .{} });
-            col += 1;
+            // Write asterisk for checked items
+            if (is_checked) {
+                surface.writeCell(col, row, .{
+                    .char = .{ .grapheme = "*", .width = 1 },
+                    .style = cursor_style,
+                });
+                col += 1;
+                surface.writeCell(col, row, .{
+                    .char = .{ .grapheme = " ", .width = 1 },
+                    .style = cursor_style,
+                });
+                col += 1;
+            }
 
             // Write node name
             var char_iter = ctx.graphemeIterator(node.name);
@@ -472,7 +494,7 @@ pub const TreeView = struct {
                 if (col >= surface.size.width) break;
                 surface.writeCell(col, row, .{
                     .char = .{ .grapheme = grapheme, .width = grapheme_width },
-                    .style = .{},
+                    .style = cursor_style,
                 });
                 col += grapheme_width;
             }
