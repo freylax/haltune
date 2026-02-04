@@ -6,6 +6,7 @@ const HalValue = @import("../state/cache.zig").HalValue;
 const SubscriptionManager = @import("../state/pubsub.zig").SubscriptionManager;
 const RefreshThread = @import("../state/refresh.zig").RefreshThread;
 const TreeView = @import("widgets/tree_view.zig").TreeView;
+const VisibilityState = @import("widgets/tree_view.zig").VisibilityState;
 const DataTable = @import("widgets/data_table.zig").DataTable;
 const SignalDialog = @import("widgets/signal_dialog.zig").SignalDialog;
 const drawTwoPanelLayout = @import("layout.zig").drawTwoPanelLayout;
@@ -161,16 +162,59 @@ pub const Model = struct {
     }
 
     /// Get list of checked item names
-    /// Returns a snapshot of all items selected in the tree view
+    /// Returns only fully-visible leaf items (pins, signals, params)
+    /// Components with .partial or .full state are expanded to their visible children
     pub fn getCheckedItems(self: *const Model, allocator: std.mem.Allocator) ![][]const u8 {
         var items = std.ArrayList([]const u8).initCapacity(allocator, 0) catch unreachable;
 
         var iter = self.tree_view.checked_items.iterator();
         while (iter.next()) |entry| {
-            try items.append(allocator, entry.key_ptr.*);
+            const state = entry.value_ptr.*;
+            const full_name = entry.key_ptr.*;
+
+            // Skip partial states (component with some children visible)
+            if (state == VisibilityState.partial) continue;
+
+            // For full state, check if it's a leaf or component
+            if (state == VisibilityState.full) {
+                // Find the node to check its type
+                const node = self.findNodeByName(full_name);
+                if (node) |n| {
+                    if (n.isExpandable()) {
+                        // Component - add its visible children instead
+                        if (n.children) |*children| {
+                            for (children.items) |child| {
+                                const child_state = self.tree_view.checked_items.get(child.full_name) orelse VisibilityState.none;
+                                if (child_state == VisibilityState.full) {
+                                    try items.append(allocator, child.full_name);
+                                }
+                            }
+                        }
+                    } else {
+                        // Leaf node - add directly
+                        try items.append(allocator, full_name);
+                    }
+                } else {
+                    // Node not found - add as fallback
+                    try items.append(allocator, full_name);
+                }
+            }
         }
 
         return items.toOwnedSlice(allocator);
+    }
+
+    /// Find a node by full_name (helper for getCheckedItems)
+    fn findNodeByName(self: *const Model, full_name: []const u8) ?*const TreeView.Node {
+        for (self.tree_view.root.items) |node| {
+            if (std.mem.eql(u8, node.full_name, full_name)) return node;
+            if (node.children) |*children| {
+                for (children.items) |child| {
+                    if (std.mem.eql(u8, child.full_name, full_name)) return child;
+                }
+            }
+        }
+        return null;
     }
 
     /// Update data table with currently checked items

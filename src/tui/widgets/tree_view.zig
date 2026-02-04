@@ -28,6 +28,16 @@ pub const NodeType = enum {
     param,
 };
 
+/// Visibility state for tree nodes
+pub const VisibilityState = enum {
+    /// Not visible (no asterisk)
+    none,
+    /// Partially visible - some children are visible (shows '+')
+    partial,
+    /// Fully visible - all children visible, or leaf is visible (shows '*')
+    full,
+};
+
 /// Tree node representing a component or HAL item
 pub const Node = struct {
     /// Node label (display name)
@@ -94,8 +104,8 @@ pub const TreeView = struct {
     /// Set of expanded node names (for component nodes)
     expanded_nodes: std.StringHashMap(void),
 
-    /// Set of checked item names (for display in data table)
-    checked_items: std.StringHashMap(void),
+    /// Visibility state for each node (none, partial, or full)
+    checked_items: std.StringHashMap(VisibilityState),
 
     /// Current cursor position (index into visible nodes)
     cursor_index: usize,
@@ -398,9 +408,13 @@ pub const TreeView = struct {
             line_count += 1;
             const depth = node.getDepth();
             const indent = depth * 2;
-            const is_checked = self.checked_items.get(node.full_name) != null;
-            const asterisk_len: usize = if (is_checked) 2 else 0; // " *"
-            const line_len = 1 + indent + asterisk_len + node.name.len;
+            const state = self.checked_items.get(node.full_name) orelse .none;
+            const sym_len: usize = switch (state) {
+                .none => 0,
+                .partial => 1, // "+"
+                .full => 2,     // " *"
+            };
+            const line_len = 1 + indent + sym_len + node.name.len;
             max_width = @max(max_width, line_len);
         }
 
@@ -440,7 +454,7 @@ pub const TreeView = struct {
 
         // Write each tree node
         for (self.visible_nodes.items, 0..) |node, node_idx| {
-            const is_checked = self.checked_items.get(node.full_name) != null;
+            const state = self.checked_items.get(node.full_name) orelse .none;
             const is_cursor = node_idx == self.cursor_index;
             const depth = node.getDepth();
             var col: u16 = 0;
@@ -474,12 +488,21 @@ pub const TreeView = struct {
                 col += grapheme_width;
             }
 
-            // Write asterisk after name for checked items
-            if (is_checked) {
-                surface.writeCell(col, row, .{ .char = .{ .grapheme = " ", .width = 1 }, .style = .{} });
-                col += 1;
-                surface.writeCell(col, row, .{ .char = .{ .grapheme = "*", .width = 1 }, .style = .{} });
-                col += 1;
+            // Write visibility symbol after name
+            switch (state) {
+                .none => {}, // No symbol
+                .partial => {
+                    // Show "+" for partial visibility
+                    surface.writeCell(col, row, .{ .char = .{ .grapheme = "+", .width = 1 }, .style = .{} });
+                    col += 1;
+                },
+                .full => {
+                    // Show " *" for full visibility
+                    surface.writeCell(col, row, .{ .char = .{ .grapheme = " ", .width = 1 }, .style = .{} });
+                    col += 1;
+                    surface.writeCell(col, row, .{ .char = .{ .grapheme = "*", .width = 1 }, .style = .{} });
+                    col += 1;
+                },
             }
 
             row += 1;
@@ -648,15 +671,112 @@ pub const TreeView = struct {
         }
     }
 
-    /// Toggle checkbox state for an item
+    /// Toggle visibility state for an item
+    /// - Components: cycle none -> full -> none (propagates to children)
+    /// - Leafs: cycle none -> full -> none (updates ancestors)
     fn toggleCheckbox(self: *TreeView, full_name: []const u8) !void {
-        const gop = try self.checked_items.getOrPut(full_name);
-        if (gop.found_existing) {
-            // Uncheck: remove from checked set
-            _ = self.checked_items.remove(full_name);
+        // Find the node in the tree
+        const node = self.findNode(full_name) orelse return;
+        const current_state = self.checked_items.get(full_name) orelse .none;
+
+        // Determine new state based on current state and node type
+        const new_state: VisibilityState = if (node.isExpandable())
+            if (current_state == .full) .none else .full
+        else
+            if (current_state == .full) .none else .full;
+
+        // Set the new state (will propagate)
+        try self.setNodeState(node, new_state);
+    }
+
+    /// Find a node by full_name in the tree
+    fn findNode(self: *const TreeView, full_name: []const u8) ?*Node {
+        for (self.root.items) |node| {
+            if (std.mem.eql(u8, node.full_name, full_name)) return node;
+            if (node.children) |*children| {
+                for (children.items) |child| {
+                    if (std.mem.eql(u8, child.full_name, full_name)) return child;
+                }
+            }
+        }
+        return null;
+    }
+
+    /// Set a node's visibility state and propagate changes
+    /// - For components: propagates to all descendants
+    /// - Then updates all ancestors
+    fn setNodeState(self: *TreeView, node: *Node, state: VisibilityState) !void {
+        // Set this node's state
+        try self.checked_items.put(node.full_name, state);
+
+        // If this is a component, propagate state to all descendants
+        if (node.isExpandable()) {
+            if (node.children) |*children| {
+                for (children.items) |child| {
+                    try self.setNodeStateRecursive(child, state);
+                }
+            }
+        }
+
+        // Update all ancestor states based on their children
+        var current = node.parent;
+        while (current) |parent| {
+            try self.updateParentState(parent);
+            current = parent.parent;
+        }
+    }
+
+    /// Recursively set state for a node and all its descendants
+    fn setNodeStateRecursive(self: *TreeView, node: *Node, state: VisibilityState) !void {
+        try self.checked_items.put(node.full_name, state);
+
+        if (node.children) |*children| {
+            for (children.items) |child| {
+                try self.setNodeStateRecursive(child, state);
+            }
+        }
+    }
+
+    /// Update a parent node's state based on its children's states
+    fn updateParentState(self: *TreeView, parent: *Node) !void {
+        const children = parent.children orelse {
+            // Leaf node - should not happen, but handle gracefully
+            return;
+        };
+
+        if (children.items.len == 0) {
+            // No children - remove state (equivalent to none)
+            _ = self.checked_items.remove(parent.full_name);
+            return;
+        }
+
+        // Check all children's states
+        var has_full: bool = false;
+        var has_none: bool = false;
+
+        for (children.items) |child| {
+            const child_state = self.checked_items.get(child.full_name) orelse .none;
+            switch (child_state) {
+                .full => has_full = true,
+                .none => has_none = true,
+                .partial => {
+                    // If any child is partial, parent is partial
+                    try self.checked_items.put(parent.full_name, .partial);
+                    return;
+                },
+            }
+        }
+
+        // Determine parent state based on children
+        if (has_full and !has_none) {
+            // All children are full
+            try self.checked_items.put(parent.full_name, .full);
+        } else if (!has_full and has_none) {
+            // All children are none
+            _ = self.checked_items.remove(parent.full_name);
         } else {
-            // Check: add to checked set
-            gop.value_ptr.* = {};
+            // Mixed - some full, some none
+            try self.checked_items.put(parent.full_name, .partial);
         }
     }
 };
