@@ -398,10 +398,9 @@ pub const TreeView = struct {
             line_count += 1;
             const depth = node.getDepth();
             const indent = depth * 2;
-            const indicator_len: usize = if (node.isExpandable()) 3 else 0;
             const is_checked = self.checked_items.get(node.full_name) != null;
             const asterisk_len: usize = if (is_checked) 2 else 0; // " *"
-            const line_len = 1 + indent + indicator_len + asterisk_len + node.name.len; // 1 for ">" or " "
+            const line_len = 1 + indent + asterisk_len + node.name.len;
             max_width = @max(max_width, line_len);
         }
 
@@ -458,27 +457,6 @@ pub const TreeView = struct {
             const spaces = depth * 2;
             var i: usize = 0;
             while (i < spaces) : (i += 1) {
-                surface.writeCell(col, row, .{ .char = .{ .grapheme = " ", .width = 1 }, .style = .{} });
-                col += 1;
-            }
-
-            // Write expand/collapse indicator for component nodes
-            if (node.isExpandable()) {
-                const is_expanded = self.expanded_nodes.get(node.full_name) != null;
-                const indicator = if (is_expanded) "[-" else "[+";
-                for (indicator) |c| {
-                    surface.writeCell(col, row, .{ .char = .{ .grapheme = &[_]u8{c}, .width = 1 }, .style = .{} });
-                    col += 1;
-                }
-                // Space after indicator
-                surface.writeCell(col, row, .{ .char = .{ .grapheme = " ", .width = 1 }, .style = .{} });
-                col += 1;
-            } else {
-                // Empty space for non-expandable nodes (3 spaces to match indicator width)
-                surface.writeCell(col, row, .{ .char = .{ .grapheme = " ", .width = 1 }, .style = .{} });
-                col += 1;
-                surface.writeCell(col, row, .{ .char = .{ .grapheme = " ", .width = 1 }, .style = .{} });
-                col += 1;
                 surface.writeCell(col, row, .{ .char = .{ .grapheme = " ", .width = 1 }, .style = .{} });
                 col += 1;
             }
