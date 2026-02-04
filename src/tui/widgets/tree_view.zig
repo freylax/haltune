@@ -286,7 +286,7 @@ pub const TreeView = struct {
             // Add pins as children
             for (entry.value_ptr.pins.items) |pin_name| {
                 // Display name without component prefix, full name for lookups
-                const display_name = try self.extractItemName(pin_name);
+                const display_name = try extractItemName(self.allocator, pin_name);
                 const full_name_copy = try self.allocator.dupe(u8, pin_name);
                 const pin_node = try Node.init(
                     self.allocator,
@@ -303,7 +303,7 @@ pub const TreeView = struct {
             // Add signals as children
             for (entry.value_ptr.signals.items) |signal_name| {
                 // Display name without component prefix, full name for lookups
-                const display_name = try self.extractItemName(signal_name);
+                const display_name = try extractItemName(self.allocator, signal_name);
                 const full_name_copy = try self.allocator.dupe(u8, signal_name);
                 const signal_node = try Node.init(
                     self.allocator,
@@ -320,7 +320,7 @@ pub const TreeView = struct {
             // Add params as children
             for (entry.value_ptr.params.items) |param_name| {
                 // Display name without component prefix, full name for lookups
-                const display_name = try self.extractItemName(param_name);
+                const display_name = try extractItemName(self.allocator, param_name);
                 const full_name_copy = try self.allocator.dupe(u8, param_name);
                 const param_node = try Node.init(
                     self.allocator,
