@@ -302,13 +302,14 @@ pub const Model = struct {
 
                 // Forward navigation keys to TreeView if no modal dialogs are visible
                 if (!self.signal_dialog.visible and !self.save_dialog_visible) {
-                    // TreeView handles: arrow keys, Enter (expand/collapse), Space (checkbox), '/' (search)
+                    // TreeView handles: arrow keys, Enter (expand/collapse), Space (checkbox), '/' (search), Backspace (collapse)
                     const tree_widget = self.tree_view.widget();
                     if (key.matches(vaxis.Key.up, .{}) or
                         key.matches(vaxis.Key.down, .{}) or
                         key.matches(vaxis.Key.enter, .{}) or
                         key.matches(' ', .{}) or
-                        key.matches('/', .{}))
+                        key.matches('/', .{}) or
+                        key.matches(vaxis.Key.backspace, .{}))
                     {
                         // Forward to TreeView's event handler
                         if (tree_widget.eventHandler) |handler| {

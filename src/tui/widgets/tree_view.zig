@@ -469,13 +469,16 @@ pub const TreeView = struct {
             // Write expand/collapse indicator for component nodes
             if (node.isExpandable()) {
                 const is_expanded = self.expanded_nodes.get(node.full_name) != null;
-                const indicator = if (is_expanded) "[- " else "[+ ";
+                const indicator = if (is_expanded) "[-" else "[+";
                 for (indicator) |c| {
                     surface.writeCell(col, row, .{ .char = .{ .grapheme = &[_]u8{c}, .width = 1 }, .style = .{} });
                     col += 1;
                 }
+                // Space after indicator
+                surface.writeCell(col, row, .{ .char = .{ .grapheme = " ", .width = 1 }, .style = .{} });
+                col += 1;
             } else {
-                // Empty space for non-expandable nodes
+                // Empty space for non-expandable nodes (3 spaces to match indicator width)
                 surface.writeCell(col, row, .{ .char = .{ .grapheme = " ", .width = 1 }, .style = .{} });
                 col += 1;
                 surface.writeCell(col, row, .{ .char = .{ .grapheme = " ", .width = 1 }, .style = .{} });
