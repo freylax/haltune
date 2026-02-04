@@ -285,13 +285,14 @@ pub const TreeView = struct {
 
             // Add pins as children
             for (entry.value_ptr.pins.items) |pin_name| {
-                // Duplicate name for safe independent lifecycle
-                const pin_name_copy = try self.allocator.dupe(u8, pin_name);
+                // Display name without component prefix, full name for lookups
+                const display_name = try self.extractItemName(pin_name);
+                const full_name_copy = try self.allocator.dupe(u8, pin_name);
                 const pin_node = try Node.init(
                     self.allocator,
-                    pin_name_copy,
+                    display_name,
                     .pin,
-                    pin_name_copy,
+                    full_name_copy,
                     component_node,
                 );
                 if (component_node.children) |*children| {
@@ -301,13 +302,14 @@ pub const TreeView = struct {
 
             // Add signals as children
             for (entry.value_ptr.signals.items) |signal_name| {
-                // Duplicate name for safe independent lifecycle
-                const signal_name_copy = try self.allocator.dupe(u8, signal_name);
+                // Display name without component prefix, full name for lookups
+                const display_name = try self.extractItemName(signal_name);
+                const full_name_copy = try self.allocator.dupe(u8, signal_name);
                 const signal_node = try Node.init(
                     self.allocator,
-                    signal_name_copy,
+                    display_name,
                     .signal,
-                    signal_name_copy,
+                    full_name_copy,
                     component_node,
                 );
                 if (component_node.children) |*children| {
@@ -317,13 +319,14 @@ pub const TreeView = struct {
 
             // Add params as children
             for (entry.value_ptr.params.items) |param_name| {
-                // Duplicate name for safe independent lifecycle
-                const param_name_copy = try self.allocator.dupe(u8, param_name);
+                // Display name without component prefix, full name for lookups
+                const display_name = try self.extractItemName(param_name);
+                const full_name_copy = try self.allocator.dupe(u8, param_name);
                 const param_node = try Node.init(
                     self.allocator,
-                    param_name_copy,
+                    display_name,
                     .param,
-                    param_name_copy,
+                    full_name_copy,
                     component_node,
                 );
                 if (component_node.children) |*children| {
@@ -344,6 +347,19 @@ pub const TreeView = struct {
 
         // Return substring before first dot
         return allocator.dupe(u8, full_name[0..dot_index]);
+    }
+
+    /// Extract item name without component prefix for display
+    /// Example: "motion.digital-in-00" -> "digital-in-00"
+    fn extractItemName(allocator: std.mem.Allocator, full_name: []const u8) ![]const u8 {
+        // Find first dot in name
+        const dot_index = std.mem.indexOfScalar(u8, full_name, '.') orelse {
+            // No dot found - return full name as-is
+            return allocator.dupe(u8, full_name);
+        };
+
+        // Return substring after first dot (skip the dot itself)
+        return allocator.dupe(u8, full_name[dot_index + 1 ..]);
     }
 
     /// Return a vxfw.Widget for this TreeView
@@ -384,7 +400,7 @@ pub const TreeView = struct {
             const indent = depth * 2;
             const indicator_len: usize = if (node.isExpandable()) 3 else 0;
             const is_checked = self.checked_items.get(node.full_name) != null;
-            const asterisk_len: usize = if (is_checked) 2 else 0; // "* "
+            const asterisk_len: usize = if (is_checked) 1 else 0; // "*"
             const line_len = 2 + indent + indicator_len + asterisk_len + node.name.len; // 2 for "> " or "  "
             max_width = @max(max_width, line_len);
         }
@@ -483,8 +499,6 @@ pub const TreeView = struct {
 
             // Write asterisk after name for checked items
             if (is_checked) {
-                surface.writeCell(col, row, .{ .char = .{ .grapheme = " ", .width = 1 }, .style = .{} });
-                col += 1;
                 surface.writeCell(col, row, .{ .char = .{ .grapheme = "*", .width = 1 }, .style = .{} });
                 col += 1;
             }
@@ -633,6 +647,19 @@ pub const TreeView = struct {
                         const node = self.visible_nodes.items[self.cursor_index];
                         try self.toggleCheckbox(node.full_name);
                         ctx.consumeAndRedraw();
+                        return;
+                    }
+                }
+
+                // Backspace: collapse parent when on a child node
+                if (key.matches(vaxis.Key.backspace, .{})) {
+                    if (self.visible_nodes.items.len > 0) {
+                        const node = self.visible_nodes.items[self.cursor_index];
+                        // If this is a child node (has parent), collapse the parent
+                        if (node.parent) |parent| {
+                            _ = self.expanded_nodes.remove(parent.full_name);
+                            ctx.consumeAndRedraw();
+                        }
                         return;
                     }
                 }
