@@ -411,8 +411,8 @@ pub const TreeView = struct {
             const state = self.checked_items.get(node.full_name) orelse .none;
             const sym_len: usize = switch (state) {
                 .none => 0,
-                .partial => 1, // "+"
-                .full => 2,     // " *"
+                .partial => 2, // " +"
+                .full => 2, // " *"
             };
             const line_len = 1 + indent + sym_len + node.name.len;
             max_width = @max(max_width, line_len);
@@ -492,9 +492,9 @@ pub const TreeView = struct {
             switch (state) {
                 .none => {}, // No symbol
                 .partial => {
-                    // Show "+" for partial visibility
-                    surface.writeCell(col, row, .{ .char = .{ .grapheme = "+", .width = 1 }, .style = .{} });
-                    col += 1;
+                    // Show " +" for partial visibility
+                    surface.writeCell(col, row, .{ .char = .{ .grapheme = " +", .width = 2 }, .style = .{} });
+                    col += 2;
                 },
                 .full => {
                     // Show " *" for full visibility
@@ -682,8 +682,7 @@ pub const TreeView = struct {
         // Determine new state based on current state and node type
         const new_state: VisibilityState = if (node.isExpandable())
             if (current_state == .full) .none else .full
-        else
-            if (current_state == .full) .none else .full;
+        else if (current_state == .full) .none else .full;
 
         // Set the new state (will propagate)
         try self.setNodeState(node, new_state);
