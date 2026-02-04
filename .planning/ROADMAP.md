@@ -1,8 +1,12 @@
 # Roadmap: haltune
 
+**Created:** 2026-01-29
+**Updated:** 2026-02-05
+**Current milestone:** v0.5 View Switching
+
 ## Overview
 
-Build a TUI-based LinuxCNC HAL manager by first establishing safe FFI bindings to the LinuxCNC HAL C API, then layering thread-safe state management, responsive Vaxis-based TUI for HAL inspection and manipulation, bookmark functionality, and extensible plugin architecture. The journey progresses from low-level foundations (FFI, state caching) to user-facing features (browser, editing) to extensibility (plugins), culminating in performance optimization and polish for Raspberry Pi 5 deployment.
+Build a TUI-based LinuxCNC HAL manager by first establishing safe FFI bindings to the LinuxCNC HAL C API, then layering thread-safe state management, responsive Vaxis-based TUI for HAL inspection and manipulation, and extensible plugin architecture. The journey progresses from low-level foundations (FFI, state caching) to user-facing features (browser, editing) to UX refinement (view switching), culminating in extensibility (plugins) and polish for Raspberry Pi 5 deployment.
 
 ## Milestones
 
@@ -10,8 +14,8 @@ Build a TUI-based LinuxCNC HAL manager by first establishing safe FFI bindings t
 - ✅ **v0.2 State Management** — Phase 2 (shipped 2026-01-29)
 - ✅ **v0.3 TUI Core** — Phase 3 (shipped 2026-01-29)
 - ✅ **v0.4 Configuration & Editing** — Phase 4 (shipped 2026-01-29)
-- 🚧 **v0.5 Bookmarks & Plugins** — Phase 5 (in progress)
-- 📋 **v0.6 Polish & Optimization** — Phase 6 (planned)
+- 🚧 **v0.5 View Switching** — Phase 5 (in progress)
+- 📋 **v0.6 Bookmarks & Plugins** — Phase 6 (planned)
 
 ## Phases
 
@@ -33,19 +37,41 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 </details>
 
-### 🚧 v0.5 Bookmarks & Plugins (In Progress)
+### 🚧 v0.5 View Switching (In Progress)
 
-- [ ] **Phase 5: Bookmarks & Plugins** - Quick access and extensibility
+- [ ] **Phase 5: View Switching** — Alternative view modes for simplified layout
 
-## Phase Details
+### Phase Details
 
 *(Full details for Phases 1-4 archived to `.planning/milestones/v0.4-ROADMAP.md`)*
 
-### Phase 5: Bookmarks & Plugins
+### Phase 5: View Switching
+
+**Goal**: Replace two-panel layout with alternative view modes (tree view and data table displayed separately)
+
+**Depends on**: Phase 4
+
+**Requirements**: LAY-01, LAY-02, LAY-03, SWITCH-01, SWITCH-02, SWITCH-03, TREE-01 through TREE-06, TABLE-01 through TABLE-05, HELP-01 through HELP-03
+
+**Success Criteria** (what must be TRUE):
+1. Tree view and data table are never displayed simultaneously
+2. User can switch between views with 't' key
+3. Mode indicator is visible in UI showing current view ([Tree] or [Table])
+4. Each view uses full terminal width
+5. Tree view maintains existing functionality (navigation, editing, search, visibility toggles, real-time updates) - pins, signals, params all viewable and editable
+6. Data table maintains existing functionality (real-time updates, editing) - pins, signals, params all viewable and editable
+7. Help text reflects current mode's key bindings
+
+**Plans**:
+- [ ] 05-01: Add view mode state and toggle handler
+- [ ] 05-02: Refactor layout for single-panel display
+- [ ] 05-03: Add mode indicator and context-sensitive help
+
+### Phase 6: Bookmarks & Plugins
 
 **Goal**: Quick access to frequently monitored items and extensible plugin architecture for domain-specific workflows
 
-**Depends on**: Phase 4
+**Depends on**: Phase 5
 
 **Requirements**: BKMK-01, BKMK-02, BKMK-03, BKMK-04, PLUGIN-01, PLUGIN-02, PLUGIN-03, PLUGIN-04
 
@@ -57,15 +83,11 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 **Plans**: TBD
 
-Plans:
-- [ ] 05-01: TBD
-- [ ] 05-02: TBD
-
-### Phase 6: Polish & Optimization
+### Phase 7: Polish & Optimization
 
 **Goal**: Performance tuning for Raspberry Pi 5 deployment, UX refinement, and production readiness
 
-**Depends on**: Phase 5
+**Depends on**: Phase 6
 
 **Requirements**: None (polish phase focuses on optimization, UX, and edge cases)
 
@@ -78,15 +100,10 @@ Plans:
 
 **Plans**: TBD
 
-Plans:
-- [ ] 06-01: TBD
-- [ ] 06-02: TBD
-- [ ] 06-03: TBD
-
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
+Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
@@ -94,5 +111,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | 2. State Management | 5/5 | Complete | 2026-01-29 |
 | 3. TUI Core | 5/5 | Complete | 2026-01-29 |
 | 4. Configuration & Editing | 3/3 | Complete | 2026-01-29 |
-| 5. Bookmarks & Plugins | 0/0 | Not started | - |
-| 6. Polish & Optimization | 0/0 | Not started | - |
+| 5. View Switching | 0/3 | Not started | - |
+| 6. Bookmarks & Plugins | 0/0 | Not started | - |
+| 7. Polish & Optimization | 0/0 | Not started | - |

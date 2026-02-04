@@ -8,6 +8,16 @@ A TUI-based LinuxCNC HAL manager written in Zig, providing real-time inspection 
 
 Make LinuxCNC HAL manipulation and machine setup efficient through an intuitive TUI interface, replacing cryptic halcmd commands with structured workflows for machine configuration and tuning.
 
+## Current Milestone: v0.5 View Switching
+
+**Goal:** Simplify TUI layout by displaying tree view and data table alternatively instead of simultaneously, with a 't' key to switch modes.
+
+**Target features:**
+- Tree view mode (default): Component hierarchy with visibility toggles, full editing capabilities
+- Data table mode: Tabular view of selected items with real-time updates
+- 't' key binding to switch between modes
+- Mode indicator in UI
+
 ## Requirements
 
 ### Validated
@@ -17,9 +27,11 @@ Make LinuxCNC HAL manipulation and machine setup efficient through an intuitive 
 - ✓ **HAL Inspector Core** — v0.4: Browse all HAL components (pins, signals, parameters) with real-time updates, search/filter capabilities, and in-place editing
 - ✓ **TUX Framework** — v0.4: Vaxis-based responsive TUI interface with two-panel layout (tree + data table), keyboard navigation, and Raspberry Pi 5 deployment
 - ✓ **Config Persistence** — v0.4: Export current HAL configuration to halcmd-compatible format with 's' key binding (restore via halcmd -f for v1)
+- ✓ **Tree View UX** — v0.4: Tri-state visibility system (none/partial/full), cursor indicator, hierarchical state propagation
 
 ### Active
 
+- [ ] **View Switching UI** — v0.5: Alternative view modes (tree vs data table) with 't' key binding, single-panel layout
 - [ ] **Signal Creation UI** — Create new signals and link pins via multi-step TUI wizard (FFI complete, dialog complete, visual rendering polish pending)
 - [ ] **Riocore Awareness**: Detect and display riocore configuration context (view-only) when riocore framework is present
 - [ ] **Velocity Tester Plugin**: Test stepper velocity limits in real-time to determine feasible operating ranges
@@ -86,4 +98,4 @@ Each step requires real-time HAL manipulation and parameter persistence.
 | Stub dialog draw | Focus on functionality first, visual rendering can be enhanced later | ⚠️ Revisit - Dialogs work but need polish (Phase 5 or 6) |
 
 ---
-*Last updated: 2026-01-29 after v0.4 milestone*
+*Last updated: 2026-02-05 after v0.5 milestone started*
