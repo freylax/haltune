@@ -472,20 +472,6 @@ pub const TreeView = struct {
                 col += 1;
             }
 
-            // Write asterisk for checked items
-            if (is_checked) {
-                surface.writeCell(col, row, .{
-                    .char = .{ .grapheme = "*", .width = 1 },
-                    .style = cursor_style,
-                });
-                col += 1;
-                surface.writeCell(col, row, .{
-                    .char = .{ .grapheme = " ", .width = 1 },
-                    .style = cursor_style,
-                });
-                col += 1;
-            }
-
             // Write node name
             var char_iter = ctx.graphemeIterator(node.name);
             while (char_iter.next()) |char| {
@@ -497,6 +483,20 @@ pub const TreeView = struct {
                     .style = cursor_style,
                 });
                 col += grapheme_width;
+            }
+
+            // Write asterisk after name for checked items
+            if (is_checked) {
+                surface.writeCell(col, row, .{
+                    .char = .{ .grapheme = " ", .width = 1 },
+                    .style = cursor_style,
+                });
+                col += 1;
+                surface.writeCell(col, row, .{
+                    .char = .{ .grapheme = "*", .width = 1 },
+                    .style = cursor_style,
+                });
+                col += 1;
             }
 
             row += 1;
@@ -615,12 +615,12 @@ pub const TreeView = struct {
                     return;
                 }
 
-                // Enter: toggle expand/collapse or toggle checkbox
+                // Enter: toggle expand/collapse for component nodes
                 if (key.matches(vaxis.Key.enter, .{})) {
                     if (self.visible_nodes.items.len > 0) {
                         const node = self.visible_nodes.items[self.cursor_index];
 
-                        // For component nodes: toggle expand/collapse
+                        // Only expandable nodes (components) respond to Enter
                         if (node.isExpandable()) {
                             const gop = try self.expanded_nodes.getOrPut(node.full_name);
                             if (gop.found_existing) {
@@ -631,12 +631,8 @@ pub const TreeView = struct {
                                 gop.value_ptr.* = {};
                             }
                             ctx.consumeAndRedraw();
-                            return;
                         }
-
-                        // For leaf nodes: toggle checkbox
-                        try self.toggleCheckbox(node.full_name);
-                        ctx.consumeAndRedraw();
+                        // TODO: For leaf nodes (pins), Enter could enter value editing mode
                         return;
                     }
                 }
