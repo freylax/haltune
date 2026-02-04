@@ -400,8 +400,8 @@ pub const TreeView = struct {
             const indent = depth * 2;
             const indicator_len: usize = if (node.isExpandable()) 3 else 0;
             const is_checked = self.checked_items.get(node.full_name) != null;
-            const asterisk_len: usize = if (is_checked) 1 else 0; // "*"
-            const line_len = 2 + indent + indicator_len + asterisk_len + node.name.len; // 2 for "> " or "  "
+            const asterisk_len: usize = if (is_checked) 2 else 0; // " *"
+            const line_len = 1 + indent + indicator_len + asterisk_len + node.name.len; // 1 for ">" or " "
             max_width = @max(max_width, line_len);
         }
 
@@ -454,10 +454,6 @@ pub const TreeView = struct {
             });
             col += 1;
 
-            // Space after cursor indicator
-            surface.writeCell(col, row, .{ .char = .{ .grapheme = " ", .width = 1 }, .style = .{} });
-            col += 1;
-
             // Write indentation (2 spaces per depth level)
             const spaces = depth * 2;
             var i: usize = 0;
@@ -502,6 +498,8 @@ pub const TreeView = struct {
 
             // Write asterisk after name for checked items
             if (is_checked) {
+                surface.writeCell(col, row, .{ .char = .{ .grapheme = " ", .width = 1 }, .style = .{} });
+                col += 1;
                 surface.writeCell(col, row, .{ .char = .{ .grapheme = "*", .width = 1 }, .style = .{} });
                 col += 1;
             }
