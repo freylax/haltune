@@ -366,13 +366,25 @@ pub const TreeView = struct {
         self.visible_nodes.clearRetainingCapacity();
         try self.buildVisibleNodes(&self.visible_nodes);
 
-        // Build the complete tree text as a single string
-        var buffer = std.ArrayList(u8).initCapacity(self.allocator, 1024) catch unreachable;
+        // Count lines and find max width for surface sizing
+        var line_count: usize = 0;
+        var max_width: usize = 0;
 
-        // Show search input if in search mode
+        // Add search line if in search mode
         if (self.search_input) {
-            const search_line = try std.fmt.allocPrint(self.allocator, "/{s}\n", .{self.search_pattern});
-            try buffer.writer(self.allocator).writeAll(search_line);
+            line_count += 1;
+            const search_width = 1 + self.search_pattern.len;
+            max_width = @max(max_width, search_width);
+        }
+
+        // Count visible nodes
+        for (self.visible_nodes.items) |node| {
+            line_count += 1;
+            const depth = node.getDepth();
+            const indent = depth * 2;
+            const indicator_len: usize = if (node.isExpandable()) 3 else 0;
+            const line_len = indent + indicator_len + 5 + node.name.len; // "[x] " or "[ ] " is 4
+            max_width = @max(max_width, line_len);
         }
 
         // Ensure cursor is within bounds
@@ -380,47 +392,95 @@ pub const TreeView = struct {
             self.cursor_index = @min(self.cursor_index, self.visible_nodes.items.len - 1);
         }
 
-        // Build each line
-        for (self.visible_nodes.items) |node| {
-            const is_checked = self.checked_items.get(node.full_name) != null;
+        // Create surface with calculated size
+        const surface = try vxfw.Surface.init(
+            ctx.arena,
+            self.widget(),
+            .{ .width = @intCast(max_width), .height = @intCast(line_count) },
+        );
 
-            // Build line text with checkbox, expand indicator, indentation, and name
-            const checkbox = if (is_checked) "[x]" else "[ ]";
-            const depth = node.getDepth();
-            // Build indent string (2 spaces per depth level)
-            var indent_buf: [32]u8 = undefined;
-            var indent_len: usize = 0;
-            if (depth > 0) {
-                const spaces = depth * 2;
-                if (spaces < indent_buf.len) {
-                    @memset(indent_buf[0..spaces], ' ');
-                    indent_len = spaces;
-                }
+        // Initialize buffer with default cells
+        const base_cell: vaxis.Cell = .{ .default = true };
+        @memset(surface.buffer, base_cell);
+
+        // Write content to buffer
+        var row: u16 = 0;
+
+        // Write search input line if active
+        if (self.search_input) {
+            var col: u16 = 0;
+            surface.writeCell(col, row, .{ .char = .{ .grapheme = "/", .width = 1 }, .style = .{} });
+            col += 1;
+            for (self.search_pattern) |c| {
+                surface.writeCell(col, row, .{
+                    .char = .{ .grapheme = &[_]u8{c}, .width = 1 },
+                    .style = .{},
+                });
+                col += 1;
             }
-            const indent = indent_buf[0..indent_len];
-
-            // Add expand/collapse indicator for component nodes
-            const indicator: []const u8 = if (node.isExpandable())
-                if (self.expanded_nodes.get(node.full_name) != null) "[- " else "[+ "
-            else
-                "   ";
-
-            // Build full line text
-            const line = try std.fmt.allocPrint(
-                self.allocator,
-                "{s}{s}{s} {s}\n",
-                .{ indent, indicator, checkbox, node.name },
-            );
-
-            try buffer.writer(self.allocator).writeAll(line);
+            row += 1;
         }
 
-        // Get the final text and create a Text widget
-        const tree_text = try buffer.toOwnedSlice(self.allocator);
+        // Write each tree node
+        for (self.visible_nodes.items) |node| {
+            const is_checked = self.checked_items.get(node.full_name) != null;
+            const depth = node.getDepth();
+            var col: u16 = 0;
 
-        // Use vxfw.Text widget which handles the rendering properly
-        const text_widget = vxfw.Text{ .text = tree_text };
-        return try text_widget.widget().draw(ctx);
+            // Write indentation (2 spaces per depth level)
+            const spaces = depth * 2;
+            var i: usize = 0;
+            while (i < spaces) : (i += 1) {
+                surface.writeCell(col, row, .{ .char = .{ .grapheme = " ", .width = 1 }, .style = .{} });
+                col += 1;
+            }
+
+            // Write expand/collapse indicator for component nodes
+            if (node.isExpandable()) {
+                const is_expanded = self.expanded_nodes.get(node.full_name) != null;
+                const indicator = if (is_expanded) "[-" else "[+";
+                for (indicator) |c| {
+                    surface.writeCell(col, row, .{ .char = .{ .grapheme = &[_]u8{c}, .width = 1 }, .style = .{} });
+                    col += 1;
+                }
+            } else {
+                // Empty space for non-expandable nodes
+                surface.writeCell(col, row, .{ .char = .{ .grapheme = " ", .width = 1 }, .style = .{} });
+                col += 1;
+                surface.writeCell(col, row, .{ .char = .{ .grapheme = " ", .width = 1 }, .style = .{} });
+                col += 1;
+                surface.writeCell(col, row, .{ .char = .{ .grapheme = " ", .width = 1 }, .style = .{} });
+                col += 1;
+            }
+
+            // Write checkbox
+            const checkbox = if (is_checked) "[x]" else "[ ]";
+            for (checkbox) |c| {
+                surface.writeCell(col, row, .{ .char = .{ .grapheme = &[_]u8{c}, .width = 1 }, .style = .{} });
+                col += 1;
+            }
+
+            // Write space before name
+            surface.writeCell(col, row, .{ .char = .{ .grapheme = " ", .width = 1 }, .style = .{} });
+            col += 1;
+
+            // Write node name
+            var char_iter = ctx.graphemeIterator(node.name);
+            while (char_iter.next()) |char| {
+                const grapheme = char.bytes(node.name);
+                const grapheme_width: u8 = @intCast(ctx.stringWidth(grapheme));
+                if (col >= surface.size.width) break;
+                surface.writeCell(col, row, .{
+                    .char = .{ .grapheme = grapheme, .width = grapheme_width },
+                    .style = .{},
+                });
+                col += grapheme_width;
+            }
+
+            row += 1;
+        }
+
+        return surface;
     }
 
     /// Build list of visible nodes (respecting expand/collapse state)

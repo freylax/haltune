@@ -165,12 +165,14 @@ pub const RefreshThread = struct {
             } else |err| {
                 // Error occurred - log it
                 std.log.err("Refresh error: {}", .{err});
+                std.debug.print("Refresh error: {}\n", .{err});
                 consecutive_errors += 1;
 
                 // If we get multiple consecutive errors, HAL is likely shut down
                 // Exit the thread to prevent assertion failures
                 if (consecutive_errors >= 3) {
                     std.log.warn("Multiple refresh errors - assuming HAL shutdown, exiting thread", .{});
+                    std.debug.print("Multiple refresh errors - exiting RefreshThread\n", .{});
                     return;
                 }
             }
@@ -270,8 +272,11 @@ pub const RefreshThread = struct {
         const cached_names = try self.store.listPins(self.allocator);
         defer self.allocator.free(cached_names);
 
+        std.debug.print("refreshPins: {d} pins in cache\n", .{cached_names.len});
+
         // If cache is empty, seed with some known LinuxCNC pins for testing
         if (cached_names.len == 0) {
+            std.debug.print("refreshPins: cache empty, seeding with known pins\n", .{});
             // Common motion pins that usually exist
             const known_pins = [_][]const u8{
                 "motion.analog-in-00",
@@ -288,8 +293,9 @@ pub const RefreshThread = struct {
 
                 if (ffi.getPinValueByName(@ptrCast(pin_name_z))) |value| {
                     try self.store.addPin(pin_name, value);
-                } else |_| {
-                    // Pin doesn't exist, skip
+                    std.debug.print("refreshPins: added pin {s}\n", .{pin_name});
+                } else |err| {
+                    std.debug.print("refreshPins: pin {s} not found: {}\n", .{pin_name, err});
                 }
 
                 self.allocator.free(pin_name_z);
@@ -305,8 +311,11 @@ pub const RefreshThread = struct {
             name_z[name.len] = 0;
 
             // Read value using getPinValueByName FFI wrapper
-            const value = try ffi.getPinValueByName(@ptrCast(name_z));
-
+            // If pin doesn't exist in HAL, skip it (it might be test data)
+            const value = ffi.getPinValueByName(@ptrCast(name_z)) catch |err| {
+                std.debug.print("refreshPins: skipping {s}: {}\n", .{name, err});
+                continue;
+            };
             try self.store.updatePin(name, value);
         }
     }
