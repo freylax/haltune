@@ -430,27 +430,23 @@ pub const TreeView = struct {
             const depth = node.getDepth();
             var col: u16 = 0;
 
-            // Cursor indicator ('>' with reverse style for cursor line)
-            const cursor_style = if (is_cursor) vaxis.Style{ .reverse = true } else vaxis.Style{};
+            // Cursor indicator ('>' for current line)
             const cursor_char = if (is_cursor) ">" else " ";
             surface.writeCell(col, row, .{
                 .char = .{ .grapheme = cursor_char, .width = 1 },
-                .style = cursor_style,
+                .style = .{},
             });
             col += 1;
 
             // Space after cursor indicator
-            surface.writeCell(col, row, .{
-                .char = .{ .grapheme = " ", .width = 1 },
-                .style = cursor_style,
-            });
+            surface.writeCell(col, row, .{ .char = .{ .grapheme = " ", .width = 1 }, .style = .{} });
             col += 1;
 
             // Write indentation (2 spaces per depth level)
             const spaces = depth * 2;
             var i: usize = 0;
             while (i < spaces) : (i += 1) {
-                surface.writeCell(col, row, .{ .char = .{ .grapheme = " ", .width = 1 }, .style = cursor_style });
+                surface.writeCell(col, row, .{ .char = .{ .grapheme = " ", .width = 1 }, .style = .{} });
                 col += 1;
             }
 
@@ -459,16 +455,16 @@ pub const TreeView = struct {
                 const is_expanded = self.expanded_nodes.get(node.full_name) != null;
                 const indicator = if (is_expanded) "[- " else "[+ ";
                 for (indicator) |c| {
-                    surface.writeCell(col, row, .{ .char = .{ .grapheme = &[_]u8{c}, .width = 1 }, .style = cursor_style });
+                    surface.writeCell(col, row, .{ .char = .{ .grapheme = &[_]u8{c}, .width = 1 }, .style = .{} });
                     col += 1;
                 }
             } else {
                 // Empty space for non-expandable nodes
-                surface.writeCell(col, row, .{ .char = .{ .grapheme = " ", .width = 1 }, .style = cursor_style });
+                surface.writeCell(col, row, .{ .char = .{ .grapheme = " ", .width = 1 }, .style = .{} });
                 col += 1;
-                surface.writeCell(col, row, .{ .char = .{ .grapheme = " ", .width = 1 }, .style = cursor_style });
+                surface.writeCell(col, row, .{ .char = .{ .grapheme = " ", .width = 1 }, .style = .{} });
                 col += 1;
-                surface.writeCell(col, row, .{ .char = .{ .grapheme = " ", .width = 1 }, .style = cursor_style });
+                surface.writeCell(col, row, .{ .char = .{ .grapheme = " ", .width = 1 }, .style = .{} });
                 col += 1;
             }
 
@@ -480,22 +476,16 @@ pub const TreeView = struct {
                 if (col >= surface.size.width) break;
                 surface.writeCell(col, row, .{
                     .char = .{ .grapheme = grapheme, .width = grapheme_width },
-                    .style = cursor_style,
+                    .style = .{},
                 });
                 col += grapheme_width;
             }
 
             // Write asterisk after name for checked items
             if (is_checked) {
-                surface.writeCell(col, row, .{
-                    .char = .{ .grapheme = " ", .width = 1 },
-                    .style = cursor_style,
-                });
+                surface.writeCell(col, row, .{ .char = .{ .grapheme = " ", .width = 1 }, .style = .{} });
                 col += 1;
-                surface.writeCell(col, row, .{
-                    .char = .{ .grapheme = "*", .width = 1 },
-                    .style = cursor_style,
-                });
+                surface.writeCell(col, row, .{ .char = .{ .grapheme = "*", .width = 1 }, .style = .{} });
                 col += 1;
             }
 
