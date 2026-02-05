@@ -11,18 +11,18 @@ See: .planning/PROJECT.md (updated 2026-02-05)
 ## Current Position
 
 Phase: 05-view-switching of 6 (View Switching UI)
-Plan: 01 of ?
+Plan: 02 of ?
 Status: In progress
-Last activity: 2026-02-06 — Completed 05-01-PLAN.md (View Mode State Infrastructure)
+Last activity: 2026-02-06 — Completed 05-02-PLAN.md (Layout System View Mode Support)
 
-Progress: [██░░░░░░░░░] 10%
+Progress: [███░░░░░░░░] 20%
 
 ## Performance Metrics
 
 **Velocity:**
 - Total phases completed: 4 of 6 (v0.4)
-- Total plans completed: 17
-- Average duration: 10.1 min
+- Total plans completed: 18
+- Average duration: 9.5 min
 - Total execution time: 2.8 hours
 
 **By Phase:**
@@ -33,7 +33,7 @@ Progress: [██░░░░░░░░░] 10%
 | 02-state-management | 5 | 5 | 8.4 min |
 | 03-tui-core | 5 | 5 | 6.0 min |
 | 04-config-editing | 3 | 3 | 4.3 min |
-| 05-view-switching | 1 | ? | 2.0 min |
+| 05-view-switching | 2 | ? | 2.0 min |
 
 *Updated after each plan completion*
 
@@ -62,22 +62,28 @@ Recent decisions affecting current work:
 - Silent event blocking: Ctrl-t ignored when dialogs open with no user feedback
 - Model.current_view field: defaults to .tree_only for single-panel startup mode
 
+**From 05-02 (2026-02-06):**
+- Layout rendering: switch statement on current_view for conditional rendering
+- Full-width single-panel layout: tree_only shows tree, table_only shows table
+- Dynamic help text: shows "Ctrl+T=Table View" in tree mode, "Ctrl+T=Tree View" in table mode
+- Widget state preserved across view switches (no reset)
+
 ### Pending Todos
 
 None yet.
 
 ### Blockers/Concerns
 
-**v0.5 Milestone Starting:**
-- Design change: Switch from simultaneous two-panel layout to alternative view modes
-- Tree view and data table displayed separately, not together
-- 't' key binding to switch between modes
-- Mode indicator needed in UI
-- Each view should use full available width
+**v0.5 Milestone In Progress:**
+- View switching complete: tree and table render at full width in separate modes
+- Ctrl-t cycles between tree_only and table_only views
+- Help text dynamically shows next action
+- Mode indicator may be needed in UI (not yet implemented)
+- Each view uses full available width (implemented)
 
 ## Session Continuity
 
-Last session: 2026-02-06 (phase 05-01: View Mode State Infrastructure)
-Stopped at: Completed 05-01-PLAN.md - ViewMode enum and Ctrl-t handler implemented
+Last session: 2026-02-06 (phase 05-02: Layout System View Mode Support)
+Stopped at: Completed 05-02-PLAN.md - Conditional layout rendering and dynamic help text
 Resume file: None
-Next action: Execute 05-02-PLAN.md (Layout System View Mode Support)
+Next action: Continue phase 05 or begin testing
