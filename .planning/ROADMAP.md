@@ -1,12 +1,12 @@
 # Roadmap: haltune
 
 **Created:** 2026-01-29
-**Updated:** 2026-02-05
-**Current milestone:** v0.5 View Switching
+**Updated:** 2026-02-06
+**Current milestone:** v0.6 Live Values & Editing
 
 ## Overview
 
-Build a TUI-based LinuxCNC HAL manager by first establishing safe FFI bindings to the LinuxCNC HAL C API, then layering thread-safe state management, responsive Vaxis-based TUI for HAL inspection and manipulation, and extensible plugin architecture. The journey progresses from low-level foundations (FFI, state caching) to user-facing features (browser, editing) to UX refinement (view switching), culminating in extensibility (plugins) and polish for Raspberry Pi 5 deployment.
+Build a TUI-based LinuxCNC HAL manager by first establishing safe FFI bindings to the LinuxCNC HAL C API, then layering thread-safe state management, responsive Vaxis-based TUI for HAL inspection and manipulation, and extensible plugin architecture. The journey progresses from low-level foundations (FFI, state caching) to user-facing features (browser, editing) to UX refinement (view switching) to live value display and editing, culminating in extensibility (plugins) and polish for Raspberry Pi 5 deployment.
 
 ## Milestones
 
@@ -14,8 +14,9 @@ Build a TUI-based LinuxCNC HAL manager by first establishing safe FFI bindings t
 - ✅ **v0.2 State Management** — Phase 2 (shipped 2026-01-29)
 - ✅ **v0.3 TUI Core** — Phase 3 (shipped 2026-01-29)
 - ✅ **v0.4 Configuration & Editing** — Phase 4 (shipped 2026-01-29)
-- 🚧 **v0.5 View Switching** — Phase 5 (in progress)
-- 📋 **v0.6 Bookmarks & Plugins** — Phase 6 (planned)
+- ✅ **v0.5 View Switching** — Phase 5 (in progress)
+- 📋 **v0.6 Live Values & Editing** — Phase 6 (planned)
+- 📋 **v0.7 Bookmarks & Plugins** — Phase 7 (planned)
 
 ## Phases
 
@@ -40,6 +41,10 @@ Decimal phases appear between their surrounding integers in numeric order.
 ### 🚧 v0.5 View Switching (In Progress)
 
 - [ ] **Phase 5: View Switching** — Alternative view modes for simplified layout
+
+### ✅ v0.6 Live Values & Editing (Planned)
+
+- [ ] **Phase 6: Live Values & Editing** — Real-time value display and inline editing
 
 ### Phase Details
 
@@ -68,11 +73,29 @@ Plans:
 - [ ] 05-01-PLAN.md — Add ViewMode enum and Ctrl-t key handler
 - [ ] 05-02-PLAN.md — Refactor layout for conditional rendering and dynamic help text
 
-### Phase 6: Bookmarks & Plugins
+### Phase 6: Live Values & Editing
+
+**Goal**: Display real-time pin/signal/parameter values in both tree and table views, with inline editing capability and full signal CRUD operations.
+
+**Depends on**: Phase 5
+
+**Success Criteria** (what must be TRUE):
+1. Tree view displays live current values for pins/signals/params (real-time updates via pubsub)
+2. Table view displays live current values (real-time updates via pubsub)
+3. Values can be edited directly in tree view (Enter on value opens edit)
+4. Values can be edited directly in table view (Enter on value opens edit)
+5. Signals can be created from tree or table view (new signal dialog)
+6. Signals can be removed from tree or table view
+7. Signal properties (name, direction, type) can be edited
+8. Value changes reflect immediately in HAL and update displayed value
+
+**Plans**: TBD (to be planned after Phase 5 completion)
+
+### Phase 7: Bookmarks & Plugins
 
 **Goal**: Quick access to frequently monitored items and extensible plugin architecture for domain-specific workflows
 
-**Depends on**: Phase 5
+**Depends on**: Phase 6
 
 **Requirements**: BKMK-01, BKMK-02, BKMK-03, BKMK-04, PLUGIN-01, PLUGIN-02, PLUGIN-03, PLUGIN-04
 
@@ -84,11 +107,11 @@ Plans:
 
 **Plans**: TBD
 
-### Phase 7: Polish & Optimization
+### Phase 8: Polish & Optimization
 
 **Goal**: Performance tuning for Raspberry Pi 5 deployment, UX refinement, and production readiness
 
-**Depends on**: Phase 6
+**Depends on**: Phase 7
 
 **Requirements**: None (polish phase focuses on optimization, UX, and edge cases)
 
@@ -104,7 +127,7 @@ Plans:
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7
+Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
@@ -113,5 +136,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7
 | 3. TUI Core | 5/5 | Complete | 2026-01-29 |
 | 4. Configuration & Editing | 3/3 | Complete | 2026-01-29 |
 | 5. View Switching | 0/2 | Not started | - |
-| 6. Bookmarks & Plugins | 0/0 | Not started | - |
-| 7. Polish & Optimization | 0/0 | Not started | - |
+| 6. Live Values & Editing | 0/0 | Not started | - |
+| 7. Bookmarks & Plugins | 0/0 | Not started | - |
+| 8. Polish & Optimization | 0/0 | Not started | - |
