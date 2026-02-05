@@ -95,9 +95,21 @@ pub fn drawTwoPanelLayout(
     };
 }
 
-/// Create help text widget at bottom of screen
-fn createHelpText(ctx: vxfw.DrawContext) std.mem.Allocator.Error!vxfw.Surface {
-    const help_str = "Enter=Edit/Toggle, /=Search, t=Filter Type, c=Filter Comp, Ctrl+C=Quit";
+/// Create help text widget at bottom of screen with dynamic view mode hint
+fn createHelpText(ctx: vxfw.DrawContext, view_mode: ViewMode) std.mem.Allocator.Error!vxfw.Surface {
+    // Determine view hint based on current mode
+    const view_hint = switch (view_mode) {
+        .tree_only => "Table View",
+        .table_only => "Tree View",
+    };
+
+    // Build dynamic help string with view-specific hint
+    const help_str = try std.fmt.allocPrint(
+        ctx.arena,
+        "Enter=Edit/Toggle, /=Search, t=Filter Type, c=Filter Comp, Ctrl+T={s}, Ctrl+C=Quit",
+        .{view_hint},
+    );
+
     const help_style = vaxis.Style{ .dim = true };
     const text_widget = vxfw.Text{ .text = help_str, .style = help_style };
 
