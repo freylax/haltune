@@ -411,6 +411,17 @@ pub const Model = struct {
                     return;
                 }
 
+                // Ctrl+T to cycle view mode
+                if (key.matches('t', .{ .ctrl = true })) {
+                    // Block view switching when dialogs are open
+                    if (self.signal_dialog.visible or self.save_dialog_visible) {
+                        return;
+                    }
+                    self.current_view = self.current_view.next();
+                    ctx.consumeAndRedraw();
+                    return;
+                }
+
                 // Handle save dialog input
                 if (self.save_dialog_visible) {
                     const handled = self.handleSaveDialogKey(key) catch |err| {
