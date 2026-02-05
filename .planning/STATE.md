@@ -10,19 +10,19 @@ See: .planning/PROJECT.md (updated 2026-02-05)
 
 ## Current Position
 
-Phase: Not started (defining requirements)
-Plan: —
-Status: Defining requirements
-Last activity: 2026-02-05 — Milestone v0.5 started
+Phase: 05-view-switching of 6 (View Switching UI)
+Plan: 01 of ?
+Status: In progress
+Last activity: 2026-02-06 — Completed 05-01-PLAN.md (View Mode State Infrastructure)
 
-Progress: [░░░░░░░░░░] 0%
+Progress: [██░░░░░░░░░] 10%
 
 ## Performance Metrics
 
 **Velocity:**
 - Total phases completed: 4 of 6 (v0.4)
-- Total plans completed: 16
-- Average duration: 10.3 min
+- Total plans completed: 17
+- Average duration: 10.1 min
 - Total execution time: 2.8 hours
 
 **By Phase:**
@@ -33,7 +33,7 @@ Progress: [░░░░░░░░░░] 0%
 | 02-state-management | 5 | 5 | 8.4 min |
 | 03-tui-core | 5 | 5 | 6.0 min |
 | 04-config-editing | 3 | 3 | 4.3 min |
-| 05-view-switching | 0 | ? | - |
+| 05-view-switching | 1 | ? | 2.0 min |
 
 *Updated after each plan completion*
 
@@ -57,6 +57,11 @@ Recent decisions affecting current work:
 - Backspace collapses current layer's children
 - No reverse video styles - cursor indicator `>` sufficient
 
+**From 05-01 (2026-02-06):**
+- ViewMode enum: two variants (tree_only, table_only) with next() cycling pattern
+- Silent event blocking: Ctrl-t ignored when dialogs open with no user feedback
+- Model.current_view field: defaults to .tree_only for single-panel startup mode
+
 ### Pending Todos
 
 None yet.
@@ -72,7 +77,7 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-02-05 (debug session: memory leaks, UI refinements, tri-state visibility)
-Stopped at: v0.5 milestone initialization - view switching design proposed by user
+Last session: 2026-02-06 (phase 05-01: View Mode State Infrastructure)
+Stopped at: Completed 05-01-PLAN.md - ViewMode enum and Ctrl-t handler implemented
 Resume file: None
-Next action: Define requirements for view switching milestone
+Next action: Execute 05-02-PLAN.md (Layout System View Mode Support)
