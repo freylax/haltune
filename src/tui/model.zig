@@ -80,6 +80,9 @@ pub const Model = struct {
     save_dialog_visible: bool = false,
     save_filename: std.ArrayList(u8),
 
+    /// Current view mode for single-panel layout
+    current_view: ViewMode = .tree_only,
+
     /// Initialize a new Model instance
     pub fn init(
         allocator: std.mem.Allocator,
