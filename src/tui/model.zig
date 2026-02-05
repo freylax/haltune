@@ -9,6 +9,23 @@ const TreeView = @import("widgets/tree_view.zig").TreeView;
 const VisibilityState = @import("widgets/tree_view.zig").VisibilityState;
 const DataTable = @import("widgets/data_table.zig").DataTable;
 const SignalDialog = @import("widgets/signal_dialog.zig").SignalDialog;
+
+/// View mode enumeration for single-panel layout switching
+pub const ViewMode = enum {
+    /// Tree view only: full width
+    tree_only,
+    /// Table view only: full width
+    table_only,
+
+    /// Cycle to next view mode: tree_only -> table_only -> tree_only
+    pub fn next(self: ViewMode) ViewMode {
+        return switch (self) {
+            .tree_only => .table_only,
+            .table_only => .tree_only,
+        };
+    }
+};
+
 const drawTwoPanelLayout = @import("layout.zig").drawTwoPanelLayout;
 const exportHal = @import("../hal/export.zig");
 const ffi = @import("../ffi/safe.zig");
