@@ -2,12 +2,12 @@ const std = @import("std");
 const vxfw = @import("vaxis").vxfw;
 const vaxis = @import("vaxis");
 const Model = @import("model.zig").Model;
+const ViewMode = @import("model.zig").ViewMode;
 const TreeView = @import("widgets/tree_view.zig").TreeView;
 const DataTable = @import("widgets/data_table.zig").DataTable;
 
-/// Draw function for two-panel split layout
-/// Left panel: 30% of screen width (tree navigation)
-/// Right panel: 70% of screen width (data table)
+/// Draw function for conditional single-panel layout
+/// Renders either tree view or table view at full width based on current_view
 pub fn drawTwoPanelLayout(
     ptr: *anyopaque,
     ctx: vxfw.DrawContext,
@@ -34,44 +34,64 @@ pub fn drawTwoPanelLayout(
     const help_height: u16 = 1;
     const panel_height = if (max.height > help_height) max.height - help_height else max.height;
 
-    // Calculate panel sizes: 30% left, 70% right
-    const left_width = max.width / 3;
-    const right_width = max.width - left_width;
+    // Render layout based on current view mode
+    return switch (self.current_view) {
+        .tree_only => {
+            // Create full-width tree panel surface
+            const tree_surface = try createLeftPanel(self, ctx, max.width, panel_height);
 
-    // Create left panel surface (tree navigation area)
-    const left_surface = try createLeftPanel(self, ctx, left_width, panel_height);
+            // Allocate children array (tree + help text)
+            const children = try ctx.arena.alloc(vxfw.SubSurface, 2);
 
-    // Create right panel surface (data table area)
-    const right_surface = try createRightPanel(self, ctx, right_width, panel_height);
+            // Tree panel: positioned at origin
+            children[0] = .{
+                .origin = .{ .row = 0, .col = 0 },
+                .surface = tree_surface,
+            };
 
-    // Allocate children array in arena (panels + help text)
-    const children = try ctx.arena.alloc(vxfw.SubSurface, 3);
+            // Help text at bottom
+            const help_text = try createHelpText(ctx, .tree_only);
+            children[1] = .{
+                .origin = .{ .row = panel_height, .col = 0 },
+                .surface = help_text,
+            };
 
-    // Left panel: positioned at origin
-    children[0] = .{
-        .origin = .{ .row = 0, .col = 0 },
-        .surface = left_surface,
-    };
+            // Return the root surface with children
+            return .{
+                .size = max,
+                .widget = self.widget(),
+                .buffer = &.{},
+                .children = children,
+            };
+        },
+        .table_only => {
+            // Create full-width table panel surface
+            const table_surface = try createRightPanel(self, ctx, max.width, panel_height);
 
-    // Right panel: positioned after left panel
-    children[1] = .{
-        .origin = .{ .row = 0, .col = left_width },
-        .surface = right_surface,
-    };
+            // Allocate children array (table + help text)
+            const children = try ctx.arena.alloc(vxfw.SubSurface, 2);
 
-    // Help text at bottom
-    const help_text = try createHelpText(ctx);
-    children[2] = .{
-        .origin = .{ .row = panel_height, .col = 0 },
-        .surface = help_text,
-    };
+            // Table panel: positioned at origin
+            children[0] = .{
+                .origin = .{ .row = 0, .col = 0 },
+                .surface = table_surface,
+            };
 
-    // Return the root surface with children
-    return .{
-        .size = max,
-        .widget = self.widget(),
-        .buffer = &.{},
-        .children = children,
+            // Help text at bottom
+            const help_text = try createHelpText(ctx, .table_only);
+            children[1] = .{
+                .origin = .{ .row = panel_height, .col = 0 },
+                .surface = help_text,
+            };
+
+            // Return the root surface with children
+            return .{
+                .size = max,
+                .widget = self.widget(),
+                .buffer = &.{},
+                .children = children,
+            };
+        },
     };
 }
 
