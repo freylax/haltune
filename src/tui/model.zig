@@ -418,6 +418,14 @@ pub const Model = struct {
                         return;
                     }
                     self.current_view = self.current_view.next();
+
+                    // Update table with checked items when switching to table view
+                    if (self.current_view == .table_only) {
+                        self.updateTable() catch |err| {
+                            std.log.err("Failed to update table: {}", .{err});
+                        };
+                    }
+
                     ctx.consumeAndRedraw();
                     return;
                 }
