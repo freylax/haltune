@@ -6,6 +6,7 @@ const HalValue = @import("../state/cache.zig").HalValue;
 const SubscriptionManager = @import("../state/pubsub.zig").SubscriptionManager;
 const RefreshThread = @import("../state/refresh.zig").RefreshThread;
 const TreeView = @import("widgets/tree_view.zig").TreeView;
+const TreeNode = @import("widgets/tree_view.zig").Node;
 const VisibilityState = @import("widgets/tree_view.zig").VisibilityState;
 const DataTable = @import("widgets/data_table.zig").DataTable;
 const SignalDialog = @import("widgets/signal_dialog.zig").SignalDialog;
@@ -225,7 +226,7 @@ pub const Model = struct {
     }
 
     /// Find a node by full_name (helper for getCheckedItems)
-    fn findNodeByName(self: *const Model, full_name: []const u8) ?*const TreeView.Node {
+    fn findNodeByName(self: *const Model, full_name: []const u8) ?*const TreeNode {
         for (self.tree_view.root.items) |node| {
             if (std.mem.eql(u8, node.full_name, full_name)) return node;
             if (node.children) |*children| {
