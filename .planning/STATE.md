@@ -6,24 +6,24 @@ See: .planning/PROJECT.md (updated 2026-02-05)
 
 **Core value:** Make LinuxCNC HAL manipulation and machine setup efficient through an intuitive TUI interface, replacing cryptic halcmd commands with structured workflows for machine configuration and tuning.
 
-**Current focus:** Milestone v0.5: View Switching UI
+**Current focus:** Milestone v0.6: Live Values & Editing
 
 ## Current Position
 
-Phase: 05-view-switching of 6 (View Switching UI)
-Plan: 02 of ?
-Status: In progress
-Last activity: 2026-02-06 — Completed 05-02-PLAN.md (Layout System View Mode Support)
+Phase: 06-live-values (Live Values & Editing)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-02-06 — Phase 05 (View Switching) completed
 
-Progress: [███░░░░░░░░] 20%
+Progress: [████░░░░░░░] 30%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total phases completed: 4 of 6 (v0.4)
-- Total plans completed: 18
-- Average duration: 9.5 min
-- Total execution time: 2.8 hours
+- Total phases completed: 5 of 8 (v0.5)
+- Total plans completed: 20
+- Average duration: 8.8 min
+- Total execution time: 2.9 hours
 
 **By Phase:**
 
@@ -33,7 +33,8 @@ Progress: [███░░░░░░░░] 20%
 | 02-state-management | 5 | 5 | 8.4 min |
 | 03-tui-core | 5 | 5 | 6.0 min |
 | 04-config-editing | 3 | 3 | 4.3 min |
-| 05-view-switching | 2 | ? | 2.0 min |
+| 05-view-switching | 2 | 2 | 2.0 min |
+| 06-live-values | 0 | ? | - |
 
 *Updated after each plan completion*
 
@@ -74,12 +75,10 @@ None yet.
 
 ### Blockers/Concerns
 
-**v0.5 Milestone In Progress:**
-- View switching complete: tree and table render at full width in separate modes
-- Ctrl-t cycles between tree_only and table_only views
-- Help text dynamically shows next action
-- Mode indicator may be needed in UI (not yet implemented)
-- Each view uses full available width (implemented)
+**v0.6 Milestone Starting:**
+- Phase 05 complete: view switching (tree ↔ table) with Ctrl-t
+- Phase 06 needs: live values in tree and table views, inline editing
+- Signal CRUD operations needed (create, remove, edit)
 
 ## Session Continuity
 
