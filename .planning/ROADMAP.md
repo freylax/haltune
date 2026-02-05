@@ -54,18 +54,19 @@ Decimal phases appear between their surrounding integers in numeric order.
 **Requirements**: LAY-01, LAY-02, LAY-03, SWITCH-01, SWITCH-02, SWITCH-03, TREE-01 through TREE-06, TABLE-01 through TABLE-05, HELP-01 through HELP-03
 
 **Success Criteria** (what must be TRUE):
-1. Tree view and data table are never displayed simultaneously
-2. User can switch between views with 't' key
-3. Mode indicator is visible in UI showing current view ([Tree] or [Table])
-4. Each view uses full terminal width
-5. Tree view maintains existing functionality (navigation, editing, search, visibility toggles, real-time updates) - pins, signals, params all viewable and editable
-6. Data table maintains existing functionality (real-time updates, editing) - pins, signals, params all viewable and editable
-7. Help text reflects current mode's key bindings
+1. Tree view and data table are never displayed simultaneously in single-view modes
+2. User can switch between views with Ctrl-t key
+3. Each view uses full terminal width in single-view mode
+4. Tree view maintains existing functionality (navigation, editing, search, visibility toggles, real-time updates) - pins, signals, params all viewable and editable
+5. Data table maintains existing functionality (real-time updates, editing) - pins, signals, params all viewable and editable
+6. Help text reflects current mode's key bindings
+7. View switching is blocked when dialogs are open (silent ignore)
 
-**Plans**:
-- [ ] 05-01: Add view mode state and toggle handler
-- [ ] 05-02: Refactor layout for single-panel display
-- [ ] 05-03: Add mode indicator and context-sensitive help
+**Plans**: 2 plans in 1 wave
+
+Plans:
+- [ ] 05-01-PLAN.md — Add ViewMode enum and Ctrl-t key handler
+- [ ] 05-02-PLAN.md — Refactor layout for conditional rendering and dynamic help text
 
 ### Phase 6: Bookmarks & Plugins
 
@@ -111,6 +112,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7
 | 2. State Management | 5/5 | Complete | 2026-01-29 |
 | 3. TUI Core | 5/5 | Complete | 2026-01-29 |
 | 4. Configuration & Editing | 3/3 | Complete | 2026-01-29 |
-| 5. View Switching | 0/3 | Not started | - |
+| 5. View Switching | 0/2 | Not started | - |
 | 6. Bookmarks & Plugins | 0/0 | Not started | - |
 | 7. Polish & Optimization | 0/0 | Not started | - |
