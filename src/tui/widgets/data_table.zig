@@ -759,8 +759,9 @@ pub const DataTable = struct {
             try filter_text.append(ctx.arena, ']');
 
             const filter_style = vaxis.Style{ .bold = true, .fg = .{ .index = 3 } }; // Yellow
-            const filter_widget = vxfw.Text{ .text = filter_text.items, .style = filter_style };
-            try widgets.append(ctx.arena, filter_widget.widget());
+            const filter_text_widget = try ctx.arena.create(vxfw.Text);
+            filter_text_widget.* = .{ .text = filter_text.items, .style = filter_style };
+            try widgets.append(ctx.arena, filter_text_widget.widget());
         }
 
         // Row 1: Header
@@ -790,8 +791,9 @@ pub const DataTable = struct {
         }
         try header_buffer.appendSlice(ctx.arena, "Value");
         {
-            const header_widget = vxfw.Text{ .text = header_buffer.items, .style = header_style };
-            try widgets.append(ctx.arena, header_widget.widget());
+            const header_text = try ctx.arena.create(vxfw.Text);
+            header_text.* = .{ .text = header_buffer.items, .style = header_style };
+            try widgets.append(ctx.arena, header_text.widget());
         }
 
         // Row 2: Separator
@@ -807,8 +809,9 @@ pub const DataTable = struct {
         const separator = sep_buffer.items;
 
         {
-            const sep_widget = vxfw.Text{ .text = separator };
-            try widgets.append(ctx.arena, sep_widget.widget());
+            const sep_text = try ctx.arena.create(vxfw.Text);
+            sep_text.* = .{ .text = separator };
+            try widgets.append(ctx.arena, sep_text.widget());
         }
 
         // Data rows
@@ -897,19 +900,19 @@ pub const DataTable = struct {
             try row_buffer.appendSlice(ctx.arena, value_str);
 
             std.log.debug("  row_buffer='{s}'", .{row_buffer.items});
-            {
-                const row_widget = vxfw.Text{ .text = row_buffer.items, .style = final_style };
-                try widgets.append(ctx.arena, row_widget.widget());
-            }
+            // IMPORTANT: Allocate Text widget in arena so it persists
+            // The widget stores a pointer to itself, so stack allocation would be invalidated
+            const row_text = try ctx.arena.create(vxfw.Text);
+            row_text.* = .{ .text = row_buffer.items, .style = final_style };
+            try widgets.append(ctx.arena, row_text.widget());
         }
 
         // Show error message at bottom if present
         if (self.error_message) |msg| {
             const error_style = vaxis.Style{ .fg = .{ .index = 1 }, .bold = true }; // Red
-            {
-                const error_widget = vxfw.Text{ .text = msg, .style = error_style };
-                try widgets.append(ctx.arena, error_widget.widget());
-            }
+            const error_text = try ctx.arena.create(vxfw.Text);
+            error_text.* = .{ .text = msg, .style = error_style };
+            try widgets.append(ctx.arena, error_text.widget());
         }
 
         // Create surface with widgets as children
