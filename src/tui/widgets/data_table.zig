@@ -896,7 +896,7 @@ pub const DataTable = struct {
             // Add value
             try row_buffer.appendSlice(ctx.arena, value_str);
 
-            std.log.debug("  row_buffer=[*s]", .{row_buffer.items});
+            std.log.debug("  row_buffer='{s}'", .{row_buffer.items});
             {
                 const row_widget = vxfw.Text{ .text = row_buffer.items, .style = final_style };
                 try widgets.append(ctx.arena, row_widget.widget());
