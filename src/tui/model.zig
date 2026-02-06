@@ -224,7 +224,7 @@ pub const Model = struct {
                         }
                     } else {
                         // Leaf node - add directly, but only if not already added via parent component
-                        if (!added_leaves.has(full_name)) {
+                        if (added_leaves.get(full_name) == null) {
                             std.log.debug("      adding leaf: '{s}'", .{full_name});
                             try items.append(allocator, full_name);
                             try added_leaves.put(full_name, {});
@@ -234,7 +234,7 @@ pub const Model = struct {
                     }
                 } else {
                     // Node not found - add as fallback (if not already added)
-                    if (!added_leaves.has(full_name)) {
+                    if (added_leaves.get(full_name) == null) {
                         std.log.debug("      node not found, adding fallback: '{s}'", .{full_name});
                         try items.append(allocator, full_name);
                         try added_leaves.put(full_name, {});
