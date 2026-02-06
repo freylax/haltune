@@ -188,10 +188,14 @@ pub const Model = struct {
     pub fn getCheckedItems(self: *const Model, allocator: std.mem.Allocator) ![][]const u8 {
         var items = std.ArrayList([]const u8).initCapacity(allocator, 0) catch unreachable;
 
+        std.log.debug("getCheckedItems: checked_items count = {}", .{self.tree_view.checked_items.count()});
+
         var iter = self.tree_view.checked_items.iterator();
         while (iter.next()) |entry| {
             const state = entry.value_ptr.*;
             const full_name = entry.key_ptr.*;
+
+            std.log.debug("  checking: '{s}' state={}", .{ full_name, state });
 
             // Skip partial states (component with some children visible)
             if (state == VisibilityState.partial) continue;
@@ -201,25 +205,34 @@ pub const Model = struct {
                 // Find the node to check its type
                 const node = self.findNodeByName(full_name);
                 if (node) |n| {
+                    std.log.debug("    node found: '{s}' expandable={}", .{ n.full_name, n.isExpandable() });
                     if (n.isExpandable()) {
                         // Component - add its visible children instead
                         if (n.children) |*children| {
                             for (children.items) |child| {
                                 const child_state = self.tree_view.checked_items.get(child.full_name) orelse VisibilityState.none;
                                 if (child_state == VisibilityState.full) {
+                                    std.log.debug("      adding child: '{s}'", .{child.full_name});
                                     try items.append(allocator, child.full_name);
                                 }
                             }
                         }
                     } else {
                         // Leaf node - add directly
+                        std.log.debug("      adding leaf: '{s}'", .{full_name});
                         try items.append(allocator, full_name);
                     }
                 } else {
                     // Node not found - add as fallback
+                    std.log.debug("      node not found, adding fallback: '{s}'", .{full_name});
                     try items.append(allocator, full_name);
                 }
             }
+        }
+
+        std.log.debug("getCheckedItems: returning {} items", .{items.items.len});
+        for (items.items, 0..) |item, i| {
+            std.log.debug("  [{}] '{s}'", .{ i, item });
         }
 
         return items.toOwnedSlice(allocator);

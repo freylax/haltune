@@ -249,6 +249,11 @@ pub const DataTable = struct {
     /// Thread safety:
     ///   - Not thread-safe (call from TUI thread only)
     pub fn setItems(self: *DataTable, item_names: [][]const u8) !void {
+        std.log.debug("setItems: received {} items", .{item_names.len});
+        for (item_names, 0..) |name, i| {
+            std.log.debug("  [{}] '{s}' ptr={*}", .{ i, name, name.ptr });
+        }
+
         // Free any owned names from existing items
         for (self.items.items) |*item| {
             if (item.name_owner) |name| {
@@ -261,6 +266,8 @@ pub const DataTable = struct {
         for (item_names) |name| {
             // Duplicate the name so we own it (tree nodes may be freed)
             const name_copy = try self.allocator.dupe(u8, name);
+            std.log.debug("  duplicating '{s}' -> '{s}' ptr={*}", .{ name, name_copy, name_copy.ptr });
+
             const item = try self.parseItem(name_copy);
 
             // Store the owned copy
@@ -297,6 +304,12 @@ pub const DataTable = struct {
             }
 
             try self.items.append(self.allocator, item_with_owner);
+            std.log.debug("  appended: name='{s}' name_ptr={*}", .{ item_with_owner.name, item_with_owner.name.ptr });
+        }
+
+        std.log.debug("setItems: now have {} items in table", .{self.items.items.len});
+        for (self.items.items, 0..) |item, i| {
+            std.log.debug("  [{}] name='{s}' name_ptr={*} owner_ptr={*}", .{ i, item.name, item.name.ptr, if (item.name_owner) |o| o.ptr else null });
         }
     }
 
