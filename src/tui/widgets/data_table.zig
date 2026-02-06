@@ -813,6 +813,8 @@ pub const DataTable = struct {
 
         // Data rows
         for (self.items.items, 0..) |item, idx| {
+            std.log.debug("draw row [{}]: name='{s}' name_ptr={*}", .{ idx, item.name, item.name.ptr });
+
             // Determine row color
             const row_style = if (item.is_writable)
                 vaxis.Style{ .fg = .{ .index = 2 } } // Green for editable
