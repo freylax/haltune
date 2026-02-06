@@ -41,7 +41,7 @@ Real-time value display and editing for HAL pins/signals/params in both tree and
 - **Discovery:** Some way to show available signals for the current pin's type
 - **New signal creation:** Name + inferred type from current pin; status line confirms creation
 - **Disconnect:** Clear signal name in Ctrl+S editing to disconnect
-- **Delete:** If disconnecting last pin using a signal, status line prompts for signal deletion
+- **Delete:** If disconnecting the last pin connected to a signal, status line prompts for signal deletion
 
 ### Claude's Discretion
 - Exact ellipsis/truncation display for overflowing float values
