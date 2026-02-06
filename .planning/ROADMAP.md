@@ -84,18 +84,20 @@ Plans:
 2. Table view displays live current values (real-time updates via pubsub)
 3. Values can be edited directly in tree view (Enter on value opens edit)
 4. Values can be edited directly in table view (Enter on value opens edit)
-5. Signals can be created from tree or table view (new signal dialog)
-6. Signals can be removed from tree or table view
-7. Signal properties (name, direction, type) can be edited
-8. Value changes reflect immediately in HAL and update displayed value
+5. Signals can be created from tree view (Ctrl+S to connect/create)
+6. Signals can be removed from tree view (deletion prompt when last pin disconnected)
+7. Value changes reflect immediately in HAL and update displayed value
 
-**Plans**: 4 plans in 2 waves
+**Plans**: 7 plans in 3 waves
 
 Plans:
 - [ ] 06-01-PLAN.md — Add value column to tree view with live values (●/○ for BIT, decimal for FLOAT/U32)
 - [ ] 06-02-PLAN.md — Add in-place value editing to tree view (Enter to edit, BIT toggle, numeric validation)
-- [ ] 06-03-PLAN.md — Add signal CRUD operations (Ctrl+S to connect/create/disconnect signals)
-- [ ] 06-04-PLAN.md — Add status line showing full precision value of cursor item
+- [ ] 06-03-PLAN.md — Add signal connect/create/disconnect via Ctrl+S
+- [ ] 06-04-PLAN.md — Add signal deletion prompt when disconnecting last pin
+- [ ] 06-05-PLAN.md — Add value column to table view with live values
+- [ ] 06-06-PLAN.md — Add in-place value editing to table view
+- [ ] 06-07-PLAN.md — Add status line showing full precision value of cursor item
 
 ### Phase 7: Bookmarks & Plugins
 
@@ -142,6 +144,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8
 | 3. TUI Core | 5/5 | Complete | 2026-01-29 |
 | 4. Configuration & Editing | 3/3 | Complete | 2026-01-29 |
 | 5. View Switching | 2/2 | Complete | 2026-02-06 |
-| 6. Live Values & Editing | 0/4 | Planning | - |
+| 6. Live Values & Editing | 0/7 | Planning | - |
 | 7. Bookmarks & Plugins | 0/0 | Not started | - |
 | 8. Polish & Optimization | 0/0 | Not started | - |
