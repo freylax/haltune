@@ -1,7 +1,7 @@
 # Roadmap: haltune
 
 **Created:** 2026-01-29
-**Updated:** 2026-02-06
+**Updated:** 2026-02-07
 **Current milestone:** v0.6 Live Values & Editing
 
 ## Overview
@@ -14,7 +14,7 @@ Build a TUI-based LinuxCNC HAL manager by first establishing safe FFI bindings t
 - ✅ **v0.2 State Management** — Phase 2 (shipped 2026-01-29)
 - ✅ **v0.3 TUI Core** — Phase 3 (shipped 2026-01-29)
 - ✅ **v0.4 Configuration & Editing** — Phase 4 (shipped 2026-01-29)
-- ✅ **v0.5 View Switching** — Phase 5 (in progress)
+- ✅ **v0.5 View Switching** — Phase 5 (shipped 2026-02-06)
 - 📋 **v0.6 Live Values & Editing** — Phase 6 (planned)
 - 📋 **v0.7 Bookmarks & Plugins** — Phase 7 (planned)
 
@@ -70,8 +70,8 @@ Decimal phases appear between their surrounding integers in numeric order.
 **Plans**: 2 plans in 1 wave
 
 Plans:
-- [ ] 05-01-PLAN.md — Add ViewMode enum and Ctrl-t key handler
-- [ ] 05-02-PLAN.md — Refactor layout for conditional rendering and dynamic help text
+- [x] 05-01-PLAN.md — Add ViewMode enum and Ctrl-t key handler
+- [x] 05-02-PLAN.md — Refactor layout for conditional rendering and dynamic help text
 
 ### Phase 6: Live Values & Editing
 
@@ -89,7 +89,13 @@ Plans:
 7. Signal properties (name, direction, type) can be edited
 8. Value changes reflect immediately in HAL and update displayed value
 
-**Plans**: TBD (to be planned after Phase 5 completion)
+**Plans**: 4 plans in 2 waves
+
+Plans:
+- [ ] 06-01-PLAN.md — Add value column to tree view with live values (●/○ for BIT, decimal for FLOAT/U32)
+- [ ] 06-02-PLAN.md — Add in-place value editing to tree view (Enter to edit, BIT toggle, numeric validation)
+- [ ] 06-03-PLAN.md — Add signal CRUD operations (Ctrl+S to connect/create/disconnect signals)
+- [ ] 06-04-PLAN.md — Add status line showing full precision value of cursor item
 
 ### Phase 7: Bookmarks & Plugins
 
@@ -136,6 +142,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8
 | 3. TUI Core | 5/5 | Complete | 2026-01-29 |
 | 4. Configuration & Editing | 3/3 | Complete | 2026-01-29 |
 | 5. View Switching | 2/2 | Complete | 2026-02-06 |
-| 6. Live Values & Editing | 0/0 | Not started | - |
+| 6. Live Values & Editing | 0/4 | Planning | - |
 | 7. Bookmarks & Plugins | 0/0 | Not started | - |
 | 8. Polish & Optimization | 0/0 | Not started | - |
