@@ -190,6 +190,10 @@ pub const Model = struct {
 
         std.log.debug("getCheckedItems: checked_items count = {}", .{self.tree_view.checked_items.count()});
 
+        // Track which leaf nodes have been added (to avoid duplicates when both parent component and child are marked as full)
+        var added_leaves = std.StringHashMap(void).init(allocator);
+        defer added_leaves.deinit();
+
         var iter = self.tree_view.checked_items.iterator();
         while (iter.next()) |entry| {
             const state = entry.value_ptr.*;
@@ -214,18 +218,29 @@ pub const Model = struct {
                                 if (child_state == VisibilityState.full) {
                                     std.log.debug("      adding child: '{s}'", .{child.full_name});
                                     try items.append(allocator, child.full_name);
+                                    try added_leaves.put(child.full_name, {});
                                 }
                             }
                         }
                     } else {
-                        // Leaf node - add directly
-                        std.log.debug("      adding leaf: '{s}'", .{full_name});
-                        try items.append(allocator, full_name);
+                        // Leaf node - add directly, but only if not already added via parent component
+                        if (!added_leaves.has(full_name)) {
+                            std.log.debug("      adding leaf: '{s}'", .{full_name});
+                            try items.append(allocator, full_name);
+                            try added_leaves.put(full_name, {});
+                        } else {
+                            std.log.debug("      skipping leaf (already added via parent): '{s}'", .{full_name});
+                        }
                     }
                 } else {
-                    // Node not found - add as fallback
-                    std.log.debug("      node not found, adding fallback: '{s}'", .{full_name});
-                    try items.append(allocator, full_name);
+                    // Node not found - add as fallback (if not already added)
+                    if (!added_leaves.has(full_name)) {
+                        std.log.debug("      node not found, adding fallback: '{s}'", .{full_name});
+                        try items.append(allocator, full_name);
+                        try added_leaves.put(full_name, {});
+                    } else {
+                        std.log.debug("      skipping fallback (already added): '{s}'", .{full_name});
+                    }
                 }
             }
         }
