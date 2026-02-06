@@ -102,6 +102,10 @@ pub const TableItem = struct {
     /// HAL item name (e.g., "motion.digital-in-00")
     name: []const u8,
 
+    /// Owned copy of the name (kept for cleanup)
+    /// null if name points to borrowed memory
+    name_owner: ?[]const u8,
+
     /// Item type (pin, signal, or param)
     item_type: ItemType,
 
@@ -214,6 +218,12 @@ pub const DataTable = struct {
 
     /// Clean up DataTable resources
     pub fn deinit(self: *DataTable) void {
+        // Free any owned names from items
+        for (self.items.items) |*item| {
+            if (item.name_owner) |name| {
+                self.allocator.free(name);
+            }
+        }
         self.items.deinit(self.allocator);
         self.component_buffer.deinit(self.allocator);
         self.edit_buffer.deinit(self.allocator);
@@ -239,12 +249,29 @@ pub const DataTable = struct {
     /// Thread safety:
     ///   - Not thread-safe (call from TUI thread only)
     pub fn setItems(self: *DataTable, item_names: [][]const u8) !void {
-        // Clear existing items
+        // Free any owned names from existing items
+        for (self.items.items) |*item| {
+            if (item.name_owner) |name| {
+                self.allocator.free(name);
+            }
+        }
         self.items.clearRetainingCapacity();
 
         // Parse each item name and add to table (with filtering)
         for (item_names) |name| {
-            const item = try self.parseItem(name);
+            // Duplicate the name so we own it (tree nodes may be freed)
+            const name_copy = try self.allocator.dupe(u8, name);
+            const item = try self.parseItem(name_copy);
+
+            // Store the owned copy
+            const item_with_owner = TableItem{
+                .name = name_copy,
+                .name_owner = name_copy,
+                .item_type = item.item_type,
+                .hal_type = item.hal_type,
+                .direction = item.direction,
+                .is_writable = item.is_writable,
+            };
 
             // Apply type filter
             if (self.filter_type != .all) {
@@ -255,15 +282,21 @@ pub const DataTable = struct {
                     .s32 => .s32,
                     .u32 => .u32,
                 };
-                if (item.hal_type != filter_hal_type) continue;
+                if (item_with_owner.hal_type != filter_hal_type) {
+                    self.allocator.free(name_copy);
+                    continue;
+                }
             }
 
             // Apply component filter (prefix match)
             if (self.filter_component.len > 0) {
-                if (!std.mem.startsWith(u8, item.name, self.filter_component)) continue;
+                if (!std.mem.startsWith(u8, item_with_owner.name, self.filter_component)) {
+                    self.allocator.free(name_copy);
+                    continue;
+                }
             }
 
-            try self.items.append(self.allocator, item);
+            try self.items.append(self.allocator, item_with_owner);
         }
     }
 
@@ -322,9 +355,10 @@ pub const DataTable = struct {
                 } else |err| {
                     // Item not found in any cache
                     std.log.warn("Item '{s}' not found in cache: {}", .{ name, err });
-                    // Return a placeholder item
+                    // Return a placeholder item (name_owner handled by caller)
                     return TableItem{
                         .name = name,
+                        .name_owner = null,
                         .item_type = .pin,
                         .hal_type = .bit,
                         .direction = .none,
@@ -336,6 +370,7 @@ pub const DataTable = struct {
 
         return TableItem{
             .name = name,
+            .name_owner = null, // Caller handles ownership
             .item_type = item_type,
             .hal_type = hal_type,
             .direction = direction,
