@@ -665,6 +665,118 @@ pub const TreeView = struct {
                     return; // Ignore other keys in search mode
                 }
 
+                // Edit mode handling
+                if (self.edit_mode) {
+                    // Escape: cancel edit
+                    if (key.matches(vaxis.Key.escape, .{})) {
+                        self.edit_mode = false;
+                        self.edit_item = null;
+                        self.edit_buffer.clearRetainingCapacity();
+                        ctx.consumeAndRedraw();
+                        return;
+                    }
+
+                    // Enter: confirm edit
+                    if (key.matches(vaxis.Key.enter, .{})) {
+                        if (self.edit_item) |node| {
+                            const input = self.edit_buffer.items;
+
+                            // Get original value to determine type
+                            const orig_value = self.store.getPin(node.full_name) catch
+                                               self.store.getSignal(node.full_name) catch
+                                               self.store.getParam(node.full_name) catch null;
+
+                            if (orig_value) |v| {
+                                const new_value: HalValue = switch (v) {
+                                    .bit => |b| .{ .bit = b }, // BIT doesn't reach edit mode, but handle anyway
+                                    .float => |f| {
+                                        const parsed = std.fmt.parseFloat(f64, input) catch {
+                                            // Invalid float - could show error but just stay in edit mode
+                                            ctx.consumeAndRedraw();
+                                            return;
+                                        };
+                                        .{ .float = parsed }
+                                    },
+                                    .s32 => |s| {
+                                        const parsed = std.fmt.parseInt(i32, input, 10) catch {
+                                            // Invalid integer - just stay in edit mode
+                                            ctx.consumeAndRedraw();
+                                            return;
+                                        };
+                                        .{ .s32 = parsed }
+                                    },
+                                    .u32 => |u| {
+                                        const parsed = std.fmt.parseInt(u32, input, 10) catch {
+                                            // Invalid unsigned - just stay in edit mode
+                                            ctx.consumeAndRedraw();
+                                            return;
+                                        };
+                                        .{ .u32 = parsed }
+                                    },
+                                };
+
+                                // Update value in store
+                                switch (node.item_type) {
+                                    .pin => try self.store.updatePin(node.full_name, new_value),
+                                    .signal => try self.store.updateSignal(node.full_name, new_value),
+                                    .param => try self.store.updateParam(node.full_name, new_value),
+                                    .component => unreachable,
+                                }
+
+                                self.edit_mode = false;
+                                self.edit_item = null;
+                                self.edit_buffer.clearRetainingCapacity();
+                                ctx.consumeAndRedraw();
+                                return;
+                            }
+                        }
+                    }
+
+                    // Backspace: remove last character
+                    if (key.codepoint == 127) {
+                        if (self.edit_buffer.items.len > 0) {
+                            _ = self.edit_buffer.pop();
+                            ctx.consumeAndRedraw();
+                        }
+                        return;
+                    }
+
+                    // Type-specific character validation
+                    if (key.codepoint >= 32 and key.codepoint < 127) {
+                        const new_char = @as(u8, @intCast(key.codepoint));
+                        const orig_value = self.store.getPin(self.edit_item.?.full_name) catch
+                                           self.store.getSignal(self.edit_item.?.full_name) catch
+                                           self.store.getParam(self.edit_item.?.full_name) catch null;
+
+                        const allowed = if (orig_value) |v| switch (v) {
+                            .float => {
+                                // Allow: digits, minus (start only), decimal point (once)
+                                if (new_char == '-' and self.edit_buffer.items.len == 0) true
+                                else if (new_char == '.' and std.mem.indexOfScalar(u8, self.edit_buffer.items, '.') == null) true
+                                else new_char >= '0' and new_char <= '9'
+                            },
+                            .s32 => {
+                                // Allow: digits, minus (start only)
+                                if (new_char == '-') self.edit_buffer.items.len == 0
+                                else new_char >= '0' and new_char <= '9'
+                            },
+                            .u32 => {
+                                // Allow: digits only
+                                new_char >= '0' and new_char <= '9'
+                            },
+                            .bit => false, // BIT doesn't use text edit
+                        } else false;
+
+                        if (allowed) {
+                            try self.edit_buffer.append(self.allocator, new_char);
+                            ctx.consumeAndRedraw();
+                        }
+                        return;
+                    }
+
+                    return; // Ignore other keys in edit mode
+                }
+
                 // Normal mode handling
 
                 // "/": Enter search input mode
