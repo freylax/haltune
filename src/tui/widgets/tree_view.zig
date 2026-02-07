@@ -146,6 +146,10 @@ pub const TreeView = struct {
     signal_edit_pin: ?*Node = null,
     signal_edit_buffer: std.ArrayList(u8) = std.ArrayList(u8).initCapacity(0, 0) catch unreachable,
 
+    /// Signal deletion prompt state
+    signal_delete_prompt: bool = false,
+    pending_signal_delete: ?[]const u8 = null,  // Owned memory, must free
+
     /// Initialize a new TreeView
     pub fn init(allocator: std.mem.Allocator, store: *StateStore) !TreeView {
         // Initialize ArrayLists using initCapacity
@@ -198,6 +202,11 @@ pub const TreeView = struct {
 
         // Free signal edit buffer
         self.signal_edit_buffer.deinit(self.allocator);
+
+        // Free pending signal deletion
+        if (self.pending_signal_delete) |name| {
+            self.allocator.free(name);
+        }
     }
 
     /// Recursively free a node and its children
@@ -236,6 +245,15 @@ pub const TreeView = struct {
         self.signal_edit_mode = false;
         self.signal_edit_pin = null;
         self.signal_edit_buffer.clearRetainingCapacity();
+
+        // Cancel deletion prompt if tree rebuilds
+        if (self.signal_delete_prompt) {
+            if (self.pending_signal_delete) |name| {
+                self.allocator.free(name);
+                self.pending_signal_delete = null;
+            }
+            self.signal_delete_prompt = false;
+        }
 
         // Get all pins, signals, and params from StateStore
         const pins = try self.store.listPins(self.allocator);
@@ -694,6 +712,50 @@ pub const TreeView = struct {
                     return; // Ignore other keys in search mode
                 }
 
+                // Signal deletion prompt handling
+                if (self.signal_delete_prompt) {
+                    if (key.matches('y', .{})) {
+                        // User confirmed deletion
+                        if (self.pending_signal_delete) |sig_name| {
+                            const sig_name_z = try self.allocator.dupeZ(u8, sig_name);
+                            defer self.allocator.free(sig_name_z);
+
+                            const ffi = @import("../../ffi/safe.zig");
+                            ffi.halSignalDelete(sig_name_z) catch |err| {
+                                std.log.err("Delete failed: {}", .{err});
+                            } else {
+                                try self.store.removeSignal(sig_name);
+                                std.log.err("Deleted signal '{s}'", .{sig_name});
+                            }
+
+                            self.allocator.free(self.pending_signal_delete.?);
+                            self.pending_signal_delete = null;
+                        }
+
+                        self.signal_delete_prompt = false;
+                        ctx.consumeAndRedraw();
+                        return;
+                    }
+
+                    if (key.matches('n', .{}) or key.matches(vaxis.Key.escape, .{})) {
+                        // User cancelled - leave signal orphaned
+                        const sig_name = self.pending_signal_delete orelse "";
+                        std.log.err("Signal '{s}' left orphaned", .{sig_name});
+
+                        if (self.pending_signal_delete) |name| {
+                            self.allocator.free(name);
+                            self.pending_signal_delete = null;
+                        }
+
+                        self.signal_delete_prompt = false;
+                        ctx.consumeAndRedraw();
+                        return;
+                    }
+
+                    // Ignore all other keys during prompt
+                    return;
+                }
+
                 // Signal edit mode handling (Ctrl+S on pin)
                 if (self.signal_edit_mode) {
                     const ffi = @import("../../ffi/safe.zig");
@@ -715,12 +777,35 @@ pub const TreeView = struct {
 
                             if (signal_name.len == 0) {
                                 // Disconnect: Unlink pin from signal
+                                const old_signal = self.store.pin_links.get(pin_name);
+
                                 ffi.halUnlink(pin_name) catch |err| {
                                     std.log.err("Disconnect failed: {}", .{err});
                                     ctx.consumeAndRedraw();
                                     return;
                                 };
                                 try self.store.updatePinLink(pin_name, null);
+
+                                // Check if this was the last pin connected to the signal
+                                if (old_signal) |sig| {
+                                    const remaining_pins = self.store.countPinsForSignal(sig);
+                                    if (remaining_pins == 0) {
+                                        // Prompt for signal deletion
+                                        self.signal_delete_prompt = true;
+                                        self.pending_signal_delete = try self.allocator.dupe(u8, sig);
+                                        std.log.err("Delete orphaned signal '{s}'? (y/n)", .{sig});
+                                    } else {
+                                        std.log.err("Disconnected from signal ({d} pins remain)", .{remaining_pins});
+                                    }
+                                } else {
+                                    std.log.err("Disconnected from signal", .{});
+                                }
+
+                                self.signal_edit_mode = false;
+                                self.signal_edit_pin = null;
+                                self.signal_edit_buffer.clearRetainingCapacity();
+                                ctx.consumeAndRedraw();
+                                return;
                             } else {
                                 // Connect or create signal
                                 // 1. Get current pin value to infer type
