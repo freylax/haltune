@@ -5,6 +5,8 @@ const Model = @import("model.zig").Model;
 const ViewMode = @import("model.zig").ViewMode;
 const TreeView = @import("widgets/tree_view.zig").TreeView;
 const DataTable = @import("widgets/data_table.zig").DataTable;
+const ItemType = @import("widgets/data_table.zig").ItemType;
+const TreeNode = @import("widgets/tree_view.zig").Node;
 
 /// Draw function for conditional single-panel layout
 /// Renders either tree view or table view at full width based on current_view
@@ -50,7 +52,7 @@ pub fn drawTwoPanelLayout(
             };
 
             // Help text at bottom
-            const help_text = try createHelpText(ctx, .tree_only);
+            const help_text = try createHelpText(ctx, .tree_only, self);
             children[1] = .{
                 .origin = .{ .row = panel_height, .col = 0 },
                 .surface = help_text,
@@ -78,7 +80,7 @@ pub fn drawTwoPanelLayout(
             };
 
             // Help text at bottom
-            const help_text = try createHelpText(ctx, .table_only);
+            const help_text = try createHelpText(ctx, .table_only, self);
             children[1] = .{
                 .origin = .{ .row = panel_height, .col = 0 },
                 .surface = help_text,
@@ -96,22 +98,70 @@ pub fn drawTwoPanelLayout(
 }
 
 /// Create help text widget at bottom of screen with dynamic view mode hint
-fn createHelpText(ctx: vxfw.DrawContext, view_mode: ViewMode) std.mem.Allocator.Error!vxfw.Surface {
-    // Determine view hint based on current mode
-    const view_hint = switch (view_mode) {
-        .tree_only => "Table View",
-        .table_only => "Tree View",
+fn createHelpText(ctx: vxfw.DrawContext, view_mode: ViewMode, model: *const Model) std.mem.Allocator.Error!vxfw.Surface {
+    // Get cursor value for status line
+    const cursor_value_text = blk: {
+        if (view_mode == .tree_only) {
+            // Tree mode
+            if (model.tree_view.isEditMode()) {
+                // Show edit mode status
+                if (model.tree_view.edit_mode) {
+                    break :blk try std.fmt.allocPrint(ctx.arena, "Editing: {s}", .{model.tree_view.edit_buffer.items});
+                } else if (model.tree_view.signal_edit_mode) {
+                    break :blk try std.fmt.allocPrint(ctx.arena, "Signal: {s}", .{model.tree_view.signal_edit_buffer.items});
+                } else if (model.tree_view.signal_delete_prompt) {
+                    break :blk try std.fmt.allocPrint(ctx.arena, "Delete signal? (y/n)", .{});
+                }
+            } else if (model.tree_view.getCursorNode()) |node| {
+                // Show cursor item value
+                const item_type: ItemType = switch (node.item_type) {
+                    .pin => .pin,
+                    .signal => .signal,
+                    .param => .param,
+                    .component => break :blk "",
+                };
+                break :blk model.getFullValueString(ctx.arena, node.full_name, item_type) catch "";
+            }
+        } else if (view_mode == .table_only) {
+            // Table mode
+            if (model.data_table.isEditMode()) {
+                break :blk try std.fmt.allocPrint(ctx.arena, "Editing: {s}", .{model.data_table.table_edit_buffer.items});
+            } else if (model.data_table.getCursorItemName()) |name| {
+                if (model.data_table.getCursorItemType()) |item_type| {
+                    break :blk model.getFullValueString(ctx.arena, name, item_type) catch "";
+                }
+            }
+        }
+        break :blk "";
     };
 
-    // Build dynamic help string with view-specific hint
-    const help_str = try std.fmt.allocPrint(
-        ctx.arena,
-        "Enter=Edit/Toggle, /=Search, t=Filter Type, c=Filter Comp, Ctrl+T={s}, Ctrl+C=Quit",
-        .{view_hint},
-    );
+    // Build help text components
+    var text_parts = std.ArrayList([]const u8).init(ctx.arena);
+    defer text_parts.deinit();
+
+    // Add cursor value if present
+    if (cursor_value_text.len > 0) {
+        try text_parts.append(cursor_value_text);
+    }
+
+    // Add view-switching hint
+    const view_hint = switch (view_mode) {
+        .tree_only => "Ctrl+T=Table View",
+        .table_only => "Ctrl+T=Tree View",
+    };
+    try text_parts.append(view_hint);
+
+    // Add general help
+    try text_parts.append("Space=Check +/-=Visibility /=Search Esc=Clear");
+
+    // Combine with separator
+    const combined = if (text_parts.items.len > 0)
+        try std.mem.join(ctx.arena, " | ", text_parts.items)
+    else
+        "";
 
     const help_style = vaxis.Style{ .dim = true };
-    const text_widget = vxfw.Text{ .text = help_str, .style = help_style };
+    const text_widget = vxfw.Text{ .text = combined, .style = help_style };
 
     return try text_widget.widget().draw(ctx);
 }
