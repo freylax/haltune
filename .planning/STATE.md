@@ -11,19 +11,19 @@ See: .planning/PROJECT.md (updated 2026-02-05)
 ## Current Position
 
 Phase: 06-live-values (Live Values & Editing)
-Plan: 07 of 7
-Status: Phase complete
-Last activity: 2026-02-07 — Completed 06-07 (Status Line with Cursor Value)
+Plan: 06 of 7
+Status: In progress
+Last activity: 2026-02-07 — Completed 06-06 (Table View Value Editing)
 
-Progress: [██████████░] 58%
+Progress: [████████░░░] 55%
 
 ## Performance Metrics
 
 **Velocity:**
 - Total phases completed: 5 of 8 (v0.5)
-- Total plans completed: 27
-- Average duration: 7.4 min
-- Total execution time: 3.4 hours
+- Total plans completed: 26
+- Average duration: 7.6 min
+- Total execution time: 3.3 hours
 
 **By Phase:**
 
@@ -34,7 +34,7 @@ Progress: [██████████░] 58%
 | 03-tui-core | 5 | 5 | 6.0 min |
 | 04-config-editing | 3 | 3 | 4.3 min |
 | 05-view-switching | 2 | 2 | 2.0 min |
-| 06-live-values | 7 | 7 | 2.6 min |
+| 06-live-values | 6 | ? | 2.9 min |
 
 *Updated after each plan completion*
 
@@ -114,15 +114,15 @@ Recent decisions affecting current work:
 - Real-time updates work via existing pubsub infrastructure (no changes needed)
 - Table view editing not yet implemented: users must switch to tree view (Ctrl+T) to edit values
 
-**From 06-07 (2026-02-07):**
-- Status line with full precision value display: format "item-name: TYPE VALUE" at bottom of screen
-- Full precision float: {d} format specifier without precision limit shows complete float value
-- BIT values as TRUE/FALSE in status line (words clearer than symbols in text-only display)
-- Helper functions extracted: getCursorNode/isEditMode in TreeView, getCursorItemName/getCursorItemType/isEditMode in DataTable
-- getFullValueString in Model provides type-aware value formatting with fallback to "(no value)"
-- Edit mode status shows buffer contents: "Editing: XXX" for values, "Signal: XXX" for signals, "Delete signal? (y/n)" for prompts
-- Pipe separator (' | ') visually distinguishes cursor value from keyboard shortcuts
-- Status line updates in real-time as cursor moves (uses existing redraw infrastructure)
+**From 06-06 (2026-02-07):**
+- Table view in-place value editing: cursor selection with up/down arrows, reverse video highlight
+- BIT value toggle via Enter: ● ↔ ○, updates store immediately (toggle, no edit mode)
+- Numeric value editing: Enter enters edit mode with pre-populated current value, Escape cancels, Enter commits
+- Type-specific input validation: FLOAT allows digits/minus/decimal, S32 allows digits/minus, U32 allows digits only
+- Writability checking via pin_links: connected pins not editable (same logic as tree view)
+- Edit mode visual feedback: buffer contents shown in value cell with reverse style
+- Separate table_edit_mode state: avoids conflict with legacy edit_mode, provides clean separation
+- Store updates via updatePin/updateSignal/updateParam: FFI write functions TODO (pending future implementation)
 
 ### Pending Todos
 
@@ -130,15 +130,16 @@ None yet.
 
 ### Blockers/Concerns
 
-**v0.6 Milestone Complete:**
+**v0.6 Milestone Near Complete:**
 - Phase 05 complete: view switching (tree ↔ table) with Ctrl-t
-- Phase 06 complete: live values in tree and table views, inline value editing in tree view, signal CRUD with deletion prompt, status line with full precision values
-- Table view editing not yet implemented (deferred to future phase)
-- Known limitation: Users can view values in table mode but must switch to tree view (Ctrl+T) to edit
+- Phase 06 mostly complete: live values in tree and table views, inline editing in both views, signal CRUD with deletion prompt
+- Table view editing NOW IMPLEMENTED (06-06): cursor selection, BIT toggle, numeric edit with validation
+- FFI write functions TODO: value edits update store only, pending halPinSet* wrapper implementation
+- One remaining plan (06-07): status line with full precision value display (optional enhancement)
 
 ## Session Continuity
 
-Last session: 2026-02-07 (phase 06-07: Status Line with Cursor Value)
-Stopped at: Completed 06-07-PLAN.md - status line with full precision value display
+Last session: 2026-02-07 (phase 06-06: Table View Value Editing)
+Stopped at: Completed 06-06-PLAN.md - in-place value editing with cursor selection and type-specific validation
 Resume file: None
-Next action: Begin phase 07 or implement additional enhancements
+Next action: Continue with 06-07 or begin phase 07
