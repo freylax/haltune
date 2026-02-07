@@ -42,9 +42,9 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 5: View Switching** — Alternative view modes for simplified layout (completed 2026-02-06)
 
-### 🚧 v0.6 Live Values & Editing (In Progress)
+### ✅ v0.6 Live Values & Editing (Complete)
 
-- [ ] **Phase 6: Live Values & Editing** — Real-time value display and inline editing
+- [x] **Phase 6: Live Values & Editing** — Real-time value display and inline editing (completed 2026-02-08)
 
 ### Phase Details
 
@@ -91,15 +91,15 @@ Plans:
 **Plans**: 9 plans in 3 waves
 
 Plans:
-- [ ] 06-01-PLAN.md — Add value column to tree view with live values (●/○ for BIT, decimal for FLOAT/U32)
-- [ ] 06-02-PLAN.md — Add in-place value editing to tree view (Enter to edit, BIT toggle, numeric validation)
-- [ ] 06-03-PLAN.md — Add signal connect/create/disconnect via Ctrl+S
-- [ ] 06-04-PLAN.md — Add signal deletion prompt when disconnecting last pin
-- [ ] 06-05-PLAN.md — Add value column to table view with live values
-- [ ] 06-06-PLAN.md — Add in-place value editing to table view
-- [ ] 06-07-PLAN.md — Add status line showing full precision value of cursor item
-- [ ] 06-08-PLAN.md — Add FFI write calls to tree view value editing (gap closure)
-- [ ] 06-09-PLAN.md — Add FFI write calls to table view value editing (gap closure)
+- [x] 06-01-PLAN.md — Add value column to tree view with live values (●/○ for BIT, decimal for FLOAT/U32)
+- [x] 06-02-PLAN.md — Add in-place value editing to tree view (Enter to edit, BIT toggle, numeric validation)
+- [x] 06-03-PLAN.md — Add signal connect/create/disconnect via Ctrl+S
+- [x] 06-04-PLAN.md — Add signal deletion prompt when disconnecting last pin
+- [x] 06-05-PLAN.md — Add value column to table view with live values
+- [x] 06-06-PLAN.md — Add in-place value editing to table view
+- [x] 06-07-PLAN.md — Add status line showing full precision value of cursor item
+- [x] 06-08-PLAN.md — Add FFI write calls to tree view value editing (gap closure)
+- [x] 06-09-PLAN.md — Add FFI write calls to table view value editing (gap closure)
 
 ### Phase 7: Bookmarks & Plugins
 
@@ -146,6 +146,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8
 | 3. TUI Core | 5/5 | Complete | 2026-01-29 |
 | 4. Configuration & Editing | 3/3 | Complete | 2026-01-29 |
 | 5. View Switching | 2/2 | Complete | 2026-02-06 |
-| 6. Live Values & Editing | 0/7 | Planning | - |
+| 6. Live Values & Editing | 9/9 | Complete | 2026-02-08 |
 | 7. Bookmarks & Plugins | 0/0 | Not started | - |
 | 8. Polish & Optimization | 0/0 | Not started | - |

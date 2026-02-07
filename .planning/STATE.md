@@ -6,24 +6,24 @@ See: .planning/PROJECT.md (updated 2026-02-05)
 
 **Core value:** Make LinuxCNC HAL manipulation and machine setup efficient through an intuitive TUI interface, replacing cryptic halcmd commands with structured workflows for machine configuration and tuning.
 
-**Current focus:** Milestone v0.6: Live Values & Editing
+**Current focus:** Milestone v0.7: Bookmarks & Plugins
 
 ## Current Position
 
 Phase: 06-live-values (Live Values & Editing)
-Plan: 08 of 7 (gap closure)
-Status: In progress
-Last activity: 2026-02-07 — Completed 06-08 (Tree View FFI Write Integration)
+Plan: 09 of 9 (gap closure)
+Status: Complete
+Last activity: 2026-02-08 — Completed Phase 06 (Live Values & Editing)
 
-Progress: [████████░░] 80%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total phases completed: 5 of 8 (v0.5)
-- Total plans completed: 27
-- Average duration: 7.4 min
-- Total execution time: 3.4 hours
+- Total phases completed: 6 of 8 (v0.6)
+- Total plans completed: 36
+- Average duration: 6.5 min
+- Total execution time: 3.9 hours
 
 **By Phase:**
 
@@ -34,7 +34,7 @@ Progress: [████████░░] 80%
 | 03-tui-core | 5 | 5 | 6.0 min |
 | 04-config-editing | 3 | 3 | 4.3 min |
 | 05-view-switching | 2 | 2 | 2.0 min |
-| 06-live-values | 8 | ? | 2.7 min |
+| 06-live-values | 9 | 9 | 2.7 min |
 
 *Updated after each plan completion*
 
@@ -148,17 +148,17 @@ None yet.
 
 ### Blockers/Concerns
 
-**v0.6 Milestone Near Complete:**
-- Phase 05 complete: view switching (tree ↔ table) with Ctrl-t
-- Phase 06 mostly complete: live values in tree and table views, inline editing in both views
-- Tree view editing NOW COMPLETE (06-08): FFI write integration with HAL-first pattern, error handling
-- Table view editing implemented (06-06): cursor selection, BIT toggle, numeric edit with validation
-- Table view FFI write integration TODO: value edits update store only, pending halPinSet* calls
-- One remaining plan (06-09): table view FFI write integration to complete milestone
+**v0.6 Milestone Complete:**
+- Phase 06 complete: live values in tree and table views, inline editing with FFI persistence
+- Tree view editing: FFI write integration (pinBitSet/pinFloatSet/pinS32Set/pinU32Set) with HAL-first pattern
+- Table view editing: FFI write integration via writeValue() function, TODO comments removed
+- Signal CRUD operations: create (Ctrl+S), disconnect with deletion prompt
+- All 7 success criteria verified (7/7 passed)
+- Ready to proceed to Phase 07 (Bookmarks & Plugins)
 
 ## Session Continuity
 
-Last session: 2026-02-07 (phase 06-08: Tree View FFI Write Integration)
-Stopped at: Completed 06-08-PLAN.md - FFI write calls integrated, getPinPointer helper added, syntax bugs fixed
+Last session: 2026-02-08 (phase 06-09: Table View FFI Write Integration)
+Stopped at: Completed Phase 06 - All 9 plans shipped, verification passed (7/7)
 Resume file: None
-Next action: Continue with 06-09 (table view FFI write integration) or begin phase 07
+Next action: Begin Phase 07 (Bookmarks & Plugins) or run milestone audit
