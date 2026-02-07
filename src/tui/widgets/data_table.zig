@@ -642,7 +642,20 @@ pub const DataTable = struct {
                                         },
                                     };
 
-                                    // Update value in store
+                                    // Write to HAL first (persists value to hardware)
+                                    self.writeValue(item.*, new_value) catch |err| {
+                                        std.log.err("FFI write failed for '{s}': {}", .{ item.name, err });
+                                        self.setError("FFI write failed") catch {};
+                                        self.error_timeout = std.time.nanoTimestamp() + 2_000_000_000;
+                                        // Exit edit mode but don't update store
+                                        self.table_edit_mode = false;
+                                        self.table_edit_row = null;
+                                        self.table_edit_buffer.clearRetainingCapacity();
+                                        ctx.consumeAndRedraw();
+                                        return;
+                                    };
+
+                                    // Then update store cache
                                     if (item.item_type == .pin) {
                                         try self.store.updatePin(item.name, new_value);
                                     } else if (item.item_type == .signal) {
@@ -650,7 +663,6 @@ pub const DataTable = struct {
                                     } else if (item.item_type == .param) {
                                         try self.store.updateParam(item.name, new_value);
                                     }
-                                    // TODO: Call FFI to write actual HAL value (pending)
                                 }
                             }
 
@@ -762,14 +774,25 @@ pub const DataTable = struct {
                             .bit => {
                                 // BIT: Toggle value directly (no edit mode)
                                 const new_value = !v.bit;
+                                const new_hal_value = HalValue{ .bit = new_value };
+
+                                // Write to HAL first (persists value to hardware)
+                                self.writeValue(item.*, new_hal_value) catch |err| {
+                                    std.log.err("FFI write failed for '{s}': {}", .{ item.name, err });
+                                    self.setError("FFI write failed") catch {};
+                                    self.error_timeout = std.time.nanoTimestamp() + 2_000_000_000;
+                                    ctx.consumeAndRedraw();
+                                    return;
+                                };
+
+                                // Then update store cache
                                 if (item.item_type == .pin) {
-                                    try self.store.updatePin(item.name, HalValue{ .bit = new_value });
+                                    try self.store.updatePin(item.name, new_hal_value);
                                 } else if (item.item_type == .signal) {
-                                    try self.store.updateSignal(item.name, HalValue{ .bit = new_value });
+                                    try self.store.updateSignal(item.name, new_hal_value);
                                 } else if (item.item_type == .param) {
-                                    try self.store.updateParam(item.name, HalValue{ .bit = new_value });
+                                    try self.store.updateParam(item.name, new_hal_value);
                                 }
-                                // TODO: Call FFI to write actual HAL value (pending)
                                 ctx.consumeAndRedraw();
                                 return;
                             },
