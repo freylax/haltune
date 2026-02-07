@@ -11,19 +11,19 @@ See: .planning/PROJECT.md (updated 2026-02-05)
 ## Current Position
 
 Phase: 06-live-values (Live Values & Editing)
-Plan: 04 of 4
-Status: Plan complete
-Last activity: 2026-02-07 — Completed 06-04 (Signal Deletion Prompt)
+Plan: 05 of 5
+Status: Phase complete
+Last activity: 2026-02-07 — Completed 06-05 (Table View Value Display)
 
-Progress: [██████████░] 53%
+Progress: [██████████░] 56%
 
 ## Performance Metrics
 
 **Velocity:**
 - Total phases completed: 5 of 8 (v0.5)
-- Total plans completed: 24
-- Average duration: 8.0 min
-- Total execution time: 3.2 hours
+- Total plans completed: 25
+- Average duration: 7.8 min
+- Total execution time: 3.3 hours
 
 **By Phase:**
 
@@ -34,7 +34,7 @@ Progress: [██████████░] 53%
 | 03-tui-core | 5 | 5 | 6.0 min |
 | 04-config-editing | 3 | 3 | 4.3 min |
 | 05-view-switching | 2 | 2 | 2.0 min |
-| 06-live-values | 4 | ? | 3.0 min |
+| 06-live-values | 5 | 5 | 2.8 min |
 
 *Updated after each plan completion*
 
@@ -105,6 +105,15 @@ Recent decisions affecting current work:
 - Messages logged to stderr: prompt shows "Delete orphaned signal 'X'? (y/n)", cancel shows "Signal 'X' left orphaned"
 - Shows "X pins remain" message when disconnecting from signal with 2+ pins (no prompt)
 
+**From 06-05 (2026-02-07):**
+- Table view value display: formatHalValue function matches tree view (●/○ for BIT, 6-decimal for FLOAT)
+- Right-aligned value column: uses ctx.stringWidth for Unicode width calculation, right-aligns in 30% width column
+- Unicode rendering: graphemeIterator for proper multi-byte UTF-8 character rendering (●/○ are 3-byte sequences)
+- Table view already had Value column; updated formatting to match tree view consistency
+- Float precision increased from 2 to 6 decimal places for better detail
+- Real-time updates work via existing pubsub infrastructure (no changes needed)
+- Table view editing not yet implemented: users must switch to tree view (Ctrl+T) to edit values
+
 ### Pending Todos
 
 None yet.
@@ -113,12 +122,13 @@ None yet.
 
 **v0.6 Milestone Complete:**
 - Phase 05 complete: view switching (tree ↔ table) with Ctrl-t
-- Phase 06 complete: live values in tree view, inline value editing, signal CRUD with deletion prompt
-- Table view live values and editing not yet implemented (deferred to future phase)
+- Phase 06 complete: live values in tree and table views, inline value editing in tree view, signal CRUD with deletion prompt
+- Table view editing not yet implemented (deferred to future phase)
+- Known limitation: Users can view values in table mode but must switch to tree view (Ctrl+T) to edit
 
 ## Session Continuity
 
-Last session: 2026-02-07 (phase 06-04: Signal Deletion Prompt)
-Stopped at: Completed 06-04-PLAN.md - signal deletion prompt when disconnecting last pin
+Last session: 2026-02-07 (phase 06-05: Table View Value Display)
+Stopped at: Completed 06-05-PLAN.md - table view value display with right-aligned formatting
 Resume file: None
-Next action: Begin next phase or continue with table view features
+Next action: Begin phase 07 or implement table view editing enhancement
