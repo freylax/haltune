@@ -11,18 +11,18 @@ See: .planning/PROJECT.md (updated 2026-02-05)
 ## Current Position
 
 Phase: 06-live-values (Live Values & Editing)
-Plan: 03 of 3
-Status: In progress
-Last activity: 2026-02-07 — Completed 06-03 (Signal Connect/Create/Disconnect)
+Plan: 04 of 4
+Status: Plan complete
+Last activity: 2026-02-07 — Completed 06-04 (Signal Deletion Prompt)
 
-Progress: [███████░░░░] 47%
+Progress: [██████████░] 53%
 
 ## Performance Metrics
 
 **Velocity:**
 - Total phases completed: 5 of 8 (v0.5)
-- Total plans completed: 23
-- Average duration: 8.2 min
+- Total plans completed: 24
+- Average duration: 8.0 min
 - Total execution time: 3.2 hours
 
 **By Phase:**
@@ -34,7 +34,7 @@ Progress: [███████░░░░] 47%
 | 03-tui-core | 5 | 5 | 6.0 min |
 | 04-config-editing | 3 | 3 | 4.3 min |
 | 05-view-switching | 2 | 2 | 2.0 min |
-| 06-live-values | 3 | ? | 3.3 min |
+| 06-live-values | 4 | ? | 3.0 min |
 
 *Updated after each plan completion*
 
@@ -78,6 +78,16 @@ Recent decisions affecting current work:
 - Unicode rendering: graphemeIterator and ctx.stringWidth required by Vaxis for multi-byte characters
 - Real-time updates via existing pubsub infrastructure (valueChangedCallback → redraw_flag → ctx.consumeAndRedraw)
 
+**From 06-02 (2026-02-07):**
+- In-place value editing in tree view: Enter on BIT toggles, Enter on numeric enters edit mode
+- Edit mode state: edit_mode flag, edit_item pointer, edit_buffer ArrayList
+- Writability checks: pins connected to signals are not editable (checked via pin_links HashMap)
+- Type-specific input validation: FLOAT allows digits/minus/decimal, S32 allows digits/minus, U32 allows digits only
+- Edit mode event handlers: Escape cancels, Enter confirms with parsing, Backspace deletes, typing validated
+- Visual feedback: edited cell shown with reverse style highlight
+- Edit mode reset on tree rebuild (node pointers invalidated)
+- Store update methods called: updatePin/updateSignal/updateParam
+
 **From 06-03 (2026-02-07):**
 - Ctrl+S for signal editing: 'S' for Signal, distinct from Enter for value editing
 - Separate edit mode for signal connection (signal_edit_mode) distinct from value editing (edit_mode)
@@ -87,22 +97,28 @@ Recent decisions affecting current work:
 - Silent ignore for Ctrl+S on non-pins (no error message, TreeView lacks status line access)
 - Error logging to stderr instead of status messages (no Model.setError access in TreeView)
 
+**From 06-04 (2026-02-07):**
+- Signal deletion prompt when disconnecting last pin: checks countPinsForSignal == 0 before prompting
+- Prompt mode blocks all input except 'y' (confirm), 'n' (cancel), or Escape (cancel)
+- Owned memory pattern for prompt state: pending_signal_delete requires explicit free in deinit and on tree rebuild
+- halSignalDelete FFI wrapper removes signals from HAL (unlinks all pins first)
+- Messages logged to stderr: prompt shows "Delete orphaned signal 'X'? (y/n)", cancel shows "Signal 'X' left orphaned"
+- Shows "X pins remain" message when disconnecting from signal with 2+ pins (no prompt)
+
 ### Pending Todos
 
 None yet.
 
 ### Blockers/Concerns
 
-**v0.6 Milestone In Progress:**
-- Phase 06-01 complete: tree view displays live values with type-specific formatting
-- Phase 06-02 complete: inline value editing for pins/signals/params with type-specific validation
-- Phase 06-03 complete: signal connect/create/disconnect via Ctrl+S with type inference
-- Table view live values and editing still needed (plans 04-05)
-- Signal CRUD operations complete (create via Ctrl+S, remove via disconnect when last pin)
+**v0.6 Milestone Complete:**
+- Phase 05 complete: view switching (tree ↔ table) with Ctrl-t
+- Phase 06 complete: live values in tree view, inline value editing, signal CRUD with deletion prompt
+- Table view live values and editing not yet implemented (deferred to future phase)
 
 ## Session Continuity
 
-Last session: 2026-02-07 (phase 06-03: Signal Connect/Create/Disconnect)
-Stopped at: Completed 06-03-PLAN.md - signal edit mode with FFI integration
+Last session: 2026-02-07 (phase 06-04: Signal Deletion Prompt)
+Stopped at: Completed 06-04-PLAN.md - signal deletion prompt when disconnecting last pin
 Resume file: None
-Next action: Continue phase 06 with plan 04 (Table View Live Values) or 05 (Table View Editing)
+Next action: Begin next phase or continue with table view features
