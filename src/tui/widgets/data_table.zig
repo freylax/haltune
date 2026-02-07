@@ -863,7 +863,7 @@ pub const DataTable = struct {
                     std.log.warn("Failed to get value for '{s}': {}", .{ item.name, err });
                     break :blk "ERR";
                 };
-                break :blk formatHalValue(value, ctx.arena);
+                break :blk formatHalValue(value, ctx.arena) catch "ERR";
             };
 
             // Format row manually to avoid format specifier issues
@@ -941,11 +941,13 @@ pub const DataTable = struct {
         };
     }
 
-    /// Format a HalValue as a string
-    fn formatHalValue(value: HalValue, allocator: std.mem.Allocator) []const u8 {
+    /// Format a HAL value for display in the value column
+    /// Uses compact formatting: ●/○ for BIT, 6-char precision for FLOAT/U32
+    /// Matches tree_view.zig formatting for consistency
+    fn formatHalValue(value: HalValue, allocator: std.mem.Allocator) ![]const u8 {
         return switch (value) {
-            .bit => |v| if (v) "TRUE" else "FALSE",
-            .float => |v| std.fmt.allocPrint(allocator, "{d:.2}", .{v}) catch "ERR",
+            .bit => |v| if (v) "\xe2\x97\x8f" else "\xe2\x97\x8b", // UTF-8 for ●/○
+            .float => |v| std.fmt.allocPrint(allocator, "{d:.6}", .{v}) catch "ERR",
             .s32 => |v| std.fmt.allocPrint(allocator, "{d}", .{v}) catch "ERR",
             .u32 => |v| std.fmt.allocPrint(allocator, "{d}", .{v}) catch "ERR",
         };
