@@ -721,11 +721,11 @@ pub const TreeView = struct {
                             defer self.allocator.free(sig_name_z);
 
                             const ffi = @import("../../ffi/safe.zig");
-                            ffi.halSignalDelete(sig_name_z) catch |err| {
-                                std.log.err("Delete failed: {}", .{err});
-                            } else {
+                            if (ffi.halSignalDelete(sig_name_z)) |_| {
                                 try self.store.removeSignal(sig_name);
                                 std.log.err("Deleted signal '{s}'", .{sig_name});
+                            } else |err| {
+                                std.log.err("Delete failed: {}", .{err});
                             }
 
                             self.allocator.free(self.pending_signal_delete.?);
