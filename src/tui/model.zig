@@ -107,17 +107,9 @@ pub const Model = struct {
         errdefer allocator.destroy(tree_view);
         tree_view.* = try TreeView.init(allocator, store);
 
-        // Add test data to StateStore for testing
-        std.log.info("Adding test pins to store...", .{});
-        try store.addPin("test.pin-1", .{ .bit = true });
-        try store.addPin("test.pin-2", .{ .bit = false });
-        try store.addPin("motion.analog-in-00", .{ .float = 3.14159 });
-        try store.addPin("motion.digital-in-00", .{ .s32 = 42 });
-        std.log.info("Test pins added, rebuilding tree...", .{});
-
-        // Rebuild tree to show the new pins
+        // Build initial tree (will be populated by refresh thread)
         try tree_view.buildTree();
-        std.log.info("Tree rebuilt successfully with {d} components", .{tree_view.root.items.len});
+        std.log.info("Tree initialized with {d} components (will populate from HAL)", .{tree_view.root.items.len});
 
         // Create DataTable widget
         const data_table = try allocator.create(DataTable);

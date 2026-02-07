@@ -265,58 +265,65 @@ pub const RefreshThread = struct {
     /// Thread safety:
     ///   - Reads HAL pins without holding cache lock
     fn refreshPins(self: *RefreshThread) !void {
-        // TODO: Implement proper discovery via component iteration
-        // For now, just update existing cached pins
+        const safe = @import("../ffi/safe.zig");
 
-        // Get current cache keys
+        // Track all discovered pin names in this refresh cycle
+        var discovered_names = std.StringHashMap(void).init(self.allocator);
+        defer discovered_names.deinit();
+
+        // Discover all pins by walking HAL's pin list
+        std.debug.print("refreshPins: discovering all pins from HAL\n", .{});
+
+        var pin_count: usize = 0;
+        var maybe_pin = safe.halprFindPinByName(null); // Get first pin
+        while (maybe_pin) |pin| {
+            // Get pin name using getPinName helper
+            const pin_name = safe.getPinName(pin) orelse {
+                // Can't get name, skip to next
+                // Get next pin via linked list - note: hal_pin_t.next is at offset 0
+                const next_ptr: [*]u8 = @ptrCast(pin);
+                const next: ?*opaque {} = @ptrCast(next_ptr + @sizeOf(usize)); // Next pointer is first field
+                maybe_pin = safe.halprFindPinByName(@ptrCast(next)); // Use find to get typed pointer
+                continue;
+            };
+
+            // Convert to Zig string for our use
+            const pin_name_len = std.mem.len(pin_name);
+            const pin_name_slice = pin_name[0..pin_name_len];
+
+            // Add to discovered set
+            try discovered_names.put(pin_name_slice, {});
+
+            // Read pin value
+            if (ffi.getPinValueByName(pin_name)) |v| {
+                // Try to add to store (will update if exists)
+                self.store.addPin(pin_name_slice, v) catch {
+                    // If add failed, try updating
+                    self.store.updatePin(pin_name_slice, v) catch {};
+                };
+                pin_count += 1;
+            } else |err| {
+                std.debug.print("refreshPins: skipping {s}: {}\n", .{pin_name_slice, err});
+            }
+
+            // Get next pin - the next pointer is at offset 0 in hal_pin_t
+            const next_ptr: [*]u8 = @ptrCast(pin);
+            const next_ptr_addr = @as([*]const ?*opaque {}, @ptrCast(next_ptr));
+            maybe_pin = safe.halprFindPinByName(@ptrCast(next_ptr_addr.*));
+        }
+
+        std.debug.print("refreshPins: discovered {d} pins from HAL\n", .{pin_count});
+
+        // Remove pins from cache that are no longer in HAL
         const cached_names = try self.store.listPins(self.allocator);
         defer self.allocator.free(cached_names);
 
-        std.debug.print("refreshPins: {d} pins in cache\n", .{cached_names.len});
-
-        // If cache is empty, seed with some known LinuxCNC pins for testing
-        if (cached_names.len == 0) {
-            std.debug.print("refreshPins: cache empty, seeding with known pins\n", .{});
-            // Common motion pins that usually exist
-            const known_pins = [_][]const u8{
-                "motion.analog-in-00",
-                "motion.analog-in-01",
-                "motion.digital-in-00",
-                "motion.digital-in-01",
-            };
-
-            for (known_pins) |pin_name| {
-                // Try to read value - will fail if pin doesn't exist
-                const pin_name_z = try self.allocator.alloc(u8, pin_name.len + 1);
-                @memcpy(pin_name_z[0..pin_name.len], pin_name);
-                pin_name_z[pin_name.len] = 0;
-
-                if (ffi.getPinValueByName(@ptrCast(pin_name_z))) |value| {
-                    try self.store.addPin(pin_name, value);
-                    std.debug.print("refreshPins: added pin {s}\n", .{pin_name});
-                } else |err| {
-                    std.debug.print("refreshPins: pin {s} not found: {}\n", .{pin_name, err});
-                }
-
-                self.allocator.free(pin_name_z);
-            }
-        }
-
-        // Refresh all cached pin values from HAL
         for (cached_names) |name| {
-            // Create null-terminated string for C API
-            const name_z = try self.allocator.alloc(u8, name.len + 1);
-            defer self.allocator.free(name_z);
-            @memcpy(name_z[0..name.len], name);
-            name_z[name.len] = 0;
-
-            // Read value using getPinValueByName FFI wrapper
-            // If pin doesn't exist in HAL, skip it (it might be test data)
-            const value = ffi.getPinValueByName(@ptrCast(name_z)) catch |err| {
-                std.debug.print("refreshPins: skipping {s}: {}\n", .{name, err});
-                continue;
-            };
-            try self.store.updatePin(name, value);
+            if (!discovered_names.get(name)) {
+                // Pin no longer exists in HAL, remove from cache
+                self.store.removePin(name) catch {};
+                std.debug.print("refreshPins: removed stale pin {s}\n", .{name});
+            }
         }
     }
 
@@ -329,22 +336,60 @@ pub const RefreshThread = struct {
     /// Thread safety:
     ///   - Reads HAL signals without holding cache lock
     fn refreshSignals(self: *RefreshThread) !void {
-        // Get current cache keys
+        const safe = @import("../ffi/safe.zig");
+
+        // Track all discovered signal names in this refresh cycle
+        var discovered_names = std.StringHashMap(void).init(self.allocator);
+        defer discovered_names.deinit();
+
+        // Discover all signals by walking HAL's signal list
+        var sig_count: usize = 0;
+        var maybe_sig = safe.halprFindSigByName(null); // Get first signal
+        while (maybe_sig) |sig| {
+            // Get signal name using getSignalName helper
+            const sig_name = safe.getSignalName(sig) orelse {
+                // Can't get name, skip to next
+                const next_ptr: [*]u8 = @ptrCast(sig);
+                const next: ?*opaque {} = @ptrCast(next_ptr + @sizeOf(usize));
+                maybe_sig = safe.halprFindSigByName(@ptrCast(next));
+                continue;
+            };
+
+            // Convert to Zig string for our use
+            const sig_name_len = std.mem.len(sig_name);
+            const sig_name_slice = sig_name[0..sig_name_len];
+
+            // Add to discovered set
+            try discovered_names.put(sig_name_slice, {});
+
+            // Read signal value
+            if (ffi.getSignalValueByName(sig_name)) |v| {
+                // Try to add to store (will update if exists)
+                self.store.addSignal(sig_name_slice, v) catch {
+                    // If add failed, try updating
+                    self.store.updateSignal(sig_name_slice, v) catch {};
+                };
+                sig_count += 1;
+            } else |err| {
+                std.debug.print("refreshSignals: skipping {s}: {}\n", .{sig_name_slice, err});
+            }
+
+            // Get next signal
+            const next_ptr: [*]u8 = @ptrCast(sig);
+            const next_ptr_addr = @as([*]const ?*opaque {}, @ptrCast(next_ptr));
+            maybe_sig = safe.halprFindSigByName(@ptrCast(next_ptr_addr.*));
+        }
+
+        std.debug.print("refreshSignals: discovered {d} signals from HAL\n", .{sig_count});
+
+        // Remove signals from cache that are no longer in HAL
         const cached_names = try self.store.listSignals(self.allocator);
         defer self.allocator.free(cached_names);
 
-        // Refresh all cached signal values from HAL
         for (cached_names) |name| {
-            // Create null-terminated string for C API
-            const name_z = try self.allocator.alloc(u8, name.len + 1);
-            defer self.allocator.free(name_z);
-            @memcpy(name_z[0..name.len], name);
-            name_z[name.len] = 0;
-
-            // Read value using getSignalValueByName FFI wrapper
-            const value = try ffi.getSignalValueByName(@ptrCast(name_z));
-
-            try self.store.updateSignal(name, value);
+            if (!discovered_names.get(name)) {
+                self.store.removeSignal(name) catch {};
+            }
         }
     }
 
@@ -357,22 +402,60 @@ pub const RefreshThread = struct {
     /// Thread safety:
     ///   - Reads HAL parameters without holding cache lock
     fn refreshParams(self: *RefreshThread) !void {
-        // Get current cache keys
+        const safe = @import("../ffi/safe.zig");
+
+        // Track all discovered param names in this refresh cycle
+        var discovered_names = std.StringHashMap(void).init(self.allocator);
+        defer discovered_names.deinit();
+
+        // Discover all params by walking HAL's param list
+        var param_count: usize = 0;
+        var maybe_param = safe.halprFindParamByName(null); // Get first param
+        while (maybe_param) |param| {
+            // Get param name using getParamName helper
+            const param_name = safe.getParamName(param) orelse {
+                // Can't get name, skip to next
+                const next_ptr: [*]u8 = @ptrCast(param);
+                const next: ?*opaque {} = @ptrCast(next_ptr + @sizeOf(usize));
+                maybe_param = safe.halprFindParamByName(@ptrCast(next));
+                continue;
+            };
+
+            // Convert to Zig string for our use
+            const param_name_len = std.mem.len(param_name);
+            const param_name_slice = param_name[0..param_name_len];
+
+            // Add to discovered set
+            try discovered_names.put(param_name_slice, {});
+
+            // Read param value
+            if (ffi.getParamValueByName(param_name)) |v| {
+                // Try to add to store (will update if exists)
+                self.store.addParam(param_name_slice, v) catch {
+                    // If add failed, try updating
+                    self.store.updateParam(param_name_slice, v) catch {};
+                };
+                param_count += 1;
+            } else |err| {
+                std.debug.print("refreshParams: skipping {s}: {}\n", .{param_name_slice, err});
+            }
+
+            // Get next param
+            const next_ptr: [*]u8 = @ptrCast(param);
+            const next_ptr_addr = @as([*]const ?*opaque {}, @ptrCast(next_ptr));
+            maybe_param = safe.halprFindParamByName(@ptrCast(next_ptr_addr.*));
+        }
+
+        std.debug.print("refreshParams: discovered {d} params from HAL\n", .{param_count});
+
+        // Remove params from cache that are no longer in HAL
         const cached_names = try self.store.listParams(self.allocator);
         defer self.allocator.free(cached_names);
 
-        // Refresh all cached parameter values from HAL
         for (cached_names) |name| {
-            // Create null-terminated string for C API
-            const name_z = try self.allocator.alloc(u8, name.len + 1);
-            defer self.allocator.free(name_z);
-            @memcpy(name_z[0..name.len], name);
-            name_z[name.len] = 0;
-
-            // Read value using getParamValueByName FFI wrapper
-            const value = try ffi.getParamValueByName(@ptrCast(name_z));
-
-            try self.store.updateParam(name, value);
+            if (!discovered_names.get(name)) {
+                self.store.removeParam(name) catch {};
+            }
         }
     }
 };
