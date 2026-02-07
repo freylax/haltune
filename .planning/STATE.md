@@ -11,19 +11,19 @@ See: .planning/PROJECT.md (updated 2026-02-05)
 ## Current Position
 
 Phase: 06-live-values (Live Values & Editing)
-Plan: —
-Status: Defining requirements
-Last activity: 2026-02-06 — Phase 05 (View Switching) completed
+Plan: 01 of 3
+Status: In progress
+Last activity: 2026-02-07 — Completed 06-01 (Tree View Live Values)
 
-Progress: [████░░░░░░░] 30%
+Progress: [█████░░░░░░] 35%
 
 ## Performance Metrics
 
 **Velocity:**
 - Total phases completed: 5 of 8 (v0.5)
-- Total plans completed: 20
-- Average duration: 8.8 min
-- Total execution time: 2.9 hours
+- Total plans completed: 21
+- Average duration: 8.6 min
+- Total execution time: 3.0 hours
 
 **By Phase:**
 
@@ -34,7 +34,7 @@ Progress: [████░░░░░░░] 30%
 | 03-tui-core | 5 | 5 | 6.0 min |
 | 04-config-editing | 3 | 3 | 4.3 min |
 | 05-view-switching | 2 | 2 | 2.0 min |
-| 06-live-values | 0 | ? | - |
+| 06-live-values | 1 | ? | 2.0 min |
 
 *Updated after each plan completion*
 
@@ -69,20 +69,30 @@ Recent decisions affecting current work:
 - Dynamic help text: shows "Ctrl+T=Table View" in tree mode, "Ctrl+T=Tree View" in table mode
 - Widget state preserved across view switches (no reset)
 
+**From 06-01 (2026-02-07):**
+- Live value display in tree view: formatHalValue function with type-specific formatting (●/○ for BIT, decimal for numeric)
+- UTF-8 escape sequences in source: \xe2\x97\x8f/\xe2\x97\x8b instead of literal ●/○ to avoid encoding issues
+- BIT values as circle symbols (● for TRUE, ○ for FALSE) instead of 1/0 for better visual scanning
+- FLOAT with 6 decimal precision balances detail vs space
+- Value column: 8 characters (1 space + 8 char value) right-aligned for standard numeric display
+- Unicode rendering: graphemeIterator and ctx.stringWidth required by Vaxis for multi-byte characters
+- Real-time updates via existing pubsub infrastructure (valueChangedCallback → redraw_flag → ctx.consumeAndRedraw)
+
 ### Pending Todos
 
 None yet.
 
 ### Blockers/Concerns
 
-**v0.6 Milestone Starting:**
-- Phase 05 complete: view switching (tree ↔ table) with Ctrl-t
-- Phase 06 needs: live values in tree and table views, inline editing
+**v0.6 Milestone In Progress:**
+- Phase 06-01 complete: tree view displays live values with type-specific formatting
+- Phase 06-02 next: add live values to table view (reuse formatHalValue)
+- Phase 06-03 pending: inline value editing with type-specific input
 - Signal CRUD operations needed (create, remove, edit)
 
 ## Session Continuity
 
-Last session: 2026-02-06 (phase 05-02: Layout System View Mode Support)
-Stopped at: Completed 05-02-PLAN.md - Conditional layout rendering and dynamic help text
+Last session: 2026-02-07 (phase 06-01: Tree View Live Values)
+Stopped at: Completed 06-01-PLAN.md - formatHalValue function and value column rendering
 Resume file: None
-Next action: Continue phase 05 or begin testing
+Next action: Continue phase 06 with plan 02 (Table View Live Values)
