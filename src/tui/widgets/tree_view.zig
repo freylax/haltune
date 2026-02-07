@@ -136,6 +136,16 @@ pub const TreeView = struct {
     /// Buffer for building search patterns
     search_buffer: std.ArrayList(u8),
 
+    /// Edit mode state
+    edit_mode: bool = false,
+    edit_item: ?*Node = null,
+    edit_buffer: std.ArrayList(u8) = std.ArrayList(u8).initCapacity(0, 0) catch unreachable,
+
+    /// Signal editing state (for Ctrl+S connect/create/disconnect)
+    signal_edit_mode: bool = false,
+    signal_edit_pin: ?*Node = null,
+    signal_edit_buffer: std.ArrayList(u8) = std.ArrayList(u8).initCapacity(0, 0) catch unreachable,
+
     /// Initialize a new TreeView
     pub fn init(allocator: std.mem.Allocator, store: *StateStore) !TreeView {
         // Initialize ArrayLists using initCapacity
@@ -143,6 +153,8 @@ pub const TreeView = struct {
         const root_list = std.ArrayList(*Node).initCapacity(allocator, 0) catch return error.OutOfMemory;
         const visible_nodes_list = std.ArrayList(*Node).initCapacity(allocator, 0) catch return error.OutOfMemory;
         const search_buffer_list = std.ArrayList(u8).initCapacity(allocator, 0) catch return error.OutOfMemory;
+        const edit_buffer_list = std.ArrayList(u8).init(allocator);
+        const signal_edit_buffer_list = std.ArrayList(u8).init(allocator);
 
         const tree_view = TreeView{
             .allocator = allocator,
@@ -155,6 +167,8 @@ pub const TreeView = struct {
             .search_pattern = "",
             .search_input = false,
             .search_buffer = search_buffer_list,
+            .edit_buffer = edit_buffer_list,
+            .signal_edit_buffer = signal_edit_buffer_list,
         };
 
         // Note: Don't call buildTree() here - let the caller call it after adding data
@@ -178,6 +192,12 @@ pub const TreeView = struct {
 
         // Free search buffer
         self.search_buffer.deinit(self.allocator);
+
+        // Free edit buffer
+        self.edit_buffer.deinit(self.allocator);
+
+        // Free signal edit buffer
+        self.signal_edit_buffer.deinit(self.allocator);
     }
 
     /// Recursively free a node and its children
@@ -674,25 +694,75 @@ pub const TreeView = struct {
                     return;
                 }
 
-                // Enter: toggle expand/collapse for component nodes
+                // Enter: Edit value or toggle BIT, or toggle expand/collapse for components
                 if (key.matches(vaxis.Key.enter, .{})) {
-                    if (self.visible_nodes.items.len > 0) {
-                        const node = self.visible_nodes.items[self.cursor_index];
+                    if (self.visible_nodes.items.len == 0) return;
 
-                        // Only expandable nodes (components) respond to Enter
-                        if (node.isExpandable()) {
-                            const gop = try self.expanded_nodes.getOrPut(node.full_name);
-                            if (gop.found_existing) {
-                                // Collapse: remove from expanded set
-                                _ = self.expanded_nodes.remove(node.full_name);
-                            } else {
-                                // Expand: add to expanded set
-                                gop.value_ptr.* = {};
-                            }
-                            ctx.consumeAndRedraw();
+                    const node = self.visible_nodes.items[self.cursor_index];
+
+                    // Expandable nodes (components): toggle expand/collapse
+                    if (node.isExpandable()) {
+                        const gop = try self.expanded_nodes.getOrPut(node.full_name);
+                        if (gop.found_existing) {
+                            // Collapse: remove from expanded set
+                            _ = self.expanded_nodes.remove(node.full_name);
+                        } else {
+                            // Expand: add to expanded set
+                            gop.value_ptr.* = {};
                         }
-                        // TODO: For leaf nodes (pins), Enter could enter value editing mode
+                        ctx.consumeAndRedraw();
                         return;
+                    }
+
+                    // Leaf nodes: check if value is writable
+                    // Input pins connected to signals are NOT writable
+                    const is_writable = blk: {
+                        if (node.item_type == .pin) {
+                            // Check if pin is connected to a signal
+                            if (self.store.pin_links.get(node.full_name)) |_| {
+                                break :blk false; // Connected pins get value from signal
+                            }
+                        }
+                        break :blk true; // Signals and params are always writable
+                    };
+
+                    if (!is_writable) {
+                        // Use status line instead of setError for cleaner API
+                        const pin_signal = self.store.pin_links.get(node.full_name).?;
+                        const msg = try std.fmt.allocPrint(self.allocator, "Cannot edit - pin connected to '{s}'", .{pin_signal});
+                        defer self.allocator.free(msg);
+                        // For now just skip editing - could show message in status line later
+                        ctx.consumeAndRedraw();
+                        return;
+                    }
+
+                    // Get current value to determine type
+                    const value = self.store.getPin(node.full_name) catch
+                                  self.store.getSignal(node.full_name) catch
+                                  self.store.getParam(node.full_name) catch null;
+
+                    if (value) |v| {
+                        switch (v) {
+                            .bit => {
+                                // BIT: Toggle value directly (no edit mode)
+                                const new_value = !v.bit;
+                                try self.store.updatePin(node.full_name, HalValue{ .bit = new_value });
+                                ctx.consumeAndRedraw();
+                                return;
+                            },
+                            .float, .s32, .u32 => {
+                                // Numeric: Enter edit mode
+                                self.edit_mode = true;
+                                self.edit_item = node;
+                                self.edit_buffer.clearRetainingCapacity();
+                                // Pre-populate with current value
+                                const current_str = formatHalValue(v, self.allocator) catch "";
+                                defer self.allocator.free(current_str);
+                                try self.edit_buffer.appendSlice(current_str);
+                                ctx.consumeAndRedraw();
+                                return;
+                            },
+                        }
                     }
                 }
 
@@ -717,6 +787,32 @@ pub const TreeView = struct {
                         }
                         return;
                     }
+                }
+
+                // "Ctrl+S": Enter signal connection mode (for pins only)
+                if (key.matches('s', .{ .ctrl = true })) {
+                    if (self.visible_nodes.items.len == 0) return;
+
+                    const node = self.visible_nodes.items[self.cursor_index];
+
+                    // Only pins can connect to signals
+                    if (node.item_type != .pin) {
+                        // Silently ignore - user can only connect pins to signals
+                        return;
+                    }
+
+                    // Enter signal name editing mode
+                    self.signal_edit_mode = true;
+                    self.signal_edit_pin = node;
+                    self.signal_edit_buffer.clearRetainingCapacity();
+
+                    // Pre-populate with current signal if connected
+                    if (self.store.pin_links.get(node.full_name)) |current_signal| {
+                        try self.signal_edit_buffer.appendSlice(self.allocator, current_signal);
+                    }
+
+                    ctx.consumeAndRedraw();
+                    return;
                 }
             },
 
