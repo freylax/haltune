@@ -17,6 +17,7 @@ const cache = @import("../../state/cache.zig");
 const StateStore = cache.StateStore;
 const HalValue = cache.HalValue;
 const glob = @import("glob");
+const safe = @import("../../ffi/safe.zig");
 
 /// Node type enumeration
 pub const NodeType = enum {
@@ -101,6 +102,19 @@ fn formatHalValue(value: HalValue, allocator: std.mem.Allocator) ![]const u8 {
         .s32 => |v| std.fmt.allocPrint(allocator, "{d}", .{v}) catch "ERR",
         .u32 => |v| std.fmt.allocPrint(allocator, "{d}", .{v}) catch "ERR",
     };
+}
+
+/// Get HAL pin pointer by name
+/// Returns a pointer to the pin data that can be used with pin*Set functions
+fn getPinPointer(self: *TreeView, name: []const u8) !*const anyerror {
+    // Allocate with null terminator for C API
+    const name_c = try self.allocator.alloc(u8, name.len + 1);
+    defer self.allocator.free(name_c);
+    @memcpy(name_c[0..name.len], name);
+    name_c[name.len] = 0;
+
+    const pin_ptr = safe.halprFindPinByName(@ptrCast(name_c)) orelse return error.PinNotFound;
+    return @ptrCast(@alignCast(pin_ptr));
 }
 
 /// Tree navigation widget
@@ -911,33 +925,72 @@ pub const TreeView = struct {
                                                self.store.getParam(node.full_name) catch null;
 
                             if (orig_value) |v| {
-                                const new_value: HalValue = switch (v) {
-                                    .bit => |b| .{ .bit = b }, // BIT doesn't reach edit mode, but handle anyway
-                                    .float => |f| {
-                                        const parsed = std.fmt.parseFloat(f64, input) catch {
-                                            // Invalid float - could show error but just stay in edit mode
-                                            ctx.consumeAndRedraw();
-                                            return;
-                                        };
-                                        .{ .float = parsed }
-                                    },
-                                    .s32 => |s| {
-                                        const parsed = std.fmt.parseInt(i32, input, 10) catch {
-                                            // Invalid integer - just stay in edit mode
-                                            ctx.consumeAndRedraw();
-                                            return;
-                                        };
-                                        .{ .s32 = parsed }
-                                    },
-                                    .u32 => |u| {
-                                        const parsed = std.fmt.parseInt(u32, input, 10) catch {
-                                            // Invalid unsigned - just stay in edit mode
-                                            ctx.consumeAndRedraw();
-                                            return;
-                                        };
-                                        .{ .u32 = parsed }
-                                    },
+                                // Parse new value based on type
+                                const new_value: HalValue = blk: {
+                                    switch (v) {
+                                        .bit => |b| break :blk HalValue{ .bit = b }, // BIT doesn't reach edit mode, but handle anyway
+                                        .float => |_| {
+                                            const parsed = std.fmt.parseFloat(f64, input) catch {
+                                                // Invalid float - could show error but just stay in edit mode
+                                                ctx.consumeAndRedraw();
+                                                return;
+                                            };
+                                            break :blk HalValue{ .float = parsed };
+                                        },
+                                        .s32 => |_| {
+                                            const parsed = std.fmt.parseInt(i32, input, 10) catch {
+                                                // Invalid integer - just stay in edit mode
+                                                ctx.consumeAndRedraw();
+                                                return;
+                                            };
+                                            break :blk HalValue{ .s32 = parsed };
+                                        },
+                                        .u32 => |_| {
+                                            const parsed = std.fmt.parseInt(u32, input, 10) catch {
+                                                // Invalid unsigned - just stay in edit mode
+                                                ctx.consumeAndRedraw();
+                                                return;
+                                            };
+                                            break :blk HalValue{ .u32 = parsed };
+                                        },
+                                    }
                                 };
+
+                                // Write to HAL for pins only (params and signals are read-only in ULAPI)
+                                // IMPORTANT: FFI write must happen BEFORE store.updatePin to ensure
+                                // HAL value is written before cache update matches it
+                                if (node.item_type == .pin) {
+                                    const pin_ptr = self.getPinPointer(node.full_name) catch |err| {
+                                        std.debug.print("FFI write failed: pin '{}' not found ({})\n", .{node.full_name, err});
+                                        // Stay in edit mode on FFI error
+                                        ctx.consumeAndRedraw();
+                                        return;
+                                    };
+
+                                    // Call appropriate pin*Set function based on value type
+                                    switch (new_value) {
+                                        .bit => |val| safe.pinBitSet(@ptrCast(@alignCast(@constCast(pin_ptr))), val) catch |err| {
+                                            std.debug.print("FFI write failed: pinBitSet '{}' error {}\n", .{node.full_name, err});
+                                            ctx.consumeAndRedraw();
+                                            return;
+                                        },
+                                        .float => |val| safe.pinFloatSet(@ptrCast(@alignCast(@constCast(pin_ptr))), val) catch |err| {
+                                            std.debug.print("FFI write failed: pinFloatSet '{}' error {}\n", .{node.full_name, err});
+                                            ctx.consumeAndRedraw();
+                                            return;
+                                        },
+                                        .s32 => |val| safe.pinS32Set(@ptrCast(@alignCast(@constCast(pin_ptr))), val) catch |err| {
+                                            std.debug.print("FFI write failed: pinS32Set '{}' error {}\n", .{node.full_name, err});
+                                            ctx.consumeAndRedraw();
+                                            return;
+                                        },
+                                        .u32 => |val| safe.pinU32Set(@ptrCast(@alignCast(@constCast(pin_ptr))), val) catch |err| {
+                                            std.debug.print("FFI write failed: pinU32Set '{}' error {}\n", .{node.full_name, err});
+                                            ctx.consumeAndRedraw();
+                                            return;
+                                        },
+                                    }
+                                }
 
                                 // Update value in store
                                 switch (node.item_type) {
@@ -972,23 +1025,23 @@ pub const TreeView = struct {
                                            self.store.getSignal(self.edit_item.?.full_name) catch
                                            self.store.getParam(self.edit_item.?.full_name) catch null;
 
-                        const allowed = if (orig_value) |v| switch (v) {
-                            .float => {
-                                // Allow: digits, minus (start only), decimal point (once)
-                                if (new_char == '-' and self.edit_buffer.items.len == 0) true
-                                else if (new_char == '.' and std.mem.indexOfScalar(u8, self.edit_buffer.items, '.') == null) true
-                                else new_char >= '0' and new_char <= '9'
-                            },
-                            .s32 => {
-                                // Allow: digits, minus (start only)
-                                if (new_char == '-') self.edit_buffer.items.len == 0
-                                else new_char >= '0' and new_char <= '9'
-                            },
-                            .u32 => {
-                                // Allow: digits only
-                                new_char >= '0' and new_char <= '9'
-                            },
-                            .bit => false, // BIT doesn't use text edit
+                        const allowed = if (orig_value) |v| blk: {
+                            const result = switch (v) {
+                                .float => blk2: {
+                                    // Allow: digits, minus (start only), decimal point (once)
+                                    if (new_char == '-' and self.edit_buffer.items.len == 0) break :blk2 true
+                                    else if (new_char == '.' and std.mem.indexOfScalar(u8, self.edit_buffer.items, '.') == null) break :blk2 true
+                                    else break :blk2 new_char >= '0' and new_char <= '9';
+                                },
+                                .s32 => blk2: {
+                                    // Allow: digits, minus (start only)
+                                    if (new_char == '-') break :blk2 self.edit_buffer.items.len == 0
+                                    else break :blk2 new_char >= '0' and new_char <= '9';
+                                },
+                                .u32 => new_char >= '0' and new_char <= '9',
+                                .bit => false, // BIT doesn't use text edit
+                            };
+                            break :blk result;
                         } else false;
 
                         if (allowed) {
@@ -1082,6 +1135,22 @@ pub const TreeView = struct {
                             .bit => {
                                 // BIT: Toggle value directly (no edit mode)
                                 const new_value = !v.bit;
+
+                                // Write to HAL for pins only (signals are read-only)
+                                if (node.item_type == .pin) {
+                                    const pin_ptr = self.getPinPointer(node.full_name) catch |err| {
+                                        std.debug.print("FFI write failed: pin '{}' not found ({})\n", .{node.full_name, err});
+                                        ctx.consumeAndRedraw();
+                                        return;
+                                    };
+
+                                    safe.pinBitSet(@ptrCast(@alignCast(@constCast(pin_ptr))), new_value) catch |err| {
+                                        std.debug.print("FFI write failed: pinBitSet '{}' error {}\n", .{node.full_name, err});
+                                        ctx.consumeAndRedraw();
+                                        return;
+                                    };
+                                }
+
                                 try self.store.updatePin(node.full_name, HalValue{ .bit = new_value });
                                 ctx.consumeAndRedraw();
                                 return;
