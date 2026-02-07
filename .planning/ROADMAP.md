@@ -88,7 +88,7 @@ Plans:
 6. Signals can be removed from tree view (deletion prompt when last pin disconnected)
 7. Value changes reflect immediately in HAL and update displayed value
 
-**Plans**: 7 plans in 3 waves
+**Plans**: 9 plans in 3 waves
 
 Plans:
 - [ ] 06-01-PLAN.md — Add value column to tree view with live values (●/○ for BIT, decimal for FLOAT/U32)
@@ -98,6 +98,8 @@ Plans:
 - [ ] 06-05-PLAN.md — Add value column to table view with live values
 - [ ] 06-06-PLAN.md — Add in-place value editing to table view
 - [ ] 06-07-PLAN.md — Add status line showing full precision value of cursor item
+- [ ] 06-08-PLAN.md — Add FFI write calls to tree view value editing (gap closure)
+- [ ] 06-09-PLAN.md — Add FFI write calls to table view value editing (gap closure)
 
 ### Phase 7: Bookmarks & Plugins
 
