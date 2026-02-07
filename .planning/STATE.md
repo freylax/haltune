@@ -11,19 +11,19 @@ See: .planning/PROJECT.md (updated 2026-02-05)
 ## Current Position
 
 Phase: 06-live-values (Live Values & Editing)
-Plan: 01 of 3
+Plan: 03 of 3
 Status: In progress
-Last activity: 2026-02-07 — Completed 06-01 (Tree View Live Values)
+Last activity: 2026-02-07 — Completed 06-03 (Signal Connect/Create/Disconnect)
 
-Progress: [█████░░░░░░] 35%
+Progress: [███████░░░░] 47%
 
 ## Performance Metrics
 
 **Velocity:**
 - Total phases completed: 5 of 8 (v0.5)
-- Total plans completed: 21
-- Average duration: 8.6 min
-- Total execution time: 3.0 hours
+- Total plans completed: 23
+- Average duration: 8.2 min
+- Total execution time: 3.2 hours
 
 **By Phase:**
 
@@ -34,7 +34,7 @@ Progress: [█████░░░░░░] 35%
 | 03-tui-core | 5 | 5 | 6.0 min |
 | 04-config-editing | 3 | 3 | 4.3 min |
 | 05-view-switching | 2 | 2 | 2.0 min |
-| 06-live-values | 1 | ? | 2.0 min |
+| 06-live-values | 3 | ? | 3.3 min |
 
 *Updated after each plan completion*
 
@@ -78,6 +78,15 @@ Recent decisions affecting current work:
 - Unicode rendering: graphemeIterator and ctx.stringWidth required by Vaxis for multi-byte characters
 - Real-time updates via existing pubsub infrastructure (valueChangedCallback → redraw_flag → ctx.consumeAndRedraw)
 
+**From 06-03 (2026-02-07):**
+- Ctrl+S for signal editing: 'S' for Signal, distinct from Enter for value editing
+- Separate edit mode for signal connection (signal_edit_mode) distinct from value editing (edit_mode)
+- Type inference from pin value when creating signals prevents HAL type mismatch errors
+- Pre-populate signal name buffer with current signal for easy disconnection/modification
+- Signal name validation: alphanumeric + underscore + dash only (C identifier conventions)
+- Silent ignore for Ctrl+S on non-pins (no error message, TreeView lacks status line access)
+- Error logging to stderr instead of status messages (no Model.setError access in TreeView)
+
 ### Pending Todos
 
 None yet.
@@ -86,13 +95,14 @@ None yet.
 
 **v0.6 Milestone In Progress:**
 - Phase 06-01 complete: tree view displays live values with type-specific formatting
-- Phase 06-02 next: add live values to table view (reuse formatHalValue)
-- Phase 06-03 pending: inline value editing with type-specific input
-- Signal CRUD operations needed (create, remove, edit)
+- Phase 06-02 complete: inline value editing for pins/signals/params with type-specific validation
+- Phase 06-03 complete: signal connect/create/disconnect via Ctrl+S with type inference
+- Table view live values and editing still needed (plans 04-05)
+- Signal CRUD operations complete (create via Ctrl+S, remove via disconnect when last pin)
 
 ## Session Continuity
 
-Last session: 2026-02-07 (phase 06-01: Tree View Live Values)
-Stopped at: Completed 06-01-PLAN.md - formatHalValue function and value column rendering
+Last session: 2026-02-07 (phase 06-03: Signal Connect/Create/Disconnect)
+Stopped at: Completed 06-03-PLAN.md - signal edit mode with FFI integration
 Resume file: None
-Next action: Continue phase 06 with plan 02 (Table View Live Values)
+Next action: Continue phase 06 with plan 04 (Table View Live Values) or 05 (Table View Editing)
