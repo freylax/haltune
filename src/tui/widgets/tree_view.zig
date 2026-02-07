@@ -14,6 +14,7 @@ const std = @import("std");
 const vxfw = @import("vaxis").vxfw;
 const vaxis = @import("vaxis");
 const StateStore = @import("../../state/cache.zig").StateStore;
+const HalValue = @import("../../state/cache.zig").HalValue;
 const glob = @import("glob");
 
 /// Node type enumeration
@@ -89,6 +90,17 @@ pub const Node = struct {
         return depth;
     }
 };
+
+/// Format a HAL value for display in the value column
+/// Uses compact formatting: ●/○ for BIT, 6-char precision for FLOAT/U32
+fn formatHalValue(value: HalValue, allocator: std.mem.Allocator) ![]const u8 {
+    return switch (value) {
+        .bit => |v| if (v) "\xe2\x97\x8f" else "\xe2\x97\x8b", // UTF-8 for ●/○
+        .float => |v| std.fmt.allocPrint(allocator, "{d:.6}", .{v}) catch "ERR",
+        .s32 => |v| std.fmt.allocPrint(allocator, "{d}", .{v}) catch "ERR",
+        .u32 => |v| std.fmt.allocPrint(allocator, "{d}", .{v}) catch "ERR",
+    };
+}
 
 /// Tree navigation widget
 pub const TreeView = struct {
