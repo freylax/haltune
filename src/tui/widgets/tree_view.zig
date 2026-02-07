@@ -227,6 +227,11 @@ pub const TreeView = struct {
         }
         self.root.clearRetainingCapacity();
 
+        // Reset edit mode when tree rebuilds (node pointers become invalid)
+        self.edit_mode = false;
+        self.edit_item = null;
+        self.edit_buffer.clearRetainingCapacity();
+
         // Get all pins, signals, and params from StateStore
         const pins = try self.store.listPins(self.allocator);
         defer self.allocator.free(pins);
@@ -548,12 +553,28 @@ pub const TreeView = struct {
                     col += 1;
                 }
 
-                const value = self.store.getPin(node.full_name) catch
-                              self.store.getSignal(node.full_name) catch
-                              self.store.getParam(node.full_name) catch null;
+                // Get display string: edit buffer if editing, otherwise current value
+                const value_str = blk: {
+                    if (self.edit_mode and self.edit_item == node) {
+                        // Show edit buffer
+                        break :blk if (self.edit_buffer.items.len > 0)
+                            self.edit_buffer.items
+                        else
+                            "_"; // Placeholder for empty buffer
+                    } else {
+                        // Show current value from store
+                        const value = self.store.getPin(node.full_name) catch
+                                      self.store.getSignal(node.full_name) catch
+                                      self.store.getParam(node.full_name) catch null;
+                        if (value) |v| {
+                            break :blk formatHalValue(v, ctx.arena) catch "ERR";
+                        } else {
+                            break :blk "";
+                        }
+                    }
+                };
 
-                if (value) |v| {
-                    const value_str = formatHalValue(v, ctx.arena) catch "ERR";
+                if (value_str.len > 0) {
                     const value_width = ctx.stringWidth(value_str);
 
                     // Right-align value in 8-character column
@@ -570,7 +591,10 @@ pub const TreeView = struct {
                         if (col + grapheme_width <= surface.size.width) {
                             surface.writeCell(col, row, .{
                                 .char = .{ .grapheme = grapheme, .width = grapheme_width },
-                                .style = .{},
+                                .style = if (self.edit_mode and self.edit_item == node)
+                                    .{ .reverse = true } // Highlight editing
+                                else
+                                    .{},
                             });
                             col += grapheme_width;
                         }
