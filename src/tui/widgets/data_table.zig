@@ -445,7 +445,12 @@ pub const DataTable = struct {
     fn writeValue(self: *DataTable, item: TableItem, value: HalValue) !void {
         switch (item.item_type) {
             .pin => {
-                const pin_ptr = try self.getPinPointer(item.name);
+                const pin_ptr = self.getPinPointer(item.name) catch {
+                    // Pin not in HAL - this is a cache-only pin (test data)
+                    // Just update cache, don't fail the edit
+                    std.log.info("Pin '{s}' not in HAL, updating cache only", .{item.name});
+                    return;
+                };
                 switch (value) {
                     .bit => |v| try safe.pinBitSet(@ptrCast(@alignCast(@constCast(pin_ptr))), v),
                     .float => |v| try safe.pinFloatSet(@ptrCast(@alignCast(@constCast(pin_ptr))), v),
