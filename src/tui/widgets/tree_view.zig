@@ -153,12 +153,12 @@ pub const TreeView = struct {
     /// Edit mode state
     edit_mode: bool = false,
     edit_item: ?*Node = null,
-    edit_buffer: std.ArrayList(u8) = std.ArrayList(u8).initCapacity(0, 0) catch unreachable,
+    edit_buffer: std.ArrayList(u8),
 
     /// Signal editing state (for Ctrl+S connect/create/disconnect)
     signal_edit_mode: bool = false,
     signal_edit_pin: ?*Node = null,
-    signal_edit_buffer: std.ArrayList(u8) = std.ArrayList(u8).initCapacity(0, 0) catch unreachable,
+    signal_edit_buffer: std.ArrayList(u8),
 
     /// Signal deletion prompt state
     signal_delete_prompt: bool = false,
@@ -171,8 +171,8 @@ pub const TreeView = struct {
         const root_list = std.ArrayList(*Node).initCapacity(allocator, 0) catch return error.OutOfMemory;
         const visible_nodes_list = std.ArrayList(*Node).initCapacity(allocator, 0) catch return error.OutOfMemory;
         const search_buffer_list = std.ArrayList(u8).initCapacity(allocator, 0) catch return error.OutOfMemory;
-        const edit_buffer_list = std.ArrayList(u8).init(allocator);
-        const signal_edit_buffer_list = std.ArrayList(u8).init(allocator);
+        const edit_buffer_list = std.ArrayList(u8).initCapacity(allocator, 0) catch return error.OutOfMemory;
+        const signal_edit_buffer_list = std.ArrayList(u8).initCapacity(allocator, 0) catch return error.OutOfMemory;
 
         const tree_view = TreeView{
             .allocator = allocator,
@@ -793,7 +793,7 @@ pub const TreeView = struct {
                                 // Disconnect: Unlink pin from signal
                                 const old_signal = self.store.pin_links.get(pin_name);
 
-                                ffi.halUnlink(pin_name) catch |err| {
+                                ffi.halUnlink(try self.allocator.dupeZ(u8, pin_name)) catch |err| {
                                     std.log.err("Disconnect failed: {}", .{err});
                                     ctx.consumeAndRedraw();
                                     return;
@@ -824,23 +824,22 @@ pub const TreeView = struct {
                                 // Connect or create signal
                                 // 1. Get current pin value to infer type
                                 const pin_value = self.store.getPin(pin_name) catch {
-                                    std.log.err("Failed to read pin value");
+                                    std.log.err("Failed to read pin value: {s}", .{pin_name});
                                     ctx.consumeAndRedraw();
                                     return;
                                 };
 
                                 // 2. Determine HAL type from value
-                                const c = @import("vaxis").c;
                                 const hal_type_t = @import("../../ffi/types.zig").hal_type_t;
                                 const hal_type: hal_type_t = switch (pin_value) {
-                                    .bit => c.HAL_BIT,
-                                    .float => c.HAL_FLOAT,
-                                    .s32 => c.HAL_S32,
-                                    .u32 => c.HAL_U32,
+                                    .bit => .HAL_BIT,
+                                    .float => .HAL_FLOAT,
+                                    .s32 => .HAL_S32,
+                                    .u32 => .HAL_U32,
                                 };
 
                                 // 3. Check if signal exists
-                                const signal_exists = self.store.getSignal(signal_name) != null;
+                                const signal_exists = self.store.getSignal(signal_name) catch null != null;
 
                                 if (!signal_exists) {
                                     // Create new signal with inferred type
@@ -858,10 +857,12 @@ pub const TreeView = struct {
                                 }
 
                                 // 4. Link pin to signal
+                                const pin_name_z = try self.allocator.dupeZ(u8, pin_name);
+                                defer self.allocator.free(pin_name_z);
                                 const signal_name_z = try self.allocator.dupeZ(u8, signal_name);
                                 defer self.allocator.free(signal_name_z);
 
-                                ffi.halLink(pin_name, signal_name_z) catch |err| {
+                                ffi.halLink(pin_name_z, signal_name_z) catch |err| {
                                     std.log.err("Link failed: {}", .{err});
                                     ctx.consumeAndRedraw();
                                     return;
@@ -960,8 +961,8 @@ pub const TreeView = struct {
                                 // IMPORTANT: FFI write must happen BEFORE store.updatePin to ensure
                                 // HAL value is written before cache update matches it
                                 if (node.item_type == .pin) {
-                                    const pin_ptr = self.getPinPointer(node.full_name) catch |err| {
-                                        std.debug.print("FFI write failed: pin '{}' not found ({})\n", .{node.full_name, err});
+                                    const pin_ptr = getPinPointer(self, node.full_name) catch |err| {
+                                        std.debug.print("FFI write failed: pin '{s}' not found ({})\n", .{node.full_name, err});
                                         // Stay in edit mode on FFI error
                                         ctx.consumeAndRedraw();
                                         return;
@@ -970,22 +971,22 @@ pub const TreeView = struct {
                                     // Call appropriate pin*Set function based on value type
                                     switch (new_value) {
                                         .bit => |val| safe.pinBitSet(@ptrCast(@alignCast(@constCast(pin_ptr))), val) catch |err| {
-                                            std.debug.print("FFI write failed: pinBitSet '{}' error {}\n", .{node.full_name, err});
+                                            std.debug.print("FFI write failed: pinBitSet '{s}' error {}\n", .{node.full_name, err});
                                             ctx.consumeAndRedraw();
                                             return;
                                         },
                                         .float => |val| safe.pinFloatSet(@ptrCast(@alignCast(@constCast(pin_ptr))), val) catch |err| {
-                                            std.debug.print("FFI write failed: pinFloatSet '{}' error {}\n", .{node.full_name, err});
+                                            std.debug.print("FFI write failed: pinFloatSet '{s}' error {}\n", .{node.full_name, err});
                                             ctx.consumeAndRedraw();
                                             return;
                                         },
                                         .s32 => |val| safe.pinS32Set(@ptrCast(@alignCast(@constCast(pin_ptr))), val) catch |err| {
-                                            std.debug.print("FFI write failed: pinS32Set '{}' error {}\n", .{node.full_name, err});
+                                            std.debug.print("FFI write failed: pinS32Set '{s}' error {}\n", .{node.full_name, err});
                                             ctx.consumeAndRedraw();
                                             return;
                                         },
                                         .u32 => |val| safe.pinU32Set(@ptrCast(@alignCast(@constCast(pin_ptr))), val) catch |err| {
-                                            std.debug.print("FFI write failed: pinU32Set '{}' error {}\n", .{node.full_name, err});
+                                            std.debug.print("FFI write failed: pinU32Set '{s}' error {}\n", .{node.full_name, err});
                                             ctx.consumeAndRedraw();
                                             return;
                                         },
@@ -1138,14 +1139,14 @@ pub const TreeView = struct {
 
                                 // Write to HAL for pins only (signals are read-only)
                                 if (node.item_type == .pin) {
-                                    const pin_ptr = self.getPinPointer(node.full_name) catch |err| {
-                                        std.debug.print("FFI write failed: pin '{}' not found ({})\n", .{node.full_name, err});
+                                    const pin_ptr = getPinPointer(self, node.full_name) catch |err| {
+                                        std.debug.print("FFI write failed: pin '{s}' not found ({})\n", .{node.full_name, err});
                                         ctx.consumeAndRedraw();
                                         return;
                                     };
 
                                     safe.pinBitSet(@ptrCast(@alignCast(@constCast(pin_ptr))), new_value) catch |err| {
-                                        std.debug.print("FFI write failed: pinBitSet '{}' error {}\n", .{node.full_name, err});
+                                        std.debug.print("FFI write failed: pinBitSet '{s}' error {}\n", .{node.full_name, err});
                                         ctx.consumeAndRedraw();
                                         return;
                                     };
@@ -1163,7 +1164,7 @@ pub const TreeView = struct {
                                 // Pre-populate with current value
                                 const current_str = formatHalValue(v, self.allocator) catch "";
                                 defer self.allocator.free(current_str);
-                                try self.edit_buffer.appendSlice(current_str);
+                                try self.edit_buffer.appendSlice(self.allocator, current_str);
                                 ctx.consumeAndRedraw();
                                 return;
                             },

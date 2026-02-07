@@ -554,7 +554,7 @@ pub const StateStore = struct {
     ///
     /// Returns:
     ///   - Number of pins linked to this signal
-    pub fn countPinsForSignal(self: *const StateStore, signal_name: []const u8) usize {
+    pub fn countPinsForSignal(self: *StateStore, signal_name: []const u8) usize {
         self.rwlock.lockShared();
         defer self.rwlock.unlockShared();
 

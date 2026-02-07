@@ -136,12 +136,12 @@ fn createHelpText(ctx: vxfw.DrawContext, view_mode: ViewMode, model: *const Mode
     };
 
     // Build help text components
-    var text_parts = std.ArrayList([]const u8).init(ctx.arena);
-    defer text_parts.deinit();
+    var text_parts = std.ArrayList([]const u8).initCapacity(ctx.arena, 0) catch unreachable;
+    defer text_parts.deinit(ctx.arena);
 
     // Add cursor value if present
     if (cursor_value_text.len > 0) {
-        try text_parts.append(cursor_value_text);
+        try text_parts.append(ctx.arena, cursor_value_text);
     }
 
     // Add view-switching hint
@@ -149,10 +149,10 @@ fn createHelpText(ctx: vxfw.DrawContext, view_mode: ViewMode, model: *const Mode
         .tree_only => "Ctrl+T=Table View",
         .table_only => "Ctrl+T=Tree View",
     };
-    try text_parts.append(view_hint);
+    try text_parts.append(ctx.arena, view_hint);
 
     // Add general help
-    try text_parts.append("Space=Check +/-=Visibility /=Search Esc=Clear");
+    try text_parts.append(ctx.arena, "Space=Check +/-=Visibility /=Search Esc=Clear");
 
     // Combine with separator
     const combined = if (text_parts.items.len > 0)
