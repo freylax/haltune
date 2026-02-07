@@ -13,8 +13,9 @@
 const std = @import("std");
 const vxfw = @import("vaxis").vxfw;
 const vaxis = @import("vaxis");
-const StateStore = @import("../../state/cache.zig").StateStore;
-const HalValue = @import("../../state/cache.zig").HalValue;
+const cache = @import("../../state/cache.zig");
+const StateStore = cache.StateStore;
+const HalValue = cache.HalValue;
 const glob = @import("glob");
 
 /// Node type enumeration
@@ -426,7 +427,9 @@ pub const TreeView = struct {
                 .partial => 2, // " +"
                 .full => 2, // " *"
             };
-            const line_len = 1 + indent + sym_len + node.name.len;
+            // Add 1 space + 8 char value column for non-component nodes
+            const value_col_width: usize = if (node.item_type == .component) 0 else 9;
+            const line_len = 1 + indent + sym_len + node.name.len + value_col_width;
             max_width = @max(max_width, line_len);
         }
 
@@ -515,6 +518,44 @@ pub const TreeView = struct {
                     surface.writeCell(col, row, .{ .char = .{ .grapheme = "*", .width = 1 }, .style = .{} });
                     col += 1;
                 },
+            }
+
+            // Fetch and display value for leaf nodes (pins/signals/params)
+            if (node.item_type != .component) {
+                // Add space before value column
+                if (col < surface.size.width - 8) {
+                    surface.writeCell(col, row, .{ .char = .{ .grapheme = " ", .width = 1 }, .style = .{} });
+                    col += 1;
+                }
+
+                const value = self.store.getPin(node.full_name) catch
+                              self.store.getSignal(node.full_name) catch
+                              self.store.getParam(node.full_name) catch null;
+
+                if (value) |v| {
+                    const value_str = formatHalValue(v, ctx.arena) catch "ERR";
+                    const value_width = ctx.stringWidth(value_str);
+
+                    // Right-align value in 8-character column
+                    const value_col_start = @min(surface.size.width -| value_width, surface.size.width -| 8);
+                    if (col < value_col_start) {
+                        col = value_col_start;
+                    }
+
+                    // Write value string with grapheme iterator for proper Unicode width
+                    var value_char_iter = ctx.graphemeIterator(value_str);
+                    while (value_char_iter.next()) |char| {
+                        const grapheme = char.bytes(value_str);
+                        const grapheme_width: u8 = @intCast(ctx.stringWidth(grapheme));
+                        if (col + grapheme_width <= surface.size.width) {
+                            surface.writeCell(col, row, .{
+                                .char = .{ .grapheme = grapheme, .width = grapheme_width },
+                                .style = .{},
+                            });
+                            col += grapheme_width;
+                        }
+                    }
+                }
             }
 
             row += 1;
