@@ -573,6 +573,141 @@ pub const DataTable = struct {
                     return; // Ignore other keys in component filter mode
                 }
 
+                // Table edit mode handling (new in-place editing)
+                if (self.table_edit_mode) {
+                    // Escape: cancel edit
+                    if (key.matches(vaxis.Key.escape, .{})) {
+                        self.table_edit_mode = false;
+                        self.table_edit_row = null;
+                        self.table_edit_buffer.clearRetainingCapacity();
+                        ctx.consumeAndRedraw();
+                        return;
+                    }
+
+                    // Enter: confirm edit
+                    if (key.matches(vaxis.Key.enter, .{})) {
+                        if (self.table_edit_row) |row_idx| {
+                            if (row_idx < self.items.items.len) {
+                                const item = &self.items.items[row_idx];
+                                const input = self.table_edit_buffer.items;
+
+                                // Get original value to determine type
+                                const orig_value = blk: {
+                                    if (item.item_type == .pin) break :blk self.store.getPin(item.name) catch null;
+                                    if (item.item_type == .signal) break :blk self.store.getSignal(item.name) catch null;
+                                    if (item.item_type == .param) break :blk self.store.getParam(item.name) catch null;
+                                    break :blk null;
+                                };
+
+                                if (orig_value) |v| {
+                                    // Parse and validate input based on type
+                                    const new_value: HalValue = switch (v) {
+                                        .bit => |b| .{ .bit = b },
+                                        .float => blk: {
+                                            const parsed = std.fmt.parseFloat(f64, input) catch {
+                                                self.setError("Invalid float") catch {};
+                                                self.error_timeout = std.time.nanoTimestamp() + 2_000_000_000;
+                                                ctx.consumeAndRedraw();
+                                                // Exit edit mode and return early from outer function
+                                                self.table_edit_mode = false;
+                                                self.table_edit_row = null;
+                                                self.table_edit_buffer.clearRetainingCapacity();
+                                                return;
+                                            };
+                                            break :blk .{ .float = parsed };
+                                        },
+                                        .s32 => blk: {
+                                            const parsed = std.fmt.parseInt(i32, input, 10) catch {
+                                                self.setError("Invalid integer") catch {};
+                                                self.error_timeout = std.time.nanoTimestamp() + 2_000_000_000;
+                                                ctx.consumeAndRedraw();
+                                                self.table_edit_mode = false;
+                                                self.table_edit_row = null;
+                                                self.table_edit_buffer.clearRetainingCapacity();
+                                                return;
+                                            };
+                                            break :blk .{ .s32 = parsed };
+                                        },
+                                        .u32 => blk: {
+                                            const parsed = std.fmt.parseInt(u32, input, 10) catch {
+                                                self.setError("Invalid unsigned") catch {};
+                                                self.error_timeout = std.time.nanoTimestamp() + 2_000_000_000;
+                                                ctx.consumeAndRedraw();
+                                                self.table_edit_mode = false;
+                                                self.table_edit_row = null;
+                                                self.table_edit_buffer.clearRetainingCapacity();
+                                                return;
+                                            };
+                                            break :blk .{ .u32 = parsed };
+                                        },
+                                    };
+
+                                    // Update value in store
+                                    if (item.item_type == .pin) {
+                                        try self.store.updatePin(item.name, new_value);
+                                    } else if (item.item_type == .signal) {
+                                        try self.store.updateSignal(item.name, new_value);
+                                    } else if (item.item_type == .param) {
+                                        try self.store.updateParam(item.name, new_value);
+                                    }
+                                    // TODO: Call FFI to write actual HAL value (pending)
+                                }
+                            }
+
+                            self.table_edit_mode = false;
+                            self.table_edit_row = null;
+                            self.table_edit_buffer.clearRetainingCapacity();
+                            ctx.consumeAndRedraw();
+                            return;
+                        }
+                    }
+
+                    // Backspace: remove last character
+                    if (key.codepoint == 127) {
+                        if (self.table_edit_buffer.items.len > 0) {
+                            _ = self.table_edit_buffer.pop();
+                            ctx.consumeAndRedraw();
+                        }
+                        return;
+                    }
+
+                    // Type-specific character validation
+                    if (key.codepoint >= 32 and key.codepoint < 127) {
+                        const new_char = @as(u8, @intCast(key.codepoint));
+                        // Same validation as tree view - allow digits, minus, decimal point
+                        if (self.table_edit_row) |row_idx| {
+                            if (row_idx < self.items.items.len) {
+                                const item = &self.items.items[row_idx];
+                                const allowed = switch (item.hal_type) {
+                                    .float => blk: {
+                                        // Allow: digits, minus (start only), decimal point (once)
+                                        const result = if (new_char == '-' and self.table_edit_buffer.items.len == 0) true
+                                            else if (new_char == '.' and std.mem.indexOfScalar(u8, self.table_edit_buffer.items, '.') == null) true
+                                            else new_char >= '0' and new_char <= '9';
+                                        break :blk result;
+                                    },
+                                    .s32 => blk: {
+                                        // Allow: digits, minus (start only)
+                                        const result = if (new_char == '-') self.table_edit_buffer.items.len == 0
+                                            else new_char >= '0' and new_char <= '9';
+                                        break :blk result;
+                                    },
+                                    .u32 => new_char >= '0' and new_char <= '9',
+                                    .bit => false, // BIT values toggle, no edit mode
+                                };
+
+                                if (allowed) {
+                                    try self.table_edit_buffer.append(self.allocator, new_char);
+                                    ctx.consumeAndRedraw();
+                                }
+                            }
+                        }
+                        return;
+                    }
+
+                    return; // Ignore other keys in edit mode
+                }
+
                 // Cursor movement for row selection
                 if (key.matches(vaxis.Key.up, .{})) {
                     if (self.cursor_row > 0) {
@@ -588,6 +723,70 @@ pub const DataTable = struct {
                         ctx.consumeAndRedraw();
                     }
                     return;
+                }
+
+                // "Enter": Edit value or toggle BIT at cursor
+                if (key.matches(vaxis.Key.enter, .{})) {
+                    if (self.items.items.len == 0 or self.cursor_row >= self.items.items.len) return;
+
+                    const item = &self.items.items[self.cursor_row];
+
+                    // Check if value is writable (input pins connected to signals are NOT writable)
+                    const is_writable = blk: {
+                        if (item.item_type == .pin) {
+                            // Check if pin is connected to a signal
+                            if (self.store.pin_links.get(item.name)) |_| {
+                                break :blk false; // Connected pins get value from signal
+                            }
+                        }
+                        break :blk item.is_writable; // Use TableItem's is_writable field
+                    };
+
+                    if (!is_writable) {
+                        self.setError("Cannot edit - pin is connected to signal") catch {};
+                        self.error_timeout = std.time.nanoTimestamp() + 3_000_000_000; // 3 seconds
+                        ctx.consumeAndRedraw();
+                        return;
+                    }
+
+                    // Get current value to determine type
+                    const value = blk: {
+                        if (item.item_type == .pin) break :blk self.store.getPin(item.name) catch null;
+                        if (item.item_type == .signal) break :blk self.store.getSignal(item.name) catch null;
+                        if (item.item_type == .param) break :blk self.store.getParam(item.name) catch null;
+                        break :blk null;
+                    };
+
+                    if (value) |v| {
+                        switch (v) {
+                            .bit => {
+                                // BIT: Toggle value directly (no edit mode)
+                                const new_value = !v.bit;
+                                if (item.item_type == .pin) {
+                                    try self.store.updatePin(item.name, HalValue{ .bit = new_value });
+                                } else if (item.item_type == .signal) {
+                                    try self.store.updateSignal(item.name, HalValue{ .bit = new_value });
+                                } else if (item.item_type == .param) {
+                                    try self.store.updateParam(item.name, HalValue{ .bit = new_value });
+                                }
+                                // TODO: Call FFI to write actual HAL value (pending)
+                                ctx.consumeAndRedraw();
+                                return;
+                            },
+                            .float, .s32, .u32 => {
+                                // Numeric: Enter edit mode
+                                self.table_edit_mode = true;
+                                self.table_edit_row = self.cursor_row;
+                                self.table_edit_buffer.clearRetainingCapacity();
+                                // Pre-populate with current value
+                                const current_str = formatHalValue(v, self.allocator) catch "";
+                                defer self.allocator.free(current_str);
+                                try self.table_edit_buffer.appendSlice(current_str);
+                                ctx.consumeAndRedraw();
+                                return;
+                            },
+                        }
+                    }
                 }
 
                 // Legacy edit mode handling
@@ -858,9 +1057,11 @@ pub const DataTable = struct {
             // Highlight cursor row
             const is_cursor = (idx == self.cursor_row);
 
-            // Highlight row being edited (legacy edit mode)
+            // Highlight row being edited (legacy edit mode or table edit mode)
             const final_style = if (self.edit_mode and self.edit_item != null and self.edit_item.? == idx)
                 vaxis.Style{ .fg = .{ .index = 2 }, .bold = true, .reverse = true } // Bold reverse for edit
+            else if (self.table_edit_mode and self.table_edit_row != null and self.table_edit_row.? == idx)
+                vaxis.Style{ .fg = base_style.fg, .reverse = true } // Reverse for table edit
             else if (is_cursor)
                 vaxis.Style{ .fg = base_style.fg, .reverse = true } // Reverse for cursor
             else
@@ -884,7 +1085,15 @@ pub const DataTable = struct {
 
             // Get current value or edit buffer
             const value_str = blk: {
-                // If editing this item, show edit buffer
+                // If table editing this row, show edit buffer
+                if (self.table_edit_mode and self.table_edit_row != null and self.table_edit_row.? == idx) {
+                    break :blk if (self.table_edit_buffer.items.len > 0)
+                        self.table_edit_buffer.items
+                    else
+                        "_";
+                }
+
+                // If editing this item (legacy), show edit buffer
                 if (self.edit_mode and self.edit_item != null and self.edit_item.? == idx) {
                     break :blk self.edit_buffer.items;
                 }
