@@ -166,6 +166,26 @@ pub fn halSignalNew(name: [:0]const u8, hal_type: hal_type_t) !void {
     if (rc != 0) return HalError.InitFailed;
 }
 
+/// Delete a HAL signal
+///
+/// Removes a signal from the HAL. All pins linked to this signal
+/// will be unlinked first. The signal must exist.
+///
+/// Parameters:
+///   - name: Null-terminated signal name to delete
+///
+/// Returns:
+///   - void on success
+///   - error.NotFound if signal doesn't exist
+///
+/// Thread safety:
+///   - hal_signal_delete acquires HAL mutex internally
+pub fn halSignalDelete(name: [:0]const u8) !void {
+    if (c.hal_signal_delete(name) < 0) {
+        return HalError.NotFound;
+    }
+}
+
 /// Link a pin to a signal
 ///
 /// This function links an existing pin to an existing signal.

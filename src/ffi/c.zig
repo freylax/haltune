@@ -61,9 +61,11 @@ pub extern "c" fn hal_malloc(size: c_long) ?*anyopaque;
 // hal_signal_new: Create a new signal with specified name and type
 // hal_link: Link a pin to a signal (both must exist and have same type)
 // hal_unlink: Unlink a pin from its signal
+// hal_signal_delete: Delete a signal (unlinks all pins first)
 pub extern "c" fn hal_signal_new(name: [*:0]const u8, type: c_int) c_int;
 pub extern "c" fn hal_link(pin_name: [*:0]const u8, signal_name: [*:0]const u8) c_int;
 pub extern "c" fn hal_unlink(pin_name: [*:0]const u8) c_int;
+pub extern "c" fn hal_signal_delete(name: [*:0]const u8) c_int;
 
 // HAL value reading functions
 // These functions read pin/signal/param values by name, returning type and data union

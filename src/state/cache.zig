@@ -544,6 +544,30 @@ pub const StateStore = struct {
         }
     }
 
+    /// Count how many pins are linked to a signal
+    ///
+    /// Iterates through pin_links to count connections to the given signal.
+    /// Used to determine if a signal is orphaned (no pins connected).
+    ///
+    /// Parameters:
+    ///   - signal_name: Signal name to count pins for
+    ///
+    /// Returns:
+    ///   - Number of pins linked to this signal
+    pub fn countPinsForSignal(self: *const StateStore, signal_name: []const u8) usize {
+        self.rwlock.lockShared();
+        defer self.rwlock.unlockShared();
+
+        var count: usize = 0;
+        var iter = self.pin_links.iterator();
+        while (iter.next()) |entry| {
+            if (std.mem.eql(u8, entry.value_ptr.*, signal_name)) {
+                count += 1;
+            }
+        }
+        return count;
+    }
+
     /// Remove a pin from the cache
     ///
     /// Deletes a pin entry from the cache. Used by refresh thread to remove
