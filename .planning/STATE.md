@@ -11,11 +11,11 @@ See: .planning/PROJECT.md (updated 2026-02-05)
 ## Current Position
 
 Phase: 06-live-values (Live Values & Editing)
-Plan: 09 of 7 (gap closure)
+Plan: 08 of 7 (gap closure)
 Status: In progress
-Last activity: 2026-02-08 — Completed 06-09 (Table View FFI Write Integration)
+Last activity: 2026-02-07 — Completed 06-08 (Tree View FFI Write Integration)
 
-Progress: [█████████░] 85%
+Progress: [████████░░] 80%
 
 ## Performance Metrics
 
@@ -34,7 +34,7 @@ Progress: [█████████░] 85%
 | 03-tui-core | 5 | 5 | 6.0 min |
 | 04-config-editing | 3 | 3 | 4.3 min |
 | 05-view-switching | 2 | 2 | 2.0 min |
-| 06-live-values | 7 | 7 | 2.6 min |
+| 06-live-values | 8 | ? | 2.7 min |
 
 *Updated after each plan completion*
 
@@ -124,6 +124,16 @@ Recent decisions affecting current work:
 - Separate table_edit_mode state: avoids conflict with legacy edit_mode, provides clean separation
 - Store updates via updatePin/updateSignal/updateParam: FFI write functions TODO (pending future implementation)
 
+**From 06-08 (2026-02-07):**
+- Tree view FFI write integration: pinBitSet/pinFloatSet/pinS32Set/pinU32Set called before store updates
+- getPinPointer helper function: allocates null-terminated name, calls halprFindPinByName, returns pointer
+- HAL-first write pattern: FFI write BEFORE store.updatePin ensures hardware is source of truth
+- Error handling for FFI failures: stderr logging, stay in edit mode on error for retry
+- Params skip FFI writes (setParam* returns InitFailed in ULAPI - read-only)
+- Signals skip FFI writes (signals are read-only, values come from linked pins)
+- Both numeric edit mode confirm AND BIT toggle logic write to HAL (not just edit mode)
+- Fixed pre-existing syntax bugs in switch expressions (Rule 1 auto-fix during FFI integration)
+
 **From 06-09 (2026-02-08):**
 - Table view FFI write integration: writeValue() called before store updates in table_edit_mode
 - HAL-first write pattern: Write to hardware before updating cache to ensure hardware is source of truth
@@ -138,16 +148,17 @@ None yet.
 
 ### Blockers/Concerns
 
-**v0.6 Milestone Complete:**
+**v0.6 Milestone Near Complete:**
 - Phase 05 complete: view switching (tree ↔ table) with Ctrl-t
-- Phase 06 complete: live values in tree and table views, inline editing in both views with full HAL persistence
-- Table view editing fully implemented (06-06, 06-09): cursor selection, BIT toggle, numeric edit with validation, FFI writes
-- FFI write integration complete (06-09): all edits persist to HAL via pinBitSet/pinFloatSet/pinS32Set/pinU32Set
-- Ready for phase 07 or next feature development
+- Phase 06 mostly complete: live values in tree and table views, inline editing in both views
+- Tree view editing NOW COMPLETE (06-08): FFI write integration with HAL-first pattern, error handling
+- Table view editing implemented (06-06): cursor selection, BIT toggle, numeric edit with validation
+- Table view FFI write integration TODO: value edits update store only, pending halPinSet* calls
+- One remaining plan (06-09): table view FFI write integration to complete milestone
 
 ## Session Continuity
 
-Last session: 2026-02-08 (phase 06-09: Table View FFI Write Integration)
-Stopped at: Completed 06-09-PLAN.md - FFI write calls integrated, TODO comments removed, error handling added
+Last session: 2026-02-07 (phase 06-08: Tree View FFI Write Integration)
+Stopped at: Completed 06-08-PLAN.md - FFI write calls integrated, getPinPointer helper added, syntax bugs fixed
 Resume file: None
-Next action: Begin phase 07 or next feature development
+Next action: Continue with 06-09 (table view FFI write integration) or begin phase 07
