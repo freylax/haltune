@@ -896,8 +896,27 @@ pub const DataTable = struct {
                 }
             }
 
-            // Add value
-            try row_buffer.appendSlice(ctx.arena, value_str);
+            // Add value (right-aligned in value_width column)
+            // Calculate current position and pad to right-align value
+            const current_pos = row_buffer.items.len;
+            const value_end_pos = name_width + type_width + dir_width + value_width;
+            const value_width_needed = @min(ctx.stringWidth(value_str), value_width);
+            const value_start_pos = value_end_pos -| value_width_needed;
+
+            // Pad to start of value column
+            {
+                var i: usize = current_pos;
+                while (i < value_start_pos) : (i += 1) {
+                    try row_buffer.append(ctx.arena, ' ');
+                }
+            }
+
+            // Add value string (use graphemeIterator for proper Unicode width)
+            var char_iter = ctx.graphemeIterator(value_str);
+            while (char_iter.next()) |char| {
+                const grapheme = char.bytes(value_str);
+                try row_buffer.appendSlice(ctx.arena, grapheme);
+            }
 
             std.log.debug("  row_buffer='{s}'", .{row_buffer.items});
             // IMPORTANT: Allocate Text widget in arena so it persists
