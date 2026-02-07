@@ -1263,6 +1263,17 @@ pub const TreeView = struct {
             try self.checked_items.put(parent.full_name, .partial);
         }
     }
+
+    /// Get the currently focused (cursor) node
+    pub fn getCursorNode(self: *const TreeView) ?*Node {
+        if (self.visible_nodes.items.len == 0) return null;
+        return self.visible_nodes.items[self.cursor_index];
+    }
+
+    /// Check if tree is in edit mode (value or signal editing)
+    pub fn isEditMode(self: *const TreeView) bool {
+        return self.edit_mode or self.signal_edit_mode or self.signal_delete_prompt;
+    }
 };
 
 /// Helper struct to group HAL items by component

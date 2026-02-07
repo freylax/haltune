@@ -9,6 +9,7 @@ const TreeView = @import("widgets/tree_view.zig").TreeView;
 const TreeNode = @import("widgets/tree_view.zig").Node;
 const VisibilityState = @import("widgets/tree_view.zig").VisibilityState;
 const DataTable = @import("widgets/data_table.zig").DataTable;
+const ItemType = @import("widgets/data_table.zig").ItemType;
 const SignalDialog = @import("widgets/signal_dialog.zig").SignalDialog;
 
 /// View mode enumeration for single-panel layout switching
@@ -318,6 +319,43 @@ pub const Model = struct {
             return true;
         }
         return false;
+    }
+
+    /// Get full precision value string for a HAL item
+    ///
+    /// Returns a formatted string showing the item's name, type, and full
+    /// precision value. Unlike the compact format used in tree view (6 chars),
+    /// this uses full precision for floats and word-format for bits.
+    ///
+    /// Example output:
+    ///   - "motion.digital-in-00: BIT TRUE"
+    ///   - "motion.analog-in-00: FLOAT 3.14159265358979"
+    pub fn getFullValueString(self: *const Model, allocator: std.mem.Allocator, item_name: []const u8, item_type: ItemType) ![]const u8 {
+        const value = switch (item_type) {
+            .pin => self.store.getPin(item_name) catch null,
+            .signal => self.store.getSignal(item_name) catch null,
+            .param => self.store.getParam(item_name) catch null,
+        };
+
+        if (value) |v| {
+            const type_str = switch (v) {
+                .bit => "BIT",
+                .float => "FLOAT",
+                .s32 => "S32",
+                .u32 => "U32",
+            };
+
+            const value_str = switch (v) {
+                .bit => |b| if (b) "TRUE" else "FALSE",
+                .float => |f| try std.fmt.allocPrint(allocator, "{d}", .{f}),
+                .s32 => |s| try std.fmt.allocPrint(allocator, "{d}", .{s}),
+                .u32 => |u| try std.fmt.allocPrint(allocator, "{d}", .{u}),
+            };
+
+            return std.fmt.allocPrint(allocator, "{s}: {s} {s}", .{ item_name, type_str, value_str });
+        } else {
+            return std.fmt.allocPrint(allocator, "{s}: (no value)", .{item_name});
+        }
     }
 
     /// Open signal creation dialog
