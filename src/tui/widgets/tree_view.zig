@@ -232,6 +232,11 @@ pub const TreeView = struct {
         self.edit_item = null;
         self.edit_buffer.clearRetainingCapacity();
 
+        // Reset signal edit mode when tree rebuilds
+        self.signal_edit_mode = false;
+        self.signal_edit_pin = null;
+        self.signal_edit_buffer.clearRetainingCapacity();
+
         // Get all pins, signals, and params from StateStore
         const pins = try self.store.listPins(self.allocator);
         defer self.allocator.free(pins);
@@ -687,6 +692,116 @@ pub const TreeView = struct {
                     }
 
                     return; // Ignore other keys in search mode
+                }
+
+                // Signal edit mode handling (Ctrl+S on pin)
+                if (self.signal_edit_mode) {
+                    const ffi = @import("../../ffi/safe.zig");
+
+                    // Escape: cancel
+                    if (key.matches(vaxis.Key.escape, .{})) {
+                        self.signal_edit_mode = false;
+                        self.signal_edit_pin = null;
+                        self.signal_edit_buffer.clearRetainingCapacity();
+                        ctx.consumeAndRedraw();
+                        return;
+                    }
+
+                    // Enter: connect to signal (empty = disconnect)
+                    if (key.matches(vaxis.Key.enter, .{})) {
+                        if (self.signal_edit_pin) |pin_node| {
+                            const pin_name = pin_node.full_name;
+                            const signal_name = self.signal_edit_buffer.items;
+
+                            if (signal_name.len == 0) {
+                                // Disconnect: Unlink pin from signal
+                                ffi.halUnlink(pin_name) catch |err| {
+                                    std.log.err("Disconnect failed: {}", .{err});
+                                    ctx.consumeAndRedraw();
+                                    return;
+                                };
+                                try self.store.updatePinLink(pin_name, null);
+                            } else {
+                                // Connect or create signal
+                                // 1. Get current pin value to infer type
+                                const pin_value = self.store.getPin(pin_name) catch {
+                                    std.log.err("Failed to read pin value");
+                                    ctx.consumeAndRedraw();
+                                    return;
+                                };
+
+                                // 2. Determine HAL type from value
+                                const c = @import("vaxis").c;
+                                const hal_type_t = @import("../../ffi/types.zig").hal_type_t;
+                                const hal_type: hal_type_t = switch (pin_value) {
+                                    .bit => c.HAL_BIT,
+                                    .float => c.HAL_FLOAT,
+                                    .s32 => c.HAL_S32,
+                                    .u32 => c.HAL_U32,
+                                };
+
+                                // 3. Check if signal exists
+                                const signal_exists = self.store.getSignal(signal_name) != null;
+
+                                if (!signal_exists) {
+                                    // Create new signal with inferred type
+                                    const signal_name_z = try self.allocator.dupeZ(u8, signal_name);
+                                    defer self.allocator.free(signal_name_z);
+
+                                    ffi.halSignalNew(signal_name_z, hal_type) catch |err| {
+                                        std.log.err("Signal creation failed: {}", .{err});
+                                        ctx.consumeAndRedraw();
+                                        return;
+                                    };
+
+                                    // Add to store with initial value
+                                    try self.store.addSignal(signal_name, pin_value);
+                                }
+
+                                // 4. Link pin to signal
+                                const signal_name_z = try self.allocator.dupeZ(u8, signal_name);
+                                defer self.allocator.free(signal_name_z);
+
+                                ffi.halLink(pin_name, signal_name_z) catch |err| {
+                                    std.log.err("Link failed: {}", .{err});
+                                    ctx.consumeAndRedraw();
+                                    return;
+                                };
+
+                                // Update store's pin link tracking
+                                try self.store.updatePinLink(pin_name, signal_name);
+                            }
+
+                            self.signal_edit_mode = false;
+                            self.signal_edit_pin = null;
+                            self.signal_edit_buffer.clearRetainingCapacity();
+                            ctx.consumeAndRedraw();
+                            return;
+                        }
+                    }
+
+                    // Backspace: remove last character
+                    if (key.codepoint == 127) {
+                        if (self.signal_edit_buffer.items.len > 0) {
+                            _ = self.signal_edit_buffer.pop();
+                            ctx.consumeAndRedraw();
+                        }
+                        return;
+                    }
+
+                    // Regular character: add to signal name buffer
+                    if (key.codepoint >= 32 and key.codepoint < 127) {
+                        const new_char = @as(u8, @intCast(key.codepoint));
+                        // Signal names are alphanumeric with underscore and dash
+                        const allowed = std.ascii.isAlphanumeric(new_char) or new_char == '_' or new_char == '-';
+                        if (allowed) {
+                            try self.signal_edit_buffer.append(self.allocator, new_char);
+                            ctx.consumeAndRedraw();
+                        }
+                        return;
+                    }
+
+                    return; // Ignore other keys in signal edit mode
                 }
 
                 // Edit mode handling
