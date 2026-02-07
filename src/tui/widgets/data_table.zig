@@ -181,6 +181,14 @@ pub const DataTable = struct {
     /// Error timeout timestamp (0 = no timeout set)
     error_timeout: u64,
 
+    /// Cursor for selecting rows (for value editing)
+    cursor_row: usize = 0,
+
+    /// Table edit mode for in-place value editing
+    table_edit_mode: bool = false,
+    table_edit_row: ?usize = null,
+    table_edit_buffer: std.ArrayList(u8) = std.ArrayList(u8).initCapacity(0, 0) catch unreachable,
+
     /// Initialize a new DataTable
     ///
     /// Parameters:
@@ -194,6 +202,7 @@ pub const DataTable = struct {
         const items = std.ArrayList(TableItem).initCapacity(allocator, 0) catch unreachable;
         const component_buffer = std.ArrayList(u8).initCapacity(allocator, 0) catch unreachable;
         const edit_buffer = std.ArrayList(u8).initCapacity(allocator, 0) catch unreachable;
+        const table_edit_buffer = std.ArrayList(u8).init(allocator);
 
         return .{
             .allocator = allocator,
@@ -213,6 +222,10 @@ pub const DataTable = struct {
             .error_message = null,
             .error_message_owner = null,
             .error_timeout = 0,
+            .cursor_row = 0,
+            .table_edit_mode = false,
+            .table_edit_row = null,
+            .table_edit_buffer = table_edit_buffer,
         };
     }
 
@@ -227,6 +240,7 @@ pub const DataTable = struct {
         self.items.deinit(self.allocator);
         self.component_buffer.deinit(self.allocator);
         self.edit_buffer.deinit(self.allocator);
+        self.table_edit_buffer.deinit(self.allocator);
         self.pending_edits.deinit();
         if (self.error_message_owner) |msg| {
             self.allocator.free(msg);
@@ -559,7 +573,24 @@ pub const DataTable = struct {
                     return; // Ignore other keys in component filter mode
                 }
 
-                // Edit mode handling
+                // Cursor movement for row selection
+                if (key.matches(vaxis.Key.up, .{})) {
+                    if (self.cursor_row > 0) {
+                        self.cursor_row -= 1;
+                        ctx.consumeAndRedraw();
+                    }
+                    return;
+                }
+
+                if (key.matches(vaxis.Key.down, .{})) {
+                    if (self.cursor_row + 1 < self.items.items.len) {
+                        self.cursor_row += 1;
+                        ctx.consumeAndRedraw();
+                    }
+                    return;
+                }
+
+                // Legacy edit mode handling
                 if (self.edit_mode) {
                     // Escape: cancel edit
                     if (key.matches(vaxis.Key.escape, .{})) {
@@ -818,17 +849,22 @@ pub const DataTable = struct {
         for (self.items.items, 0..) |item, idx| {
             std.log.debug("draw row [{}]: name='{s}' name_ptr={*}", .{ idx, item.name, item.name.ptr });
 
-            // Determine row color
-            const row_style = if (item.is_writable)
+            // Determine base row color
+            const base_style = if (item.is_writable)
                 vaxis.Style{ .fg = .{ .index = 2 } } // Green for editable
             else
                 vaxis.Style{ .fg = .{ .index = 8 } }; // Dim gray for read-only
 
-            // Highlight row being edited
+            // Highlight cursor row
+            const is_cursor = (idx == self.cursor_row);
+
+            // Highlight row being edited (legacy edit mode)
             const final_style = if (self.edit_mode and self.edit_item != null and self.edit_item.? == idx)
                 vaxis.Style{ .fg = .{ .index = 2 }, .bold = true, .reverse = true } // Bold reverse for edit
+            else if (is_cursor)
+                vaxis.Style{ .fg = base_style.fg, .reverse = true } // Reverse for cursor
             else
-                row_style;
+                base_style;
 
             // Format item type
             const type_str = switch (item.hal_type) {
@@ -970,6 +1006,27 @@ pub const DataTable = struct {
             .s32 => |v| std.fmt.allocPrint(allocator, "{d}", .{v}) catch "ERR",
             .u32 => |v| std.fmt.allocPrint(allocator, "{d}", .{v}) catch "ERR",
         };
+    }
+
+    /// Get the currently selected (cursor) item name
+    pub fn getCursorItemName(self: *const DataTable) ?[]const u8 {
+        if (self.cursor_row < self.items.items.len) {
+            return self.items.items[self.cursor_row].name;
+        }
+        return null;
+    }
+
+    /// Get the currently selected item type
+    pub fn getCursorItemType(self: *const DataTable) ?ItemType {
+        if (self.cursor_row < self.items.items.len) {
+            return self.items.items[self.cursor_row].item_type;
+        }
+        return null;
+    }
+
+    /// Check if table is in edit mode
+    pub fn isEditMode(self: *const DataTable) bool {
+        return self.table_edit_mode;
     }
 };
 
