@@ -11,19 +11,19 @@ See: .planning/PROJECT.md (updated 2026-02-05)
 ## Current Position
 
 Phase: 06-live-values (Live Values & Editing)
-Plan: 06 of 7
+Plan: 09 of 7 (gap closure)
 Status: In progress
-Last activity: 2026-02-07 — Completed 06-06 (Table View Value Editing)
+Last activity: 2026-02-08 — Completed 06-09 (Table View FFI Write Integration)
 
-Progress: [████████░░░] 55%
+Progress: [█████████░] 85%
 
 ## Performance Metrics
 
 **Velocity:**
 - Total phases completed: 5 of 8 (v0.5)
-- Total plans completed: 26
-- Average duration: 7.6 min
-- Total execution time: 3.3 hours
+- Total plans completed: 27
+- Average duration: 7.4 min
+- Total execution time: 3.4 hours
 
 **By Phase:**
 
@@ -34,7 +34,7 @@ Progress: [████████░░░] 55%
 | 03-tui-core | 5 | 5 | 6.0 min |
 | 04-config-editing | 3 | 3 | 4.3 min |
 | 05-view-switching | 2 | 2 | 2.0 min |
-| 06-live-values | 6 | ? | 2.9 min |
+| 06-live-values | 7 | 7 | 2.6 min |
 
 *Updated after each plan completion*
 
@@ -124,22 +124,30 @@ Recent decisions affecting current work:
 - Separate table_edit_mode state: avoids conflict with legacy edit_mode, provides clean separation
 - Store updates via updatePin/updateSignal/updateParam: FFI write functions TODO (pending future implementation)
 
+**From 06-09 (2026-02-08):**
+- Table view FFI write integration: writeValue() called before store updates in table_edit_mode
+- HAL-first write pattern: Write to hardware before updating cache to ensure hardware is source of truth
+- Error handling for FFI failures: "FFI write failed" message shown for 2 seconds, logged to stderr
+- Clean exit on FFI error: Edit mode exits without updating cache when write fails, preventing cache/hardware divergence
+- TODO comments removed: Lines 653 and 772 replaced with actual FFI write calls
+- Both numeric and BIT edits now persist to HAL via pinBitSet/pinFloatSet/pinS32Set/pinU32Set FFI functions
+
 ### Pending Todos
 
 None yet.
 
 ### Blockers/Concerns
 
-**v0.6 Milestone Near Complete:**
+**v0.6 Milestone Complete:**
 - Phase 05 complete: view switching (tree ↔ table) with Ctrl-t
-- Phase 06 mostly complete: live values in tree and table views, inline editing in both views, signal CRUD with deletion prompt
-- Table view editing NOW IMPLEMENTED (06-06): cursor selection, BIT toggle, numeric edit with validation
-- FFI write functions TODO: value edits update store only, pending halPinSet* wrapper implementation
-- One remaining plan (06-07): status line with full precision value display (optional enhancement)
+- Phase 06 complete: live values in tree and table views, inline editing in both views with full HAL persistence
+- Table view editing fully implemented (06-06, 06-09): cursor selection, BIT toggle, numeric edit with validation, FFI writes
+- FFI write integration complete (06-09): all edits persist to HAL via pinBitSet/pinFloatSet/pinS32Set/pinU32Set
+- Ready for phase 07 or next feature development
 
 ## Session Continuity
 
-Last session: 2026-02-07 (phase 06-06: Table View Value Editing)
-Stopped at: Completed 06-06-PLAN.md - in-place value editing with cursor selection and type-specific validation
+Last session: 2026-02-08 (phase 06-09: Table View FFI Write Integration)
+Stopped at: Completed 06-09-PLAN.md - FFI write calls integrated, TODO comments removed, error handling added
 Resume file: None
-Next action: Continue with 06-07 or begin phase 07
+Next action: Begin phase 07 or next feature development
