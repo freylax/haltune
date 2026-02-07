@@ -11,19 +11,19 @@ See: .planning/PROJECT.md (updated 2026-02-05)
 ## Current Position
 
 Phase: 06-live-values (Live Values & Editing)
-Plan: 05 of 5
+Plan: 07 of 7
 Status: Phase complete
-Last activity: 2026-02-07 — Completed 06-05 (Table View Value Display)
+Last activity: 2026-02-07 — Completed 06-07 (Status Line with Cursor Value)
 
-Progress: [██████████░] 56%
+Progress: [██████████░] 58%
 
 ## Performance Metrics
 
 **Velocity:**
 - Total phases completed: 5 of 8 (v0.5)
-- Total plans completed: 25
-- Average duration: 7.8 min
-- Total execution time: 3.3 hours
+- Total plans completed: 27
+- Average duration: 7.4 min
+- Total execution time: 3.4 hours
 
 **By Phase:**
 
@@ -34,7 +34,7 @@ Progress: [██████████░] 56%
 | 03-tui-core | 5 | 5 | 6.0 min |
 | 04-config-editing | 3 | 3 | 4.3 min |
 | 05-view-switching | 2 | 2 | 2.0 min |
-| 06-live-values | 5 | 5 | 2.8 min |
+| 06-live-values | 7 | 7 | 2.6 min |
 
 *Updated after each plan completion*
 
@@ -114,6 +114,16 @@ Recent decisions affecting current work:
 - Real-time updates work via existing pubsub infrastructure (no changes needed)
 - Table view editing not yet implemented: users must switch to tree view (Ctrl+T) to edit values
 
+**From 06-07 (2026-02-07):**
+- Status line with full precision value display: format "item-name: TYPE VALUE" at bottom of screen
+- Full precision float: {d} format specifier without precision limit shows complete float value
+- BIT values as TRUE/FALSE in status line (words clearer than symbols in text-only display)
+- Helper functions extracted: getCursorNode/isEditMode in TreeView, getCursorItemName/getCursorItemType/isEditMode in DataTable
+- getFullValueString in Model provides type-aware value formatting with fallback to "(no value)"
+- Edit mode status shows buffer contents: "Editing: XXX" for values, "Signal: XXX" for signals, "Delete signal? (y/n)" for prompts
+- Pipe separator (' | ') visually distinguishes cursor value from keyboard shortcuts
+- Status line updates in real-time as cursor moves (uses existing redraw infrastructure)
+
 ### Pending Todos
 
 None yet.
@@ -122,13 +132,13 @@ None yet.
 
 **v0.6 Milestone Complete:**
 - Phase 05 complete: view switching (tree ↔ table) with Ctrl-t
-- Phase 06 complete: live values in tree and table views, inline value editing in tree view, signal CRUD with deletion prompt
+- Phase 06 complete: live values in tree and table views, inline value editing in tree view, signal CRUD with deletion prompt, status line with full precision values
 - Table view editing not yet implemented (deferred to future phase)
 - Known limitation: Users can view values in table mode but must switch to tree view (Ctrl+T) to edit
 
 ## Session Continuity
 
-Last session: 2026-02-07 (phase 06-05: Table View Value Display)
-Stopped at: Completed 06-05-PLAN.md - table view value display with right-aligned formatting
+Last session: 2026-02-07 (phase 06-07: Status Line with Cursor Value)
+Stopped at: Completed 06-07-PLAN.md - status line with full precision value display
 Resume file: None
-Next action: Begin phase 07 or implement table view editing enhancement
+Next action: Begin phase 07 or implement additional enhancements
