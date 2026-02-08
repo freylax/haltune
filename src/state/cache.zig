@@ -383,7 +383,7 @@ pub const StateStore = struct {
 
         // Snapshot keys while holding lock
         var keys = std.ArrayList([]const u8).initCapacity(allocator, 8) catch unreachable;
-        defer keys.deinit();
+        defer keys.deinit(allocator);
         var iter = self.pins.iterator();
         while (iter.next()) |entry| {
             // Duplicate the key string so caller owns the memory (HashMap may reallocate)
@@ -427,7 +427,7 @@ pub const StateStore = struct {
 
         // Snapshot keys while holding lock
         var keys = std.ArrayList([]const u8).initCapacity(allocator, 4) catch unreachable;
-        defer keys.deinit();
+        defer keys.deinit(allocator);
         var iter = self.signals.iterator();
         while (iter.next()) |entry| {
             // Duplicate the key string so caller owns the memory (HashMap may reallocate)
@@ -471,7 +471,7 @@ pub const StateStore = struct {
 
         // Snapshot keys while holding lock
         var keys = std.ArrayList([]const u8).initCapacity(allocator, 4) catch unreachable;
-        defer keys.deinit();
+        defer keys.deinit(allocator);
         var iter = self.params.iterator();
         while (iter.next()) |entry| {
             // Duplicate the key string so caller owns the memory (HashMap may reallocate)
