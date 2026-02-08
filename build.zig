@@ -269,4 +269,36 @@ pub fn build(b: *std.Build) void {
 
     const discovery_full_step = b.step("discovery-full", "Run HAL discovery test with created objects");
     discovery_full_step.dependOn(&run_discovery_full.step);
+
+    // ===== Tree Debug Test =====
+
+    const tree_debug_module = b.createModule(.{
+        .root_source_file = b.path("src/test_tree_debug.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+
+    tree_debug_module.addImport("ffi/c.zig", ffi_c);
+    tree_debug_module.addImport("ffi/errors.zig", ffi_errors);
+    tree_debug_module.addImport("ffi/types.zig", ffi_types);
+    tree_debug_module.addImport("ffi/safe.zig", ffi_safe);
+    tree_debug_module.addImport("../state/cache.zig", state_cache);
+    tree_debug_module.addImport("../state/refresh.zig", b.createModule(.{
+        .root_source_file = b.path("src/state/refresh.zig"),
+        .target = target,
+        .optimize = optimize,
+    }));
+
+    const tree_debug_exe = b.addExecutable(.{
+        .name = "tree-debug",
+        .root_module = tree_debug_module,
+    });
+
+    if (!skip_hal_link) {
+        tree_debug_exe.addLibraryPath(.{ .cwd_relative = "/usr/lib" });
+        tree_debug_exe.linkSystemLibrary("c");
+        tree_debug_exe.linkSystemLibrary("linuxcnchal");
+        tree_debug_exe.linkSystemLibrary("rt");
+        tree_debug_exe.linker_allow_shlib_undefined = true;
+    }
 }
