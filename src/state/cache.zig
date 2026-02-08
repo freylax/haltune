@@ -527,11 +527,11 @@ pub const StateStore = struct {
 
             if (std.mem.eql(u8, linked_signal, signal_name)) {
                 // Duplicate pin name for caller
-                try result.append(try allocator.dupe(u8, pin_name));
+                try result.append(allocator, try allocator.dupe(u8, pin_name));
             }
         }
 
-        return result.toOwnedSlice();
+        return result.toOwnedSlice(allocator);
     }
 
     /// Update pin->signal link mapping

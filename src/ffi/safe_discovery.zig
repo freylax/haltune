@@ -28,10 +28,10 @@ const HalcmdResult = struct {
 fn runHalcmd(allocator: std.mem.Allocator, args: []const []const u8) !HalcmdResult {
     // Build argv array at runtime
     var argv_list = try std.ArrayList([]const u8).initCapacity(allocator, args.len + 1);
-    defer argv_list.deinit();
-    try argv_list.append("halcmd");
+    defer argv_list.deinit(allocator);
+    try argv_list.append(allocator, "halcmd");
     for (args) |arg| {
-        try argv_list.append(arg);
+        try argv_list.append(allocator, arg);
     }
 
     const result = std.process.Child.run(.{
