@@ -276,7 +276,7 @@ pub const RefreshThread = struct {
         // Discover all pins by calling halcmd list pin
         std.debug.print("refreshPins: discovering all pins from HAL\n", .{});
 
-        const pin_names = discovery.listPinNames(self.allocator) catch |err| {
+        var pin_names = discovery.listPinNames(self.allocator) catch |err| {
             std.log.err("refreshPins: halcmd failed: {}", .{err});
             return err;
         };
@@ -350,7 +350,7 @@ pub const RefreshThread = struct {
         // Discover all signals by calling halcmd list sig
         std.debug.print("refreshSignals: discovering all signals from HAL\n", .{});
 
-        const sig_names = discovery.listSignalNames(self.allocator) catch |err| {
+        var sig_names = discovery.listSignalNames(self.allocator) catch |err| {
             std.log.err("refreshSignals: halcmd failed: {}", .{err});
             return err;
         };
@@ -424,7 +424,7 @@ pub const RefreshThread = struct {
         // Discover all params by calling halcmd list param
         std.debug.print("refreshParams: discovering all params from HAL\n", .{});
 
-        const param_names = discovery.listParamNames(self.allocator) catch |err| {
+        var param_names = discovery.listParamNames(self.allocator) catch |err| {
             std.log.err("refreshParams: halcmd failed: {}", .{err});
             return err;
         };
