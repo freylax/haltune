@@ -289,12 +289,11 @@ pub const TreeView = struct {
         }
 
         // HashMap to group items by component
+        // Note: ComponentGroup now owns its name copy, so we don't need to free HashMap keys
         var component_map = std.StringHashMap(ComponentGroup).init(self.allocator);
         defer {
             var iter = component_map.iterator();
             while (iter.next()) |entry| {
-                // Free the key (component name string owned by HashMap)
-                self.allocator.free(entry.key_ptr.*);
                 entry.value_ptr.*.deinit();
             }
             component_map.deinit();
@@ -308,14 +307,11 @@ pub const TreeView = struct {
             }
 
             const component_name = try extractComponentName(self.allocator, pin_name);
+            defer self.allocator.free(component_name);
 
             const gop = try component_map.getOrPut(component_name);
             if (!gop.found_existing) {
-                gop.value_ptr.* = ComponentGroup.init(self.allocator, component_name);
-                // HashMap owns component_name now - don't free it
-            } else {
-                // Entry already existed, free our temporary component_name
-                self.allocator.free(component_name);
+                gop.value_ptr.* = try ComponentGroup.init(self.allocator, component_name);
             }
 
             try gop.value_ptr.pins.append(gop.value_ptr.allocator, pin_name);
@@ -329,14 +325,11 @@ pub const TreeView = struct {
             }
 
             const component_name = try extractComponentName(self.allocator, signal_name);
+            defer self.allocator.free(component_name);
 
             const gop = try component_map.getOrPut(component_name);
             if (!gop.found_existing) {
-                gop.value_ptr.* = ComponentGroup.init(self.allocator, component_name);
-                // HashMap owns component_name now - don't free it
-            } else {
-                // Entry already existed, free our temporary component_name
-                self.allocator.free(component_name);
+                gop.value_ptr.* = try ComponentGroup.init(self.allocator, component_name);
             }
 
             try gop.value_ptr.signals.append(gop.value_ptr.allocator, signal_name);
@@ -350,14 +343,11 @@ pub const TreeView = struct {
             }
 
             const component_name = try extractComponentName(self.allocator, param_name);
+            defer self.allocator.free(component_name);
 
             const gop = try component_map.getOrPut(component_name);
             if (!gop.found_existing) {
-                gop.value_ptr.* = ComponentGroup.init(self.allocator, component_name);
-                // HashMap owns component_name now - don't free it
-            } else {
-                // Entry already existed, free our temporary component_name
-                self.allocator.free(component_name);
+                gop.value_ptr.* = try ComponentGroup.init(self.allocator, component_name);
             }
 
             try gop.value_ptr.params.append(gop.value_ptr.allocator, param_name);
@@ -366,7 +356,7 @@ pub const TreeView = struct {
         // Build tree structure from component groups
         var iter = component_map.iterator();
         while (iter.next()) |entry| {
-            // Component name is owned by HashMap (as key), duplicate for Node
+            // ComponentGroup owns its name, duplicate for Node
             const comp_name = try self.allocator.dupe(u8, entry.value_ptr.name);
             const component_node = try Node.init(
                 self.allocator,
@@ -465,12 +455,49 @@ pub const TreeView = struct {
         };
     }
 
+    /// Rebuild tree if it's empty but StateStore has data
+    /// This handles the case where refresh thread populates StateStore after initialization
+    fn rebuildTreeIfNeeded(self: *TreeView) !void {
+        // Check if tree is empty
+        if (self.root.items.len == 0) {
+            // Check if StateStore has any data
+            const pins = self.store.listPins(self.allocator) catch &.{};
+            defer {
+                for (pins) |p| self.allocator.free(p);
+                self.allocator.free(pins);
+            }
+
+            const signals = self.store.listSignals(self.allocator) catch &.{};
+            defer {
+                for (signals) |s| self.allocator.free(s);
+                self.allocator.free(signals);
+            }
+
+            const params = self.store.listParams(self.allocator) catch &.{};
+            defer {
+                for (params) |p| self.allocator.free(p);
+                self.allocator.free(params);
+            }
+
+            // If StateStore has data but tree is empty, rebuild
+            if (pins.len > 0 or signals.len > 0 or params.len > 0) {
+                std.log.info("Rebuilding tree: {d} pins, {d} signals, {d} params", .{ pins.len, signals.len, params.len });
+                try self.buildTree();
+            }
+        }
+    }
+
     /// Draw function - renders the tree with checkboxes and indicators
     fn typeErasedDrawFn(
         ptr: *anyopaque,
         ctx: vxfw.DrawContext,
     ) std.mem.Allocator.Error!vxfw.Surface {
         const self: *TreeView = @ptrCast(@alignCast(ptr));
+
+        // Rebuild tree if StateStore was populated after initialization
+        self.rebuildTreeIfNeeded() catch |err| {
+            std.log.err("Failed to rebuild tree: {}", .{err});
+        };
 
         // Clear and rebuild visible nodes list
         self.visible_nodes.clearRetainingCapacity();
@@ -1364,6 +1391,8 @@ pub const TreeView = struct {
 };
 
 /// Helper struct to group HAL items by component
+/// IMPORTANT: ComponentGroup owns its name copy (not a reference to HashMap key)
+/// because HashMap may reallocate keys during growth, which would invalidate references.
 const ComponentGroup = struct {
     name: []const u8,
     pins: std.ArrayList([]const u8),
@@ -1371,10 +1400,11 @@ const ComponentGroup = struct {
     params: std.ArrayList([]const u8),
     allocator: std.mem.Allocator,
 
-    fn init(allocator: std.mem.Allocator, name: []const u8) ComponentGroup {
-        // Store reference to name - HashMap owns it
+    fn init(allocator: std.mem.Allocator, name: []const u8) !ComponentGroup {
+        // Duplicate the name so we own it (HashMap may reallocate during growth)
+        const name_copy = try allocator.dupe(u8, name);
         return .{
-            .name = name,
+            .name = name_copy,
             .pins = std.ArrayList([]const u8).initCapacity(allocator, 0) catch unreachable,
             .signals = std.ArrayList([]const u8).initCapacity(allocator, 0) catch unreachable,
             .params = std.ArrayList([]const u8).initCapacity(allocator, 0) catch unreachable,
@@ -1383,7 +1413,8 @@ const ComponentGroup = struct {
     }
 
     fn deinit(self: *ComponentGroup) void {
-        // Don't free self.name - HashMap owns it
+        // Free the name we own
+        self.allocator.free(self.name);
         self.pins.deinit(self.allocator);
         self.signals.deinit(self.allocator);
         self.params.deinit(self.allocator);

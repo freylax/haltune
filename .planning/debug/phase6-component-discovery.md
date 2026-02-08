@@ -477,21 +477,56 @@ refreshParams: discovered 3 params from HAL
 1. **`src/root.zig`** - Added `--test-mode` flag parsing
 2. **`src/tui/app.zig`** - Added test mode parameter, bypass size check
 3. **`src/ffi/safe_discovery.zig`** - Fixed bugs during debug session
-4. **`src/tui/widgets/tree_view.zig`** - Fixed integer overflow at line 1094
+4. **`src/tui/widgets/tree_view.zig`** - Fixed integer overflow at line 1094, ComponentGroup memory ownership, added rebuildTreeIfNeeded()
 5. **`src/state/cache.zig`** - Fixed ArrayList initCapacity(0) bugs
 6. **`src/state/refresh.zig`** - Memory management improvements
 7. **`src/tui/model.zig`** - Fixed ArrayList initCapacity(0) bugs
 8. **`src/tui/layout.zig`** - Fixed ArrayList initCapacity(0) bugs
 
+### Additional Bugs Fixed (2026-02-08 - Post-Resolution)
+
+#### Bug 5: Tree never rebuilds after refresh thread populates StateStore
+
+**Problem:**
+- `buildTree()` called once in `Model.init()` when StateStore is empty
+- Refresh thread runs in background and populates StateStore
+- Tree never rebuilds, so TUI shows 0 components despite discovery working
+
+**Solution:**
+- Added `rebuildTreeIfNeeded()` function to `TreeView`
+- Called from `typeErasedDrawFn()` before each draw
+- Rebuilds tree if empty but StateStore has data
+
+#### Bug 6: ComponentGroup memory corruption
+
+**Problem:**
+- `ComponentGroup.name` stored reference to HashMap key
+- When HashMap grows during insertions, keys are reallocated
+- ComponentGroup.name becomes dangling pointer
+- Causes segfault in hashString() during HashMap operations
+
+**Solution:**
+- Made `ComponentGroup` own its name copy via `dupe()`
+- Changed `init()` to fallible (`!ComponentGroup`)
+- Updated `deinit()` to free the owned name
+- Simplified `buildTree()` memory management with `defer`
+
 ### Build Status
 
 - ✅ Compiles successfully on pib (aarch64-linux-gnu)
-- ✅ Binary: `/home/cnc/prog/haltune/zig-out/bin/haltune` (5.2 MB)
+- ✅ Binary: `/home/cnc/prog/haltune/zig-out/bin/haltune` (5.0 MB)
 - ✅ Test mode: `./zig-out/bin/haltune --test-mode`
 
 **Phase 6 Component Discovery: FULLY RESOLVED ✓**
 
 The TUI now works with:
 - Interactive terminal (normal use)
-- Automated testing via `script` + `--test-mode` flag
 - Discovery correctly populates tree view with HAL components
+- Tree rebuilds automatically when StateStore is populated
+
+**Note for testing:** Run on pib's interactive console:
+```bash
+ssh pib
+cd ~/prog/haltune
+./zig-out/bin/haltune
+```
