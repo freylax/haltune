@@ -90,7 +90,7 @@ pub fn listPinNames(allocator: std.mem.Allocator) !std.ArrayList([]const u8) {
         if (pin_name.len > 0 and isValidHalName(pin_name)) {
             // NOTE: tokenizer returns slice of cmd_result.output, which gets freed
             // We MUST dupe the string to own the memory
-            try result.append(try allocator.dupe(u8, pin_name));
+            try result.append(allocator, try allocator.dupe(u8, pin_name));
         }
     }
 
