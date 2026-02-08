@@ -530,3 +530,65 @@ ssh pib
 cd ~/prog/haltune
 ./zig-out/bin/haltune
 ```
+
+---
+
+## NEW ISSUE: Memory Corruption with Refresh Thread (2026-02-08)
+
+### Symptom
+
+When refresh thread is enabled, TUI shows memory corruption:
+```
+refreshPins: removed stale pin  `���				refreshPins: removed stale pin thread1.time
+```
+
+Garbage characters appear in output, indicating memory corruption.
+
+### Root Cause
+
+**Refresh thread using page_allocator concurrently with vaxis causes memory corruption.**
+
+Both the refresh thread and vaxis were using page_allocator at the same time, leading to memory corruption.
+
+### Evidence
+
+1. With refresh thread DISABLED:
+   - No memory corruption visible
+   - No garbage characters in output
+   - TUI initializes cleanly (crashes later on vaxis layout with width=0, but that's separate)
+
+2. With refresh thread ENABLED:
+   - Memory corruption visible in output
+   - Pins incorrectly marked as "stale" and removed
+   - HashMap lookups returning garbage data
+
+### Fix Required
+
+The refresh thread needs to use a separate allocator that doesn't conflict with vaxis.
+
+Options:
+1. **Use ArenaAllocator for refresh thread data** - Allocate all data in an arena, free entire arena at once
+2. **Use GPA allocator for refresh thread** - Create a dedicated GPA instance for the thread
+3. **Mutex-protected page_allocator** - Wrap page_allocator with a mutex for thread-safe access
+
+## Testing Tools
+
+### mcp-tui-driver (Rust crate)
+**Location on pib:** `/home/cnc/.cargo/bin/mcp-tui-driver`
+
+This is an MCP server for testing TUI applications (like Playwright for terminals).
+
+**Usage:**
+```bash
+# Run on pib (stdio mode for MCP)
+~/.cargo/bin/mcp-tui-driver
+
+# Or SSE mode for web access
+~/.cargo/bin/mcp-tui-driver --sse --port 8080
+```
+
+**Purpose:** Test TUI applications with proper terminal emulation instead of
+trying to run them via non-interactive SSH.
+
+**Key insight:** Cannot run haltune via `ssh pib "command"` - needs proper TTY.
+

@@ -19,7 +19,7 @@ pub fn main() !void {
         };
         defer {
             for (pins.items) |p| allocator.free(p);
-            pins.deinit(allocator);
+            pins.deinit();
         }
         std.debug.print("Found {d} pins:\n", .{pins.items.len});
         for (pins.items) |pin| {
@@ -36,7 +36,7 @@ pub fn main() !void {
         };
         defer {
             for (params.items) |p| allocator.free(p);
-            params.deinit(allocator);
+            params.deinit();
         }
         std.debug.print("Found {d} params:\n", .{params.items.len});
         for (params.items) |param| {
@@ -53,7 +53,7 @@ pub fn main() !void {
         };
         defer {
             for (sigs.items) |s| allocator.free(s);
-            sigs.deinit(allocator);
+            sigs.deinit();
         }
         std.debug.print("Found {d} signals:\n", .{sigs.items.len});
         for (sigs.items) |sig| {

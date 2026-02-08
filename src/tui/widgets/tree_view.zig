@@ -162,7 +162,7 @@ pub const TreeView = struct {
 
     /// Signal deletion prompt state
     signal_delete_prompt: bool = false,
-    pending_signal_delete: ?[]const u8 = null,  // Owned memory, must free
+    pending_signal_delete: ?[]const u8 = null, // Owned memory, must free
 
     /// Initialize a new TreeView
     pub fn init(allocator: std.mem.Allocator, store: *StateStore) !TreeView {
@@ -314,7 +314,9 @@ pub const TreeView = struct {
                 gop.value_ptr.* = try ComponentGroup.init(self.allocator, component_name);
             }
 
-            try gop.value_ptr.pins.append(gop.value_ptr.allocator, pin_name);
+            // Duplicate pin name so ComponentGroup owns it (pins array will be freed)
+            const pin_copy = try gop.value_ptr.allocator.dupe(u8, pin_name);
+            try gop.value_ptr.pins.append(gop.value_ptr.allocator, pin_copy);
         }
 
         // Group signals by component (filter by search pattern if set)
@@ -332,7 +334,9 @@ pub const TreeView = struct {
                 gop.value_ptr.* = try ComponentGroup.init(self.allocator, component_name);
             }
 
-            try gop.value_ptr.signals.append(gop.value_ptr.allocator, signal_name);
+            // Duplicate signal name so ComponentGroup owns it
+            const signal_copy = try gop.value_ptr.allocator.dupe(u8, signal_name);
+            try gop.value_ptr.signals.append(gop.value_ptr.allocator, signal_copy);
         }
 
         // Group params by component (filter by search pattern if set)
@@ -350,7 +354,9 @@ pub const TreeView = struct {
                 gop.value_ptr.* = try ComponentGroup.init(self.allocator, component_name);
             }
 
-            try gop.value_ptr.params.append(gop.value_ptr.allocator, param_name);
+            // Duplicate param name so ComponentGroup owns it
+            const param_copy = try gop.value_ptr.allocator.dupe(u8, param_name);
+            try gop.value_ptr.params.append(gop.value_ptr.allocator, param_copy);
         }
 
         // Build tree structure from component groups
@@ -465,8 +471,8 @@ pub const TreeView = struct {
                 self.store.rwlock.lockShared();
                 defer self.store.rwlock.unlockShared();
                 break :blk self.store.pins.count() > 0 or
-                          self.store.signals.count() > 0 or
-                          self.store.params.count() > 0;
+                    self.store.signals.count() > 0 or
+                    self.store.params.count() > 0;
             };
 
             if (has_data) {
@@ -626,8 +632,8 @@ pub const TreeView = struct {
                     } else {
                         // Show current value from store
                         const value = self.store.getPin(node.full_name) catch
-                                      self.store.getSignal(node.full_name) catch
-                                      self.store.getParam(node.full_name) catch null;
+                            self.store.getSignal(node.full_name) catch
+                            self.store.getParam(node.full_name) catch null;
                         if (value) |v| {
                             break :blk formatHalValue(v, ctx.arena) catch "ERR";
                         } else {
@@ -947,8 +953,8 @@ pub const TreeView = struct {
 
                             // Get original value to determine type
                             const orig_value = self.store.getPin(node.full_name) catch
-                                               self.store.getSignal(node.full_name) catch
-                                               self.store.getParam(node.full_name) catch null;
+                                self.store.getSignal(node.full_name) catch
+                                self.store.getParam(node.full_name) catch null;
 
                             if (orig_value) |v| {
                                 // Parse new value based on type
@@ -998,22 +1004,22 @@ pub const TreeView = struct {
                                         // Call appropriate pin*Set function based on value type
                                         switch (new_value) {
                                             .bit => |val| safe.pinBitSet(@ptrCast(@alignCast(@constCast(pin_ptr))), val) catch |err| {
-                                                std.debug.print("FFI write failed: pinBitSet '{s}' error {}\n", .{node.full_name, err});
+                                                std.debug.print("FFI write failed: pinBitSet '{s}' error {}\n", .{ node.full_name, err });
                                                 ctx.consumeAndRedraw();
                                                 return;
                                             },
                                             .float => |val| safe.pinFloatSet(@ptrCast(@alignCast(@constCast(pin_ptr))), val) catch |err| {
-                                                std.debug.print("FFI write failed: pinFloatSet '{s}' error {}\n", .{node.full_name, err});
+                                                std.debug.print("FFI write failed: pinFloatSet '{s}' error {}\n", .{ node.full_name, err });
                                                 ctx.consumeAndRedraw();
                                                 return;
                                             },
                                             .s32 => |val| safe.pinS32Set(@ptrCast(@alignCast(@constCast(pin_ptr))), val) catch |err| {
-                                                std.debug.print("FFI write failed: pinS32Set '{s}' error {}\n", .{node.full_name, err});
+                                                std.debug.print("FFI write failed: pinS32Set '{s}' error {}\n", .{ node.full_name, err });
                                                 ctx.consumeAndRedraw();
                                                 return;
                                             },
                                             .u32 => |val| safe.pinU32Set(@ptrCast(@alignCast(@constCast(pin_ptr))), val) catch |err| {
-                                                std.debug.print("FFI write failed: pinU32Set '{s}' error {}\n", .{node.full_name, err});
+                                                std.debug.print("FFI write failed: pinU32Set '{s}' error {}\n", .{ node.full_name, err });
                                                 ctx.consumeAndRedraw();
                                                 return;
                                             },
@@ -1053,21 +1059,18 @@ pub const TreeView = struct {
                     if (key.codepoint >= 32 and key.codepoint < 127) {
                         const new_char = @as(u8, @intCast(key.codepoint));
                         const orig_value = self.store.getPin(self.edit_item.?.full_name) catch
-                                           self.store.getSignal(self.edit_item.?.full_name) catch
-                                           self.store.getParam(self.edit_item.?.full_name) catch null;
+                            self.store.getSignal(self.edit_item.?.full_name) catch
+                            self.store.getParam(self.edit_item.?.full_name) catch null;
 
                         const allowed = if (orig_value) |v| blk: {
                             const result = switch (v) {
                                 .float => blk2: {
                                     // Allow: digits, minus (start only), decimal point (once)
-                                    if (new_char == '-' and self.edit_buffer.items.len == 0) break :blk2 true
-                                    else if (new_char == '.' and std.mem.indexOfScalar(u8, self.edit_buffer.items, '.') == null) break :blk2 true
-                                    else break :blk2 new_char >= '0' and new_char <= '9';
+                                    if (new_char == '-' and self.edit_buffer.items.len == 0) break :blk2 true else if (new_char == '.' and std.mem.indexOfScalar(u8, self.edit_buffer.items, '.') == null) break :blk2 true else break :blk2 new_char >= '0' and new_char <= '9';
                                 },
                                 .s32 => blk2: {
                                     // Allow: digits, minus (start only)
-                                    if (new_char == '-') break :blk2 self.edit_buffer.items.len == 0
-                                    else break :blk2 new_char >= '0' and new_char <= '9';
+                                    if (new_char == '-') break :blk2 self.edit_buffer.items.len == 0 else break :blk2 new_char >= '0' and new_char <= '9';
                                 },
                                 .u32 => new_char >= '0' and new_char <= '9',
                                 .bit => false, // BIT doesn't use text edit
@@ -1158,8 +1161,8 @@ pub const TreeView = struct {
 
                     // Get current value to determine type
                     const value = self.store.getPin(node.full_name) catch
-                                  self.store.getSignal(node.full_name) catch
-                                  self.store.getParam(node.full_name) catch null;
+                        self.store.getSignal(node.full_name) catch
+                        self.store.getParam(node.full_name) catch null;
 
                     if (value) |v| {
                         switch (v) {
@@ -1179,7 +1182,7 @@ pub const TreeView = struct {
                                     };
 
                                     safe.pinBitSet(@ptrCast(@alignCast(@constCast(pin_ptr))), new_value) catch |err| {
-                                        std.debug.print("FFI write failed: pinBitSet '{s}' error {}\n", .{node.full_name, err});
+                                        std.debug.print("FFI write failed: pinBitSet '{s}' error {}\n", .{ node.full_name, err });
                                         ctx.consumeAndRedraw();
                                         return;
                                     };
@@ -1404,8 +1407,21 @@ const ComponentGroup = struct {
     fn deinit(self: *ComponentGroup) void {
         // Free the name we own
         self.allocator.free(self.name);
+
+        // Free duplicated pin/signal/param names
+        for (self.pins.items) |pin| {
+            self.allocator.free(pin);
+        }
         self.pins.deinit(self.allocator);
+
+        for (self.signals.items) |signal| {
+            self.allocator.free(signal);
+        }
         self.signals.deinit(self.allocator);
+
+        for (self.params.items) |param| {
+            self.allocator.free(param);
+        }
         self.params.deinit(self.allocator);
     }
 };

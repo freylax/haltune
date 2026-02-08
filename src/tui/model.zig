@@ -210,7 +210,7 @@ pub const Model = struct {
                                 const child_state = self.tree_view.checked_items.get(child.full_name) orelse VisibilityState.none;
                                 if (child_state == VisibilityState.full) {
                                     std.log.debug("      adding child: '{s}'", .{child.full_name});
-                                    try items.append(allocator, child.full_name);
+                                    try items.append(self.allocator, child.full_name);
                                     try added_leaves.put(child.full_name, {});
                                 }
                             }
@@ -219,7 +219,7 @@ pub const Model = struct {
                         // Leaf node - add directly, but only if not already added via parent component
                         if (added_leaves.get(full_name) == null) {
                             std.log.debug("      adding leaf: '{s}'", .{full_name});
-                            try items.append(allocator, full_name);
+                            try items.append(self.allocator, full_name);
                             try added_leaves.put(full_name, {});
                         } else {
                             std.log.debug("      skipping leaf (already added via parent): '{s}'", .{full_name});
@@ -229,7 +229,7 @@ pub const Model = struct {
                     // Node not found - add as fallback (if not already added)
                     if (added_leaves.get(full_name) == null) {
                         std.log.debug("      node not found, adding fallback: '{s}'", .{full_name});
-                        try items.append(allocator, full_name);
+                        try items.append(self.allocator, full_name);
                         try added_leaves.put(full_name, {});
                     } else {
                         std.log.debug("      skipping fallback (already added): '{s}'", .{full_name});
@@ -243,7 +243,7 @@ pub const Model = struct {
             std.log.debug("  [{}] '{s}'", .{ i, item });
         }
 
-        return items.toOwnedSlice(allocator);
+        return items.toOwnedSlice(self.allocator);
     }
 
     /// Find a node by full_name (helper for getCheckedItems)

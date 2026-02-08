@@ -208,7 +208,7 @@ pub const SubscriptionManager = struct {
         // If list is now empty, remove the entry from HashMap
         if (list.items.len == 0) {
             _ = self.subscribers.remove(item_name);
-            list.deinit(self.allocator);
+            list.deinit();
         }
     }
 

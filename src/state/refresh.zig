@@ -262,13 +262,21 @@ pub const RefreshThread = struct {
     ///   - Reads HAL pins without holding cache lock
     fn refreshPins(self: *RefreshThread) !void {
         // Track all discovered pin names in this refresh cycle
+        // Note: HashMap owns copies of pin names to avoid dangling pointers
         var discovered_names = std.StringHashMap(void).init(self.allocator);
-        defer discovered_names.deinit();
+        defer {
+            // Free owned pin name copies
+            var iter = discovered_names.iterator();
+            while (iter.next()) |entry| {
+                self.allocator.free(entry.key_ptr.*);
+            }
+            discovered_names.deinit();
+        }
 
         // Discover all pins by calling halcmd list pin
         std.debug.print("refreshPins: discovering all pins from HAL\n", .{});
 
-        var pin_names = discovery.listPinNames(self.allocator) catch |err| {
+        const pin_names = discovery.listPinNames(self.allocator) catch |err| {
             std.log.err("refreshPins: halcmd failed: {}", .{err});
             return err;
         };
@@ -276,13 +284,16 @@ pub const RefreshThread = struct {
             for (pin_names.items) |name| {
                 self.allocator.free(name);
             }
-            pin_names.deinit(self.allocator);
+            self.allocator.free(pin_names);
         }
 
         var pin_count: usize = 0;
         for (pin_names.items) |pin_name| {
             std.debug.print("  pin: {s}\n", .{pin_name});
-            try discovered_names.put(pin_name, {});
+
+            // Copy the pin name so HashMap owns it (pin_names memory gets freed)
+            const pin_name_copy = try self.allocator.dupe(u8, pin_name);
+            try discovered_names.put(pin_name_copy, {});
 
             // Create null-terminated version for FFI call
             const pin_name_z = try self.allocator.dupeZ(u8, pin_name);
@@ -294,7 +305,7 @@ pub const RefreshThread = struct {
                 };
                 pin_count += 1;
             } else |err| {
-                std.debug.print("refreshPins: skipping {s}: {}\n", .{pin_name, err});
+                std.debug.print("refreshPins: skipping {s}: {}\n", .{ pin_name, err });
             }
         }
 
@@ -325,13 +336,21 @@ pub const RefreshThread = struct {
     ///   - Reads HAL signals without holding cache lock
     fn refreshSignals(self: *RefreshThread) !void {
         // Track all discovered signal names in this refresh cycle
+        // Note: HashMap owns copies of signal names to avoid dangling pointers
         var discovered_names = std.StringHashMap(void).init(self.allocator);
-        defer discovered_names.deinit();
+        defer {
+            // Free owned signal name copies
+            var iter = discovered_names.iterator();
+            while (iter.next()) |entry| {
+                self.allocator.free(entry.key_ptr.*);
+            }
+            discovered_names.deinit();
+        }
 
         // Discover all signals by calling halcmd list sig
         std.debug.print("refreshSignals: discovering all signals from HAL\n", .{});
 
-        var sig_names = discovery.listSignalNames(self.allocator) catch |err| {
+        const sig_names = discovery.listSignalNames(self.allocator) catch |err| {
             std.log.err("refreshSignals: halcmd failed: {}", .{err});
             return err;
         };
@@ -339,13 +358,16 @@ pub const RefreshThread = struct {
             for (sig_names.items) |name| {
                 self.allocator.free(name);
             }
-            sig_names.deinit(self.allocator);
+            self.allocator.free(sig_names);
         }
 
         var sig_count: usize = 0;
         for (sig_names.items) |sig_name| {
             std.debug.print("  signal: {s}\n", .{sig_name});
-            try discovered_names.put(sig_name, {});
+
+            // Copy the signal name so HashMap owns it (sig_names memory gets freed)
+            const sig_name_copy = try self.allocator.dupe(u8, sig_name);
+            try discovered_names.put(sig_name_copy, {});
 
             // Create null-terminated version for FFI call
             const sig_name_z = try self.allocator.dupeZ(u8, sig_name);
@@ -357,7 +379,7 @@ pub const RefreshThread = struct {
                 };
                 sig_count += 1;
             } else |err| {
-                std.debug.print("refreshSignals: skipping {s}: {}\n", .{sig_name, err});
+                std.debug.print("refreshSignals: skipping {s}: {}\n", .{ sig_name, err });
             }
         }
 
@@ -388,13 +410,21 @@ pub const RefreshThread = struct {
     ///   - Reads HAL parameters without holding cache lock
     fn refreshParams(self: *RefreshThread) !void {
         // Track all discovered param names in this refresh cycle
+        // Note: HashMap owns copies of param names to avoid dangling pointers
         var discovered_names = std.StringHashMap(void).init(self.allocator);
-        defer discovered_names.deinit();
+        defer {
+            // Free owned param name copies
+            var iter = discovered_names.iterator();
+            while (iter.next()) |entry| {
+                self.allocator.free(entry.key_ptr.*);
+            }
+            discovered_names.deinit();
+        }
 
         // Discover all params by calling halcmd list param
         std.debug.print("refreshParams: discovering all params from HAL\n", .{});
 
-        var param_names = discovery.listParamNames(self.allocator) catch |err| {
+        const param_names = discovery.listParamNames(self.allocator) catch |err| {
             std.log.err("refreshParams: halcmd failed: {}", .{err});
             return err;
         };
@@ -402,13 +432,16 @@ pub const RefreshThread = struct {
             for (param_names.items) |name| {
                 self.allocator.free(name);
             }
-            param_names.deinit(self.allocator);
+            self.allocator.free(param_names);
         }
 
         var param_count: usize = 0;
         for (param_names.items) |param_name| {
             std.debug.print("  param: {s}\n", .{param_name});
-            try discovered_names.put(param_name, {});
+
+            // Copy the param name so HashMap owns it (param_names memory gets freed)
+            const param_name_copy = try self.allocator.dupe(u8, param_name);
+            try discovered_names.put(param_name_copy, {});
 
             // Create null-terminated version for FFI call
             const param_name_z = try self.allocator.dupeZ(u8, param_name);
@@ -420,7 +453,7 @@ pub const RefreshThread = struct {
                 };
                 param_count += 1;
             } else |err| {
-                std.debug.print("refreshParams: skipping {s}: {}\n", .{param_name, err});
+                std.debug.print("refreshParams: skipping {s}: {}\n", .{ param_name, err });
             }
         }
 

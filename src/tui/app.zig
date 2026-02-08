@@ -9,38 +9,31 @@ const HalError = @import("../ffi/errors.zig").HalError;
 /// Main TUI application entry point
 ///
 /// This function:
-/// 1. Initializes the GPA allocator for memory management
+/// 1. Initializes the c allocator (like flow does - avoids page_allocator corruption)
 /// 2. Creates StateStore for HAL component data caching
 /// 3. Creates SubscriptionManager for pubsub notifications
 /// 4. Initializes Model with application state
 /// 5. Starts Vxfw application with two-panel layout
 ///
-/// Note: RefreshThread is NOT started here - will be added in plan 03-03
-/// when connecting real HAL data to the TUI
-///
 /// User controls:
 /// - Ctrl+C: Quit application
 /// - --test-mode: Bypass terminal size check for automated testing
 pub fn main(test_mode: bool) !void {
-    // Initialize GPA allocator
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    defer {
-        // Check for memory leaks on shutdown
-        const leaked = gpa.deinit();
-        if (leaked == .leak) {
-            std.debug.print("Memory leak detected!\n", .{});
-        }
-    }
-    const allocator = gpa.allocator();
+    // Use c_allocator throughout (like flow does)
+    // Using page_allocator caused memory corruption with vaxis + refresh thread
+    const allocator = std.heap.c_allocator;
+    const thread_safe_allocator = std.heap.c_allocator;
 
     // Initialize StateStore for HAL component caching
     // This provides thread-safe access to pins, signals, and parameters
-    var store = StateStore.init(allocator);
+    // Using c_allocator (like flow does) avoids memory corruption with vaxis
+    var store = StateStore.init(thread_safe_allocator);
     defer store.deinit();
 
     // Initialize SubscriptionManager for pubsub notifications
     // This allows the TUI to receive updates when HAL values change
-    var pubsub = SubscriptionManager.init(allocator);
+    // MUST use page_allocator since it's accessed by refresh thread
+    var pubsub = SubscriptionManager.init(thread_safe_allocator);
     defer pubsub.deinit();
 
     // Create Model with allocator, store, and pubsub
@@ -84,6 +77,7 @@ pub fn main(test_mode: bool) !void {
         // For other errors, propagate normally
         return err;
     };
+
     defer {
         // Clean up Model resources (tree_view, data_table, signal_dialog, HAL)
         model.deinit();
@@ -91,21 +85,23 @@ pub fn main(test_mode: bool) !void {
         allocator.destroy(model);
     }
 
-    // Create and start RefreshThread for HAL polling
-    var refresh_thread = try allocator.create(RefreshThread);
-    refresh_thread.* = RefreshThread.init(allocator, &store);
+    // Initialize Vxfw application FIRST
+    // Vxfw manages the event loop, terminal I/O, and rendering
+    // Must initialize before starting refresh thread to avoid terminal access conflicts
+    var app = try vxfw.App.init(allocator);
+    defer app.deinit();
+
+    // Create and start RefreshThread for HAL polling AFTER vaxis is ready
+    // Using c_allocator (like flow does) for both main and refresh threads
+    var refresh_thread = try thread_safe_allocator.create(RefreshThread);
+    refresh_thread.* = RefreshThread.init(thread_safe_allocator, &store);
     try refresh_thread.start();
     defer {
         std.log.info("Stopping RefreshThread...", .{});
         refresh_thread.stop();
         std.log.info("RefreshThread stopped", .{});
-        allocator.destroy(refresh_thread);
+        thread_safe_allocator.destroy(refresh_thread);
     }
-
-    // Initialize Vxfw application
-    // Vxfw manages the event loop, terminal I/O, and rendering
-    var app = try vxfw.App.init(allocator);
-    defer app.deinit();
 
     // Validate terminal size before running the TUI
     // vaxis will panic with division by zero if screen dimensions are 0
