@@ -3,6 +3,7 @@ const vxfw = @import("vaxis").vxfw;
 const Model = @import("model.zig").Model;
 const StateStore = @import("../state/cache.zig").StateStore;
 const SubscriptionManager = @import("../state/pubsub.zig").SubscriptionManager;
+const RefreshThread = @import("../state/refresh.zig").RefreshThread;
 const HalError = @import("../ffi/errors.zig").HalError;
 
 /// Main TUI application entry point
@@ -19,7 +20,8 @@ const HalError = @import("../ffi/errors.zig").HalError;
 ///
 /// User controls:
 /// - Ctrl+C: Quit application
-pub fn main() !void {
+/// - --test-mode: Bypass terminal size check for automated testing
+pub fn main(test_mode: bool) !void {
     // Initialize GPA allocator
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer {
@@ -44,6 +46,7 @@ pub fn main() !void {
     // Create Model with allocator, store, and pubsub
     // The Model holds all application state and implements vxfw.Widget
     const model = try allocator.create(Model);
+    errdefer allocator.destroy(model);
 
     // Initialize Model, catching HAL-specific errors
     model.* = Model.init(allocator, &store, &pubsub) catch |err| {
@@ -62,6 +65,22 @@ pub fn main() !void {
             , .{});
             std.process.exit(1);
         }
+        // For other errors (like InitFailed), print helpful message and exit
+        if (err == HalError.InitFailed) {
+            std.debug.print(
+                \\ERROR: Failed to initialize HAL component
+                \\
+                \\This usually means a component with the name 'haltune' already exists.
+                \\
+                \\To see existing components, run:
+                \\  halcmd list comp
+                \\
+                \\To remove stuck components, run:
+                \\  halcmd del comp haltune
+                \\
+            , .{});
+            std.process.exit(1);
+        }
         // For other errors, propagate normally
         return err;
     };
@@ -72,6 +91,17 @@ pub fn main() !void {
         allocator.destroy(model);
     }
 
+    // Create and start RefreshThread for HAL polling
+    var refresh_thread = try allocator.create(RefreshThread);
+    refresh_thread.* = RefreshThread.init(allocator, &store);
+    try refresh_thread.start();
+    defer {
+        std.log.info("Stopping RefreshThread...", .{});
+        refresh_thread.stop();
+        std.log.info("RefreshThread stopped", .{});
+        allocator.destroy(refresh_thread);
+    }
+
     // Initialize Vxfw application
     // Vxfw manages the event loop, terminal I/O, and rendering
     var app = try vxfw.App.init(allocator);
@@ -80,7 +110,8 @@ pub fn main() !void {
     // Validate terminal size before running the TUI
     // vaxis will panic with division by zero if screen dimensions are 0
     // This can happen when running via script/ssh without proper TTY allocation
-    {
+    // In test mode, skip this check and use default dimensions
+    if (!test_mode) {
         const os = std.os.linux;
         const winsize = extern struct { ws_row: u16, ws_col: u16, ws_xpixel: u16, ws_ypixel: u16 };
         var ws: winsize = undefined;
@@ -98,9 +129,13 @@ pub fn main() !void {
                 \\
                 \\Direct console access: ssh pib, then run ./zig-out/bin/haltune
                 \\
+                \\For automated testing, use: --test-mode
+                \\
             , .{});
             std.process.exit(1);
         }
+    } else {
+        std.debug.print("TEST MODE: Terminal size check bypassed\n", .{});
     }
 
     // Run the application with our Model widget

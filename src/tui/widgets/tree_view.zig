@@ -271,13 +271,22 @@ pub const TreeView = struct {
 
         // Get all pins, signals, and params from StateStore
         const pins = try self.store.listPins(self.allocator);
-        defer self.allocator.free(pins);
+        defer {
+            for (pins) |p| self.allocator.free(p);
+            self.allocator.free(pins);
+        }
 
         const signals = try self.store.listSignals(self.allocator);
-        defer self.allocator.free(signals);
+        defer {
+            for (signals) |s| self.allocator.free(s);
+            self.allocator.free(signals);
+        }
 
         const params = try self.store.listParams(self.allocator);
-        defer self.allocator.free(params);
+        defer {
+            for (params) |p| self.allocator.free(p);
+            self.allocator.free(params);
+        }
 
         // HashMap to group items by component
         var component_map = std.StringHashMap(ComponentGroup).init(self.allocator);
@@ -1082,7 +1091,7 @@ pub const TreeView = struct {
 
                 // Arrow Down: move cursor down
                 if (key.matches(vaxis.Key.down, .{})) {
-                    if (self.cursor_index < self.visible_nodes.items.len - 1) {
+                    if (self.visible_nodes.items.len > 0 and self.cursor_index < self.visible_nodes.items.len - 1) {
                         self.cursor_index += 1;
                         ctx.consumeAndRedraw();
                     }
