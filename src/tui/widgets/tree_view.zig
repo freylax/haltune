@@ -201,21 +201,21 @@ pub const TreeView = struct {
         for (self.root.items) |node| {
             self.freeNode(node);
         }
-        self.root.deinit(self.allocator);
+        self.root.deinit();
 
         // Free HashMaps
         self.expanded_nodes.deinit();
         self.checked_items.deinit();
-        self.visible_nodes.deinit(self.allocator);
+        self.visible_nodes.deinit();
 
         // Free search buffer
-        self.search_buffer.deinit(self.allocator);
+        self.search_buffer.deinit();
 
         // Free edit buffer
-        self.edit_buffer.deinit(self.allocator);
+        self.edit_buffer.deinit();
 
         // Free signal edit buffer
-        self.signal_edit_buffer.deinit(self.allocator);
+        self.signal_edit_buffer.deinit();
 
         // Free pending signal deletion
         if (self.pending_signal_delete) |name| {
@@ -237,7 +237,7 @@ pub const TreeView = struct {
             for (children.items) |child| {
                 self.freeNode(child);
             }
-            children.deinit(self.allocator);
+            children.deinit();
         }
         self.allocator.destroy(node);
     }
@@ -1412,17 +1412,17 @@ const ComponentGroup = struct {
         for (self.pins.items) |pin| {
             self.allocator.free(pin);
         }
-        self.pins.deinit(self.allocator);
+        self.pins.deinit();
 
         for (self.signals.items) |signal| {
             self.allocator.free(signal);
         }
-        self.signals.deinit(self.allocator);
+        self.signals.deinit();
 
         for (self.params.items) |param| {
             self.allocator.free(param);
         }
-        self.params.deinit(self.allocator);
+        self.params.deinit();
     }
 };
 

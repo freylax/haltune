@@ -383,16 +383,16 @@ pub const StateStore = struct {
 
         // Snapshot keys while holding lock
         var keys = std.ArrayList([]const u8).initCapacity(allocator, 8) catch unreachable;
-        defer keys.deinit(allocator);
+        defer keys.deinit();
         var iter = self.pins.iterator();
         while (iter.next()) |entry| {
             // Duplicate the key string so caller owns the memory (HashMap may reallocate)
             const key_copy = try allocator.dupe(u8, entry.key_ptr.*);
-            try keys.append(allocator, key_copy);
+            try keys.append(key_copy);
         }
 
         // Return owned slice (caller must free both outer slice and inner strings)
-        return keys.toOwnedSlice(allocator);
+        return keys.toOwnedSlice();
     }
 
     /// List all signal names in the cache
@@ -427,16 +427,16 @@ pub const StateStore = struct {
 
         // Snapshot keys while holding lock
         var keys = std.ArrayList([]const u8).initCapacity(allocator, 4) catch unreachable;
-        defer keys.deinit(allocator);
+        defer keys.deinit();
         var iter = self.signals.iterator();
         while (iter.next()) |entry| {
             // Duplicate the key string so caller owns the memory (HashMap may reallocate)
             const key_copy = try allocator.dupe(u8, entry.key_ptr.*);
-            try keys.append(allocator, key_copy);
+            try keys.append(key_copy);
         }
 
         // Return owned slice (caller must free both outer slice and inner strings)
-        return keys.toOwnedSlice(allocator);
+        return keys.toOwnedSlice();
     }
 
     /// List all parameter names in the cache
@@ -471,16 +471,16 @@ pub const StateStore = struct {
 
         // Snapshot keys while holding lock
         var keys = std.ArrayList([]const u8).initCapacity(allocator, 4) catch unreachable;
-        defer keys.deinit(allocator);
+        defer keys.deinit();
         var iter = self.params.iterator();
         while (iter.next()) |entry| {
             // Duplicate the key string so caller owns the memory (HashMap may reallocate)
             const key_copy = try allocator.dupe(u8, entry.key_ptr.*);
-            try keys.append(allocator, key_copy);
+            try keys.append(key_copy);
         }
 
         // Return owned slice (caller must free both outer slice and inner strings)
-        return keys.toOwnedSlice(allocator);
+        return keys.toOwnedSlice();
     }
 
     /// Get all pins linked to a signal
@@ -527,11 +527,11 @@ pub const StateStore = struct {
 
             if (std.mem.eql(u8, linked_signal, signal_name)) {
                 // Duplicate pin name for caller
-                try result.append(allocator, try allocator.dupe(u8, pin_name));
+                try result.append(try allocator.dupe(u8, pin_name));
             }
         }
 
-        return result.toOwnedSlice(allocator);
+        return result.toOwnedSlice();
     }
 
     /// Update pin->signal link mapping

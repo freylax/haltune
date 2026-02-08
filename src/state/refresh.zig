@@ -284,7 +284,7 @@ pub const RefreshThread = struct {
             for (pin_names.items) |name| {
                 self.allocator.free(name);
             }
-            self.allocator.free(pin_names);
+            pin_names.deinit();
         }
 
         var pin_count: usize = 0;
@@ -358,7 +358,7 @@ pub const RefreshThread = struct {
             for (sig_names.items) |name| {
                 self.allocator.free(name);
             }
-            self.allocator.free(sig_names);
+            sig_names.deinit();
         }
 
         var sig_count: usize = 0;
@@ -432,7 +432,7 @@ pub const RefreshThread = struct {
             for (param_names.items) |name| {
                 self.allocator.free(name);
             }
-            self.allocator.free(param_names);
+            param_names.deinit();
         }
 
         var param_count: usize = 0;

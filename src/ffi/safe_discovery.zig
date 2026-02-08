@@ -28,17 +28,17 @@ const HalcmdResult = struct {
 fn runHalcmd(allocator: std.mem.Allocator, args: []const []const u8) !HalcmdResult {
     // Build argv array at runtime
     var argv_list = try std.ArrayList([]const u8).initCapacity(allocator, args.len + 1);
-    defer argv_list.deinit(allocator);
-    try argv_list.append(allocator, "halcmd");
+    defer argv_list.deinit();
+    try argv_list.append("halcmd");
     for (args) |arg| {
-        try argv_list.append(allocator, arg);
+        try argv_list.append(arg);
     }
 
     const result = std.process.Child.run(.{
         .allocator = allocator,
         .argv = argv_list.items,
     }) catch |err| {
-        std.debug.print("HALCMD ERROR: Failed to run halcmd: {} ({s})\n", .{err, @errorName(err)});
+        std.debug.print("HALCMD ERROR: Failed to run halcmd: {} ({s})\n", .{ err, @errorName(err) });
         return err;
     };
     defer {
@@ -67,9 +67,9 @@ fn isValidHalName(name: []const u8) bool {
     for (name) |ch| {
         // Allow: a-z, A-Z, 0-9, '-', '.', '_'
         const is_valid = (ch >= 'a' and ch <= 'z') or
-                        (ch >= 'A' and ch <= 'Z') or
-                        (ch >= '0' and ch <= '9') or
-                        ch == '-' or ch == '.' or ch == '_';
+            (ch >= 'A' and ch <= 'Z') or
+            (ch >= '0' and ch <= '9') or
+            ch == '-' or ch == '.' or ch == '_';
         if (!is_valid) return false;
     }
     return true;
@@ -78,7 +78,7 @@ fn isValidHalName(name: []const u8) bool {
 /// List all pin names from HAL
 pub fn listPinNames(allocator: std.mem.Allocator) !std.ArrayList([]const u8) {
     var result = try std.ArrayList([]const u8).initCapacity(allocator, 8);
-    const cmd_result = try runHalcmd(allocator, &[_][]const u8{"list", "pin"});
+    const cmd_result = try runHalcmd(allocator, &[_][]const u8{ "list", "pin" });
     defer cmd_result.deinit();
 
     // std.debug.print("DEBUG: halcmd output: {s}\n", .{cmd_result.output});
@@ -90,7 +90,7 @@ pub fn listPinNames(allocator: std.mem.Allocator) !std.ArrayList([]const u8) {
         if (pin_name.len > 0 and isValidHalName(pin_name)) {
             // NOTE: tokenizer returns slice of cmd_result.output, which gets freed
             // We MUST dupe the string to own the memory
-            try result.append(allocator, try allocator.dupe(u8, pin_name));
+            try result.append(try allocator.dupe(u8, pin_name));
         }
     }
 
@@ -101,7 +101,7 @@ pub fn listPinNames(allocator: std.mem.Allocator) !std.ArrayList([]const u8) {
 /// List all param names from HAL
 pub fn listParamNames(allocator: std.mem.Allocator) !std.ArrayList([]const u8) {
     var result = try std.ArrayList([]const u8).initCapacity(allocator, 4);
-    const cmd_result = try runHalcmd(allocator, &[_][]const u8{"list", "param"});
+    const cmd_result = try runHalcmd(allocator, &[_][]const u8{ "list", "param" });
     defer cmd_result.deinit();
 
     // Trim trailing whitespace to avoid empty tokens
@@ -109,7 +109,7 @@ pub fn listParamNames(allocator: std.mem.Allocator) !std.ArrayList([]const u8) {
     var iter = std.mem.tokenizeScalar(u8, trimmed, ' ');
     while (iter.next()) |param_name| {
         if (param_name.len > 0 and isValidHalName(param_name)) {
-            try result.append(allocator, try allocator.dupe(u8, param_name));
+            try result.append(try allocator.dupe(u8, param_name));
         }
     }
 
@@ -119,7 +119,7 @@ pub fn listParamNames(allocator: std.mem.Allocator) !std.ArrayList([]const u8) {
 /// List all signal names from HAL
 pub fn listSignalNames(allocator: std.mem.Allocator) !std.ArrayList([]const u8) {
     var result = try std.ArrayList([]const u8).initCapacity(allocator, 4);
-    const cmd_result = try runHalcmd(allocator, &[_][]const u8{"list", "sig"});
+    const cmd_result = try runHalcmd(allocator, &[_][]const u8{ "list", "sig" });
     defer cmd_result.deinit();
 
     // Trim trailing whitespace to avoid empty tokens
@@ -127,7 +127,7 @@ pub fn listSignalNames(allocator: std.mem.Allocator) !std.ArrayList([]const u8) 
     var iter = std.mem.tokenizeScalar(u8, trimmed, ' ');
     while (iter.next()) |sig_name| {
         if (sig_name.len > 0 and isValidHalName(sig_name)) {
-            try result.append(allocator, try allocator.dupe(u8, sig_name));
+            try result.append(try allocator.dupe(u8, sig_name));
         }
     }
 
