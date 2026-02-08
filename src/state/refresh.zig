@@ -20,6 +20,7 @@ const std = @import("std");
 const StateStore = @import("cache.zig").StateStore;
 const HalValue = @import("cache.zig").HalValue;
 const ffi = @import("../ffi/safe.zig");
+const discovery = @import("../ffi/safe_discovery.zig");
 const c = @import("../ffi/c.zig").c;
 const hal_pin_t = @import("../ffi/types.zig").hal_pin_t;
 const hal_sig_t = @import("../ffi/types.zig").hal_sig_t;
@@ -56,6 +57,7 @@ pub const RefreshThread = struct {
     interval_ns: u64,
 
     /// Memory allocator for temporary allocations during refresh
+    /// Uses page_allocator which is thread-safe (mmap-based)
     allocator: std.mem.Allocator,
 
     /// Initialize a new RefreshThread
@@ -64,7 +66,7 @@ pub const RefreshThread = struct {
     /// The thread is not started until start() is called.
     ///
     /// Parameters:
-    ///   - allocator: Memory allocator for refresh operations
+    ///   - allocator: Memory allocator for refresh operations (used to create arena)
     ///   - store: StateStore to update with HAL values
     ///
     /// Returns:
@@ -83,12 +85,15 @@ pub const RefreshThread = struct {
     /// refresh.stop();
     /// ```
     pub fn init(allocator: std.mem.Allocator, store: *StateStore) RefreshThread {
+        _ = allocator;
+        // Use page_allocator directly - it's thread-safe (mmap-based)
+        // Don't use ArenaAllocator as it may have issues in multithreaded context
         return .{
             .store = store,
             .running = std.atomic.Value(bool).init(true),
             .thread = undefined,
             .interval_ns = 100 * std.time.ns_per_ms, // Default 100ms
-            .allocator = allocator,
+            .allocator = std.heap.page_allocator,
         };
     }
 
@@ -97,17 +102,8 @@ pub const RefreshThread = struct {
     /// Releases resources. The thread must be stopped before calling deinit().
     ///
     /// IMPORTANT: Call stop() before deinit() to ensure clean shutdown.
-    ///
-    /// Example:
-    /// ```
-    /// var refresh = RefreshThread.init(allocator, &store);
-    /// try refresh.start();
-    /// // ... use refresh thread
-    /// refresh.stop();  // Wait for thread exit
-    /// refresh.deinit(); // Clean up resources
-    /// ```
     pub fn deinit(self: *RefreshThread) void {
-        // Note: running flag is cleaned up by atomic.Value deinit
+        // page_allocator doesn't need deinit
         _ = self;
     }
 
@@ -259,68 +255,60 @@ pub const RefreshThread = struct {
     /// Refresh all pins from HAL
     ///
     /// This function:
-    /// 1. Discovers all pins from HAL components
+    /// 1. Discovers all pins from HAL using halcmd
     /// 2. Updates all pin values from HAL
     ///
     /// Thread safety:
     ///   - Reads HAL pins without holding cache lock
     fn refreshPins(self: *RefreshThread) !void {
-        const safe = @import("../ffi/safe.zig");
-
         // Track all discovered pin names in this refresh cycle
         var discovered_names = std.StringHashMap(void).init(self.allocator);
         defer discovered_names.deinit();
 
-        // Discover all pins by walking HAL's pin list
+        // Discover all pins by calling halcmd list pin
         std.debug.print("refreshPins: discovering all pins from HAL\n", .{});
 
+        var pin_names = discovery.listPinNames(self.allocator) catch |err| {
+            std.log.err("refreshPins: halcmd failed: {}", .{err});
+            return err;
+        };
+        defer {
+            for (pin_names.items) |name| {
+                self.allocator.free(name);
+            }
+            pin_names.deinit(self.allocator);
+        }
+
         var pin_count: usize = 0;
-        var maybe_pin = safe.halprFindPinByName(null); // Get first pin
-        while (maybe_pin) |pin| {
-            // Get pin name using getPinName helper
-            const pin_name = safe.getPinName(pin) orelse {
-                // Can't get name, skip to next
-                // Get next pin via linked list - note: hal_pin_t.next is at offset 0
-                const next_ptr: [*]u8 = @ptrCast(pin);
-                const next: ?*opaque {} = @ptrCast(next_ptr + @sizeOf(usize)); // Next pointer is first field
-                maybe_pin = safe.halprFindPinByName(@ptrCast(next)); // Use find to get typed pointer
-                continue;
-            };
+        for (pin_names.items) |pin_name| {
+            std.debug.print("  pin: {s}\n", .{pin_name});
+            try discovered_names.put(pin_name, {});
 
-            // Convert to Zig string for our use
-            const pin_name_len = std.mem.len(pin_name);
-            const pin_name_slice = pin_name[0..pin_name_len];
+            // Create null-terminated version for FFI call
+            const pin_name_z = try self.allocator.dupeZ(u8, pin_name);
+            defer self.allocator.free(pin_name_z);
 
-            // Add to discovered set
-            try discovered_names.put(pin_name_slice, {});
-
-            // Read pin value
-            if (ffi.getPinValueByName(pin_name)) |v| {
-                // Try to add to store (will update if exists)
-                self.store.addPin(pin_name_slice, v) catch {
-                    // If add failed, try updating
-                    self.store.updatePin(pin_name_slice, v) catch {};
+            if (ffi.getPinValueByName(pin_name_z)) |v| {
+                self.store.addPin(pin_name, v) catch {
+                    self.store.updatePin(pin_name, v) catch {};
                 };
                 pin_count += 1;
             } else |err| {
-                std.debug.print("refreshPins: skipping {s}: {}\n", .{pin_name_slice, err});
+                std.debug.print("refreshPins: skipping {s}: {}\n", .{pin_name, err});
             }
-
-            // Get next pin - the next pointer is at offset 0 in hal_pin_t
-            const next_ptr: [*]u8 = @ptrCast(pin);
-            const next_ptr_addr = @as([*]const ?*opaque {}, @ptrCast(next_ptr));
-            maybe_pin = safe.halprFindPinByName(@ptrCast(next_ptr_addr.*));
         }
 
         std.debug.print("refreshPins: discovered {d} pins from HAL\n", .{pin_count});
 
         // Remove pins from cache that are no longer in HAL
         const cached_names = try self.store.listPins(self.allocator);
-        defer self.allocator.free(cached_names);
+        defer {
+            for (cached_names) |n| self.allocator.free(n);
+            self.allocator.free(cached_names);
+        }
 
         for (cached_names) |name| {
-            if (!discovered_names.get(name)) {
-                // Pin no longer exists in HAL, remove from cache
+            if (discovered_names.get(name) == null) {
                 self.store.removePin(name) catch {};
                 std.debug.print("refreshPins: removed stale pin {s}\n", .{name});
             }
@@ -330,65 +318,62 @@ pub const RefreshThread = struct {
     /// Refresh all signals from HAL
     ///
     /// This function:
-    /// 1. Discovers all signals from HAL
-    /// 2. Updates all signal values from HAL
+    /// 1. Discovers all signals from HAL using halcmd
+    /// 2. Updates all cached signal values from HAL
     ///
     /// Thread safety:
     ///   - Reads HAL signals without holding cache lock
     fn refreshSignals(self: *RefreshThread) !void {
-        const safe = @import("../ffi/safe.zig");
-
         // Track all discovered signal names in this refresh cycle
         var discovered_names = std.StringHashMap(void).init(self.allocator);
         defer discovered_names.deinit();
 
-        // Discover all signals by walking HAL's signal list
+        // Discover all signals by calling halcmd list sig
+        std.debug.print("refreshSignals: discovering all signals from HAL\n", .{});
+
+        var sig_names = discovery.listSignalNames(self.allocator) catch |err| {
+            std.log.err("refreshSignals: halcmd failed: {}", .{err});
+            return err;
+        };
+        defer {
+            for (sig_names.items) |name| {
+                self.allocator.free(name);
+            }
+            sig_names.deinit(self.allocator);
+        }
+
         var sig_count: usize = 0;
-        var maybe_sig = safe.halprFindSigByName(null); // Get first signal
-        while (maybe_sig) |sig| {
-            // Get signal name using getSignalName helper
-            const sig_name = safe.getSignalName(sig) orelse {
-                // Can't get name, skip to next
-                const next_ptr: [*]u8 = @ptrCast(sig);
-                const next: ?*opaque {} = @ptrCast(next_ptr + @sizeOf(usize));
-                maybe_sig = safe.halprFindSigByName(@ptrCast(next));
-                continue;
-            };
+        for (sig_names.items) |sig_name| {
+            std.debug.print("  signal: {s}\n", .{sig_name});
+            try discovered_names.put(sig_name, {});
 
-            // Convert to Zig string for our use
-            const sig_name_len = std.mem.len(sig_name);
-            const sig_name_slice = sig_name[0..sig_name_len];
+            // Create null-terminated version for FFI call
+            const sig_name_z = try self.allocator.dupeZ(u8, sig_name);
+            defer self.allocator.free(sig_name_z);
 
-            // Add to discovered set
-            try discovered_names.put(sig_name_slice, {});
-
-            // Read signal value
-            if (ffi.getSignalValueByName(sig_name)) |v| {
-                // Try to add to store (will update if exists)
-                self.store.addSignal(sig_name_slice, v) catch {
-                    // If add failed, try updating
-                    self.store.updateSignal(sig_name_slice, v) catch {};
+            if (ffi.getSignalValueByName(sig_name_z)) |v| {
+                self.store.addSignal(sig_name, v) catch {
+                    self.store.updateSignal(sig_name, v) catch {};
                 };
                 sig_count += 1;
             } else |err| {
-                std.debug.print("refreshSignals: skipping {s}: {}\n", .{sig_name_slice, err});
+                std.debug.print("refreshSignals: skipping {s}: {}\n", .{sig_name, err});
             }
-
-            // Get next signal
-            const next_ptr: [*]u8 = @ptrCast(sig);
-            const next_ptr_addr = @as([*]const ?*opaque {}, @ptrCast(next_ptr));
-            maybe_sig = safe.halprFindSigByName(@ptrCast(next_ptr_addr.*));
         }
 
         std.debug.print("refreshSignals: discovered {d} signals from HAL\n", .{sig_count});
 
         // Remove signals from cache that are no longer in HAL
         const cached_names = try self.store.listSignals(self.allocator);
-        defer self.allocator.free(cached_names);
+        defer {
+            for (cached_names) |n| self.allocator.free(n);
+            self.allocator.free(cached_names);
+        }
 
         for (cached_names) |name| {
-            if (!discovered_names.get(name)) {
+            if (discovered_names.get(name) == null) {
                 self.store.removeSignal(name) catch {};
+                std.debug.print("refreshSignals: removed stale signal {s}\n", .{name});
             }
         }
     }
@@ -396,64 +381,60 @@ pub const RefreshThread = struct {
     /// Refresh all parameters from HAL
     ///
     /// This function:
-    /// 1. Discovers all parameters from HAL
+    /// 1. Discovers all parameters from HAL using halcmd
     /// 2. Updates all parameter values from HAL
     ///
     /// Thread safety:
     ///   - Reads HAL parameters without holding cache lock
     fn refreshParams(self: *RefreshThread) !void {
-        const safe = @import("../ffi/safe.zig");
-
         // Track all discovered param names in this refresh cycle
         var discovered_names = std.StringHashMap(void).init(self.allocator);
         defer discovered_names.deinit();
 
-        // Discover all params by walking HAL's param list
+        // Discover all params by calling halcmd list param
+        std.debug.print("refreshParams: discovering all params from HAL\n", .{});
+
+        var param_names = discovery.listParamNames(self.allocator) catch |err| {
+            std.log.err("refreshParams: halcmd failed: {}", .{err});
+            return err;
+        };
+        defer {
+            for (param_names.items) |name| {
+                self.allocator.free(name);
+            }
+            param_names.deinit(self.allocator);
+        }
+
         var param_count: usize = 0;
-        var maybe_param = safe.halprFindParamByName(null); // Get first param
-        while (maybe_param) |param| {
-            // Get param name using getParamName helper
-            const param_name = safe.getParamName(param) orelse {
-                // Can't get name, skip to next
-                const next_ptr: [*]u8 = @ptrCast(param);
-                const next: ?*opaque {} = @ptrCast(next_ptr + @sizeOf(usize));
-                maybe_param = safe.halprFindParamByName(@ptrCast(next));
-                continue;
-            };
+        for (param_names.items) |param_name| {
+            std.debug.print("  param: {s}\n", .{param_name});
+            try discovered_names.put(param_name, {});
 
-            // Convert to Zig string for our use
-            const param_name_len = std.mem.len(param_name);
-            const param_name_slice = param_name[0..param_name_len];
+            // Create null-terminated version for FFI call
+            const param_name_z = try self.allocator.dupeZ(u8, param_name);
+            defer self.allocator.free(param_name_z);
 
-            // Add to discovered set
-            try discovered_names.put(param_name_slice, {});
-
-            // Read param value
-            if (ffi.getParamValueByName(param_name)) |v| {
-                // Try to add to store (will update if exists)
-                self.store.addParam(param_name_slice, v) catch {
-                    // If add failed, try updating
-                    self.store.updateParam(param_name_slice, v) catch {};
+            if (ffi.getParamValueByName(param_name_z)) |v| {
+                self.store.addParam(param_name, v) catch {
+                    self.store.updateParam(param_name, v) catch {};
                 };
                 param_count += 1;
             } else |err| {
-                std.debug.print("refreshParams: skipping {s}: {}\n", .{param_name_slice, err});
+                std.debug.print("refreshParams: skipping {s}: {}\n", .{param_name, err});
             }
-
-            // Get next param
-            const next_ptr: [*]u8 = @ptrCast(param);
-            const next_ptr_addr = @as([*]const ?*opaque {}, @ptrCast(next_ptr));
-            maybe_param = safe.halprFindParamByName(@ptrCast(next_ptr_addr.*));
         }
 
         std.debug.print("refreshParams: discovered {d} params from HAL\n", .{param_count});
 
         // Remove params from cache that are no longer in HAL
         const cached_names = try self.store.listParams(self.allocator);
-        defer self.allocator.free(cached_names);
+        defer {
+            for (cached_names) |n| self.allocator.free(n);
+            self.allocator.free(cached_names);
+        }
 
         for (cached_names) |name| {
-            if (!discovered_names.get(name)) {
+            if (discovered_names.get(name) == null) {
                 self.store.removeParam(name) catch {};
             }
         }

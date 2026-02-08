@@ -52,7 +52,10 @@ fn exportSignals(
     try writer.writeAll("# Signals\n");
 
     const signal_names = try store.listSignals(allocator);
-    defer allocator.free(signal_names);
+    defer {
+        for (signal_names) |s| allocator.free(s);
+        allocator.free(signal_names);
+    }
 
     for (signal_names) |sig_name| {
         // Get signal value
@@ -98,7 +101,10 @@ fn exportParams(
     try writer.writeAll("# Parameters\n");
 
     const param_names = try store.listParams(allocator);
-    defer allocator.free(param_names);
+    defer {
+        for (param_names) |p| allocator.free(p);
+        allocator.free(param_names);
+    }
 
     for (param_names) |param_name| {
         const param_value = try store.getParam(param_name);

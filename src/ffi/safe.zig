@@ -51,7 +51,7 @@ pub fn halInit(comp_name: [:0]const u8) !c_int {
     // This handles cases where a previous instance didn't clean up properly
     if (comp_id < 0) {
         var suffix: u32 = 1;
-        while (suffix <= 10) : (suffix += 1) {
+        while (suffix <= 100) : (suffix += 1) {
             const numbered_name = try std.fmt.allocPrint(
                 std.heap.page_allocator,
                 "{s}{d}\x00",
@@ -630,8 +630,19 @@ pub fn getParamValue(param: *const hal_param_t) !@import("../state/cache.zig").H
 
 /// Get the name of a HAL pin from an opaque pointer
 ///
-/// This function extracts the name field from the end of a hal_pin_t struct.
-/// The name is stored as char name[HAL_NAME_LEN + 1] at the struct's end.
+/// This function extracts the name field from a hal_pin_t struct.
+/// The name is stored as char name[HAL_NAME_LEN + 1] at offset 64.
+///
+/// Struct layout from hal_priv.h (64-bit):
+///   - next_ptr:       8 bytes  (offset 0)
+///   - data_ptr_addr:  8 bytes  (offset 8)
+///   - owner_ptr:      8 bytes  (offset 16)
+///   - signal:         8 bytes  (offset 24)
+///   - dummysig:       8 bytes  (offset 32)
+///   - oldname:        8 bytes  (offset 40)
+///   - type:           4 bytes  (offset 48)
+///   - dir:            4 bytes  (offset 52)
+///   - name:          48 bytes  (offset 56 with padding, 64 aligned)
 ///
 /// Parameters:
 ///   - pin: Opaque pointer to hal_pin_t
@@ -643,30 +654,12 @@ pub fn getParamValue(param: *const hal_param_t) !@import("../state/cache.zig").H
 /// Thread safety:
 ///   - Read-only access, no locking needed
 ///   - Name string persists as long as pin exists
-pub fn getPinName(pin: ?*opaque {}) ?[*:0]const u8 {
+pub fn getPinName(pin: ?*anyopaque) ?[*:0]const u8 {
     if (pin) |p| {
-        // Name is at the end of the struct: pointer to (HAL_NAME_LEN + 1) bytes before struct end
-        // We cast to [*]u8, then calculate offset to name field
+        // Offset based on hal_priv.h struct layout
+        // 6 pointers + 1 union (8 bytes) + 2 ints + padding = 64 bytes
         const ptr: [*]u8 = @ptrCast(p);
-        // Name field starts at HAL_NAME_LEN + 1 bytes before end of struct
-        // Since we don't know struct size, we need to find the null-terminated string at the end
-        // The name is the last HAL_NAME_LEN + 1 bytes of the struct
-        // We'll search backwards from a reasonable offset
-        // Based on hal_priv.h, the name is at a known offset from the start
-
-        // Actually, we can't reliably find the end without knowing struct size.
-        // The best approach is to use a fixed offset based on the struct layout.
-        // From hal_priv.h, looking at hal_pin_t:
-        // - next_ptr, data_ptr_addr, owner_ptr, signal, oldname: 5 pointers (40 bytes each on 64-bit)
-        // - type, dir: 2 ints (4 bytes each)
-        // - name: 48 bytes (HAL_NAME_LEN + 1)
-        // Total offset to name = 5*8 + 2*4 + padding = ~48-56 bytes in
-
-        // Simpler: just cast to u8 pointer and use known offset
-        // The name field offset is approximate - we need to be precise
-        // For now, let's use a heuristic: find the first valid-looking string
-        const name_offset = 48; // Approximate offset based on struct size
-        const name_ptr = ptr + name_offset;
+        const name_ptr = ptr + 64;
         return @ptrCast(name_ptr);
     }
     return null;
@@ -674,12 +667,27 @@ pub fn getPinName(pin: ?*opaque {}) ?[*:0]const u8 {
 
 /// Get the name of a HAL signal from an opaque pointer
 ///
-/// This function extracts the name field from the end of a hal_sig_t struct.
-pub fn getSignalName(sig: ?*opaque {}) ?[*:0]const u8 {
+/// Struct layout from hal_priv.h (64-bit):
+///   - next_ptr:       8 bytes  (offset 0)
+///   - data_ptr:       8 bytes  (offset 8)
+///   - type:           4 bytes  (offset 16)
+///   - readers:        4 bytes  (offset 20)
+///   - writers:        4 bytes  (offset 24)
+///   - bidirs:         4 bytes  (offset 28)
+///   - name:          48 bytes  (offset 32)
+///
+/// Parameters:
+///   - sig: Opaque pointer to hal_sig_t
+///
+/// Returns:
+///   - Pointer to null-terminated name string
+///   - null if sig is null
+pub fn getSignalName(sig: ?*anyopaque) ?[*:0]const u8 {
     if (sig) |s| {
+        // Offset based on hal_priv.h struct layout
+        // 2 pointers + 4 ints = 32 bytes
         const ptr: [*]u8 = @ptrCast(s);
-        const name_offset = 40; // Approximate offset for hal_sig_t
-        const name_ptr = ptr + name_offset;
+        const name_ptr = ptr + 32;
         return @ptrCast(name_ptr);
     }
     return null;
@@ -687,15 +695,60 @@ pub fn getSignalName(sig: ?*opaque {}) ?[*:0]const u8 {
 
 /// Get the name of a HAL parameter from an opaque pointer
 ///
-/// This function extracts the name field from the end of a hal_param_t struct.
-pub fn getParamName(param: ?*opaque {}) ?[*:0]const u8 {
+/// Struct layout from hal_priv.h (64-bit):
+///   - next_ptr:       8 bytes  (offset 0)
+///   - data_ptr:       8 bytes  (offset 8)
+///   - owner_ptr:      8 bytes  (offset 16)
+///   - oldname:        8 bytes  (offset 24)
+///   - type:           4 bytes  (offset 32)
+///   - dir:            4 bytes  (offset 36)
+///   - name:          48 bytes  (offset 40 with padding, 48 aligned)
+///
+/// Parameters:
+///   - param: Opaque pointer to hal_param_t
+///
+/// Returns:
+///   - Pointer to null-terminated name string
+///   - null if param is null
+pub fn getParamName(param: ?*anyopaque) ?[*:0]const u8 {
     if (param) |p| {
+        // Offset based on hal_priv.h struct layout
+        // 4 pointers + 2 ints = 40 bytes (with padding to 48 for alignment)
         const ptr: [*]u8 = @ptrCast(p);
-        const name_offset = 48; // Approximate offset for hal_param_t
-        const name_ptr = ptr + name_offset;
+        const name_ptr = ptr + 48;
         return @ptrCast(name_ptr);
     }
     return null;
+}
+
+/// Get the component ID from an opaque hal_comp_t pointer
+///
+/// This function extracts the comp_id field from a hal_comp_t struct.
+///
+/// Struct layout from hal_priv.h (64-bit):
+///   - next_ptr:       8 bytes  (offset 0)
+///   - comp_id:        4 bytes  (offset 8)
+///   - mem_id:         4 bytes  (offset 12)
+///   - type:           4 bytes  (offset 16)
+///   - ready:          4 bytes  (offset 20)
+///   - pid:            4 bytes  (offset 24)
+///   - shmem_base:     8 bytes  (offset 32 with padding)
+///   ... (name is later)
+///
+/// Parameters:
+///   - comp: Opaque pointer to hal_comp_t
+///
+/// Returns:
+///   - Component ID on success
+///   - error.NotFound if comp is null
+pub fn halCompIdFromPtr(comp: ?*anyopaque) !c_int {
+    if (comp) |comp_ptr| {
+        // comp_id is at offset 8 (after next_ptr)
+        const ptr: [*]u8 = @ptrCast(comp_ptr);
+        const comp_id_ptr: [*]c_int = @ptrCast(@alignCast(ptr + 8));
+        return comp_id_ptr[0];
+    }
+    return HalError.NotFound;
 }
 
 /// Get the name of a HAL component by ID
@@ -725,7 +778,7 @@ pub fn getCompNameById(comp_id: c_int) ?[*:0]const u8 {
 ///
 /// Thread safety:
 ///   - Requires HAL mutex (halpr functions don't acquire it)
-pub fn findPinByOwner(comp: ?*opaque {}, start: ?*opaque {}) ?*opaque {} {
+pub fn findPinByOwner(comp: ?*anyopaque, start: ?*anyopaque) ?*anyopaque {
     return @import("c.zig").c.halpr_find_pin_by_owner(comp, start);
 }
 
@@ -740,7 +793,7 @@ pub fn findPinByOwner(comp: ?*opaque {}, start: ?*opaque {}) ?*opaque {} {
 ///
 /// Returns:
 ///   - Opaque pointer to hal_param_t, or null if no more params
-pub fn findParamByOwner(comp: ?*opaque {}, start: ?*opaque {}) ?*opaque {} {
+pub fn findParamByOwner(comp: ?*anyopaque, start: ?*anyopaque) ?*anyopaque {
     return @import("c.zig").c.halpr_find_param_by_owner(comp, start);
 }
 
@@ -751,7 +804,7 @@ pub fn findParamByOwner(comp: ?*opaque {}, start: ?*opaque {}) ?*opaque {} {
 ///
 /// Returns:
 ///   - Opaque pointer to hal_comp_t, or null if not found
-pub fn findCompByName(name: [*:0]const u8) ?*opaque {} {
+pub fn findCompByName(name: [*:0]const u8) ?*anyopaque {
     return @import("c.zig").c.halpr_find_comp_by_name(name);
 }
 
@@ -762,20 +815,12 @@ pub fn findCompByName(name: [*:0]const u8) ?*opaque {} {
 ///
 /// Returns:
 ///   - Opaque pointer to hal_comp_t, or null if not found
-pub fn findCompById(comp_id: c_int) ?*opaque {} {
+pub fn findCompById(comp_id: c_int) ?*anyopaque {
     return @import("c.zig").c.halpr_find_comp_by_id(comp_id);
 }
 
-/// Iterate through all components
-///
-/// This function returns the first component when start is null,
-/// or the next component when start is a previously returned component.
-///
-/// Returns:
-///   - Opaque pointer to hal_comp_t, or null if no more components
-pub fn findCompByOwner(start: ?*opaque {}) ?*opaque {} {
-    return @import("c.zig").c.halpr_find_comp_by_owner(start);
-}
+// Note: Discovery functions (firstPin, nextPin, firstSignal, nextSignal, firstParam, nextParam)
+// have been moved to safe_discovery.zig to avoid duplication and maintain separation of concerns.
 
 // Verify signal functions exist at compile time
 comptime {

@@ -458,30 +458,19 @@ pub const TreeView = struct {
     /// Rebuild tree if it's empty but StateStore has data
     /// This handles the case where refresh thread populates StateStore after initialization
     fn rebuildTreeIfNeeded(self: *TreeView) !void {
-        // Check if tree is empty
+        // Only rebuild once when tree is empty
         if (self.root.items.len == 0) {
-            // Check if StateStore has any data
-            const pins = self.store.listPins(self.allocator) catch &.{};
-            defer {
-                for (pins) |p| self.allocator.free(p);
-                self.allocator.free(pins);
-            }
+            // Check if StateStore has any data (using count to avoid allocations)
+            const has_data = blk: {
+                self.store.rwlock.lockShared();
+                defer self.store.rwlock.unlockShared();
+                break :blk self.store.pins.count() > 0 or
+                          self.store.signals.count() > 0 or
+                          self.store.params.count() > 0;
+            };
 
-            const signals = self.store.listSignals(self.allocator) catch &.{};
-            defer {
-                for (signals) |s| self.allocator.free(s);
-                self.allocator.free(signals);
-            }
-
-            const params = self.store.listParams(self.allocator) catch &.{};
-            defer {
-                for (params) |p| self.allocator.free(p);
-                self.allocator.free(params);
-            }
-
-            // If StateStore has data but tree is empty, rebuild
-            if (pins.len > 0 or signals.len > 0 or params.len > 0) {
-                std.log.info("Rebuilding tree: {d} pins, {d} signals, {d} params", .{ pins.len, signals.len, params.len });
+            if (has_data) {
+                std.log.info("StateStore populated, rebuilding tree", .{});
                 try self.buildTree();
             }
         }

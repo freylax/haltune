@@ -327,7 +327,10 @@ pub const SignalDialog = struct {
 
         // Get all pin names
         const pin_names = try self.store.listPins(self.allocator);
-        defer self.allocator.free(pin_names);
+        defer {
+            for (pin_names) |p| self.allocator.free(p);
+            self.allocator.free(pin_names);
+        }
 
         // Filter by matching type
         for (pin_names) |pin_name| {

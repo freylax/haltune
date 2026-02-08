@@ -136,7 +136,7 @@ fn createHelpText(ctx: vxfw.DrawContext, view_mode: ViewMode, model: *const Mode
     };
 
     // Build help text components
-    var text_parts = std.ArrayList([]const u8).initCapacity(ctx.arena, 0) catch unreachable;
+    var text_parts = std.ArrayList([]const u8).initCapacity(ctx.arena, 4) catch unreachable;
     defer text_parts.deinit(ctx.arena);
 
     // Add cursor value if present

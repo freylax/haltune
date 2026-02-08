@@ -17,31 +17,30 @@ pub const c = @cImport({
 // These functions exist in liblinuxcnchal.so but are not declared in hal.h.
 // They are used to discover pins, signals, and parameters by name.
 //
-// We use *opaque {} here because the actual hal_pin_t, hal_sig_t, hal_param_t
-// types are opaque in ULAPI. The safe.zig wrapper will convert these to the
-// properly-typed opaque pointers from types.zig.
+// We use *anyopaque here because the actual hal_pin_t, hal_sig_t, hal_param_t
+// types are opaque in ULAPI.
 //
 // Source: LinuxCNC HAL source code (src/hal/hal_lib.c)
 // Documentation: https://linuxcnc.org/docs/html/hal/HAL_Introduction.html
 
-pub extern "c" fn halpr_find_pin_by_name(name: ?[*:0]const u8) ?*opaque {};
-pub extern "c" fn halpr_find_sig_by_name(name: ?[*:0]const u8) ?*opaque {};
-pub extern "c" fn halpr_find_param_by_name(name: ?[*:0]const u8) ?*opaque {};
+pub extern "c" fn halpr_find_pin_by_name(name: ?[*:0]const u8) ?*anyopaque;
+pub extern "c" fn halpr_find_sig_by_name(name: ?[*:0]const u8) ?*anyopaque;
+pub extern "c" fn halpr_find_param_by_name(name: ?[*:0]const u8) ?*anyopaque;
 
 // Additional discovery and iteration functions
 // halpr_find_pin_by_owner: Find pins owned by a component (start=null for first, returns next)
 // halpr_find_param_by_owner: Find params owned by a component
 // halpr_find_pin_by_sig: Find pins linked to a signal (start=null for first)
 // Note: No halpr_find_sig_by_owner - signals aren't owned by components in HAL
-pub extern "c" fn halpr_find_pin_by_owner(owner: ?*opaque {}, start: ?*opaque {}) ?*opaque {};
-pub extern "c" fn halpr_find_param_by_owner(owner: ?*opaque {}, start: ?*opaque {}) ?*opaque {};
-pub extern "c" fn halpr_find_funct_by_owner(owner: ?*opaque {}, start: ?*opaque {}) ?*opaque {};
-pub extern "c" fn halpr_find_pin_by_sig(sig: ?*opaque {}, start: ?*opaque {}) ?*opaque {};
+pub extern "c" fn halpr_find_pin_by_owner(owner: ?*anyopaque, start: ?*anyopaque) ?*anyopaque;
+pub extern "c" fn halpr_find_param_by_owner(owner: ?*anyopaque, start: ?*anyopaque) ?*anyopaque;
+pub extern "c" fn halpr_find_funct_by_owner(owner: ?*anyopaque, start: ?*anyopaque) ?*anyopaque;
+pub extern "c" fn halpr_find_pin_by_sig(sig: ?*anyopaque, start: ?*anyopaque) ?*anyopaque;
 
 // Component discovery functions
-pub extern "c" fn halpr_find_comp_by_name(name: ?[*:0]const u8) ?*opaque {};
-pub extern "c" fn halpr_find_comp_by_id(comp_id: c_int) ?*opaque {};
-pub extern "c" fn halpr_find_comp_by_owner(start: ?*opaque {}) ?*opaque {};
+pub extern "c" fn halpr_find_comp_by_name(name: ?[*:0]const u8) ?*anyopaque;
+pub extern "c" fn halpr_find_comp_by_id(comp_id: c_int) ?*anyopaque;
+pub extern "c" fn halpr_find_comp_by_owner(start: ?*anyopaque) ?*anyopaque;
 
 // Component name accessor (public API from hal.h)
 pub extern "c" fn hal_comp_name(comp_id: c_int) [*:0]const u8;
@@ -49,6 +48,17 @@ pub extern "c" fn hal_comp_name(comp_id: c_int) [*:0]const u8;
 // HAL constant for name field length
 // Name is stored at the end of each HAL struct as char name[HAL_NAME_LEN + 1]
 pub const HAL_NAME_LEN = 47;
+
+// HAL shared memory base pointer (exported by liblinuxcnchal.so)
+// This points to the base of HAL shared memory where hal_data_t is located
+pub extern "c" var hal_shmem_base: [*c]u8;
+
+// HAL data structure (opaque, but we need the list head pointers)
+// We access comp_list_ptr, pin_list_ptr, sig_list_ptr, param_list_ptr at known offsets
+pub const HAL_DATA_COMP_LIST_OFFSET = 72; // offset to comp_list_ptr in hal_data_t
+pub const HAL_DATA_PIN_LIST_OFFSET = 76;  // offset to pin_list_ptr in hal_data_t
+pub const HAL_DATA_SIG_LIST_OFFSET = 80;  // offset to sig_list_ptr in hal_data_t
+pub const HAL_DATA_PARAM_LIST_OFFSET = 84; // offset to param_list_ptr in hal_data_t
 
 // HAL memory allocation
 // hal_malloc allocates memory from HAL's shared memory region.
