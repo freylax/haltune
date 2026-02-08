@@ -109,7 +109,7 @@ pub fn listParamNames(allocator: std.mem.Allocator) !std.ArrayList([]const u8) {
     var iter = std.mem.tokenizeScalar(u8, trimmed, ' ');
     while (iter.next()) |param_name| {
         if (param_name.len > 0 and isValidHalName(param_name)) {
-            try result.append(try allocator.dupe(u8, param_name));
+            try result.append(allocator, try allocator.dupe(u8, param_name));
         }
     }
 
@@ -127,7 +127,7 @@ pub fn listSignalNames(allocator: std.mem.Allocator) !std.ArrayList([]const u8) 
     var iter = std.mem.tokenizeScalar(u8, trimmed, ' ');
     while (iter.next()) |sig_name| {
         if (sig_name.len > 0 and isValidHalName(sig_name)) {
-            try result.append(try allocator.dupe(u8, sig_name));
+            try result.append(allocator, try allocator.dupe(u8, sig_name));
         }
     }
 
