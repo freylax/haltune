@@ -533,45 +533,51 @@ cd ~/prog/haltune
 
 ---
 
-## NEW ISSUE: Memory Corruption with Refresh Thread (2026-02-08)
+---
+
+## RESOLVED: Memory Corruption with Refresh Thread (2026-02-08)
 
 ### Symptom
 
-When refresh thread is enabled, TUI shows memory corruption:
+When refresh thread was enabled, TUI showed memory corruption:
 ```
 refreshPins: removed stale pin  `���				refreshPins: removed stale pin thread1.time
 ```
 
-Garbage characters appear in output, indicating memory corruption.
+Garbage characters appeared in output, indicating memory corruption.
 
 ### Root Cause
 
-**Refresh thread using page_allocator concurrently with vaxis causes memory corruption.**
+**GPA allocator used by both vaxis and refresh thread caused memory corruption.**
 
-Both the refresh thread and vaxis were using page_allocator at the same time, leading to memory corruption.
+The GeneralPurposeAllocator (GPA) was not thread-safe when accessed concurrently by both the main thread (via vaxis) and the refresh thread.
 
-### Evidence
+### Solution
 
-1. With refresh thread DISABLED:
-   - No memory corruption visible
-   - No garbage characters in output
-   - TUI initializes cleanly (crashes later on vaxis layout with width=0, but that's separate)
+**Switched to c_allocator** (like the `flow` TUI example does):
 
-2. With refresh thread ENABLED:
-   - Memory corruption visible in output
-   - Pins incorrectly marked as "stale" and removed
-   - HashMap lookups returning garbage data
+1. Changed `src/tui/app.zig`:
+   - Replaced GPA with `std.heap.c_allocator`
+   - Both main thread and refresh thread now use c_allocator
+   - Initialize vaxis BEFORE starting refresh thread (avoid terminal conflicts)
 
-### Fix Required
+2. Fixed memory ownership in `src/state/refresh.zig`:
+   - HashMap now owns copies of pin/signal/param names
+   - Proper cleanup in defer blocks
 
-The refresh thread needs to use a separate allocator that doesn't conflict with vaxis.
+3. Fixed ArrayList API for Zig 0.15:
+   - `deinit()` no longer takes allocator parameter
+   - Added missing `defer` cleanup in StateStore snapshot functions
 
-Options:
-1. **Use ArenaAllocator for refresh thread data** - Allocate all data in an arena, free entire arena at once
-2. **Use GPA allocator for refresh thread** - Create a dedicated GPA instance for the thread
-3. **Mutex-protected page_allocator** - Wrap page_allocator with a mutex for thread-safe access
+4. Fixed ComponentGroup in `src/tui/widgets/tree_view.zig`:
+   - Now owns copies of pin/signal/param names
+   - Proper cleanup in `deinit()`
 
-## Testing Tools
+### Commit
+
+`e81696a` - fix: use c_allocator to avoid memory corruption with refresh thread
+
+### Testing Tools
 
 ### mcp-tui-driver (Rust crate)
 **Location on pib:** `/home/cnc/.cargo/bin/mcp-tui-driver`
