@@ -85,11 +85,11 @@ pub const SignalDialog = struct {
 
     /// Clean up dialog resources
     pub fn deinit(self: *SignalDialog) void {
-        self.signal_name.deinit();
+        self.signal_name.deinit(self.allocator);
         for (self.available_pins.items) |pin| {
             self.allocator.free(pin);
         }
-        self.available_pins.deinit();
+        self.available_pins.deinit(self.allocator);
         self.selected_pins.deinit();
         if (self.error_message) |msg| {
             self.allocator.free(msg);

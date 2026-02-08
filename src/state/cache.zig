@@ -388,11 +388,11 @@ pub const StateStore = struct {
         while (iter.next()) |entry| {
             // Duplicate the key string so caller owns the memory (HashMap may reallocate)
             const key_copy = try allocator.dupe(u8, entry.key_ptr.*);
-            try keys.append(key_copy);
+            try keys.append(allocator, key_copy);
         }
 
         // Return owned slice (caller must free both outer slice and inner strings)
-        return keys.toOwnedSlice();
+        return keys.toOwnedSlice(allocator);
     }
 
     /// List all signal names in the cache
@@ -432,11 +432,11 @@ pub const StateStore = struct {
         while (iter.next()) |entry| {
             // Duplicate the key string so caller owns the memory (HashMap may reallocate)
             const key_copy = try allocator.dupe(u8, entry.key_ptr.*);
-            try keys.append(key_copy);
+            try keys.append(allocator, key_copy);
         }
 
         // Return owned slice (caller must free both outer slice and inner strings)
-        return keys.toOwnedSlice();
+        return keys.toOwnedSlice(allocator);
     }
 
     /// List all parameter names in the cache
@@ -476,11 +476,11 @@ pub const StateStore = struct {
         while (iter.next()) |entry| {
             // Duplicate the key string so caller owns the memory (HashMap may reallocate)
             const key_copy = try allocator.dupe(u8, entry.key_ptr.*);
-            try keys.append(key_copy);
+            try keys.append(allocator, key_copy);
         }
 
         // Return owned slice (caller must free both outer slice and inner strings)
-        return keys.toOwnedSlice();
+        return keys.toOwnedSlice(allocator);
     }
 
     /// Get all pins linked to a signal

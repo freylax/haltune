@@ -237,10 +237,10 @@ pub const DataTable = struct {
                 self.allocator.free(name);
             }
         }
-        self.items.deinit();
-        self.component_buffer.deinit();
-        self.edit_buffer.deinit();
-        self.table_edit_buffer.deinit();
+        self.items.deinit(self.allocator);
+        self.component_buffer.deinit(self.allocator);
+        self.edit_buffer.deinit(self.allocator);
+        self.table_edit_buffer.deinit(self.allocator);
         self.pending_edits.deinit();
         if (self.error_message_owner) |msg| {
             self.allocator.free(msg);
