@@ -93,9 +93,9 @@ pub fn main(test_mode: bool) !void {
 
     // Create and start RefreshThread for HAL polling AFTER vaxis is ready
     // Using c_allocator (like flow does) for both main and refresh threads
-    var refresh_thread = try thread_safe_allocator.create(RefreshThread);
+    const refresh_thread = try thread_safe_allocator.create(RefreshThread);
     refresh_thread.* = RefreshThread.init(thread_safe_allocator, &store);
-    try refresh_thread.start();
+    _ = try refresh_thread.start();
     defer {
         std.log.info("Stopping RefreshThread...", .{});
         refresh_thread.stop();

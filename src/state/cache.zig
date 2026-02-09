@@ -92,13 +92,24 @@ pub const StateStore = struct {
         };
     }
 
+    /// Ensure HashMap has enough capacity for typical HAL configurations
+    /// This prevents resizes during concurrent access
+    pub fn ensureCapacity(self: *StateStore, pin_count: usize, signal_count: usize, param_count: usize) !void {
+        self.rwlock.lock();
+        defer self.rwlock.unlock();
+
+        try self.pins.ensureUnusedCapacity(pin_count);
+        try self.signals.ensureUnusedCapacity(signal_count);
+        try self.params.ensureUnusedCapacity(param_count);
+    }
+
     /// Clean up StateStore and free all resources
     ///
     /// Releases all HashMap storage. The StateStore must not be used
     /// after calling deinit().
     ///
-    /// IMPORTANT: This only frees HashMap storage, not the string keys
-    /// themselves. StringHashMap manages key memory automatically.
+    /// IMPORTANT: This frees all owned string keys since we dupe them
+    /// in addPin/addSignal/addParam to ensure HashMap owns the memory.
     ///
     /// Example:
     /// ```
@@ -106,8 +117,31 @@ pub const StateStore = struct {
     /// defer store.deinit();  // Always cleanup
     /// ```
     pub fn deinit(self: *StateStore) void {
+        // Free owned pin keys
+        {
+            var iter = self.pins.iterator();
+            while (iter.next()) |entry| {
+                self.allocator.free(entry.key_ptr.*);
+            }
+        }
         self.pins.deinit();
+
+        // Free owned signal keys
+        {
+            var iter = self.signals.iterator();
+            while (iter.next()) |entry| {
+                self.allocator.free(entry.key_ptr.*);
+            }
+        }
         self.signals.deinit();
+
+        // Free owned param keys
+        {
+            var iter = self.params.iterator();
+            while (iter.next()) |entry| {
+                self.allocator.free(entry.key_ptr.*);
+            }
+        }
         self.params.deinit();
 
         // Free pin link strings
@@ -204,7 +238,32 @@ pub const StateStore = struct {
         self.rwlock.lock();
         defer self.rwlock.unlock();
 
-        try self.pins.put(name, value);
+        // Check if key already exists (by content)
+        if (self.pins.get(name)) |_| {
+            // Key already exists, just update the value
+            try self.pins.put(name, value);
+        } else {
+            // New key - DUPE the key so HashMap owns the memory!
+            // This is critical because the 'name' parameter points to memory
+            // that will be freed when refreshPins returns
+            const name_owned = try self.allocator.dupe(u8, name);
+            try self.pins.put(name_owned, value);
+        }
+    }
+
+    /// Get or add a pin (internal helper for refresh thread)
+    /// This handles the case where a pin may already exist from a previous refresh
+    fn getOrAddPin(self: *StateStore, name: []const u8, value: HalValue) !void {
+        self.rwlock.lock();
+        defer self.rwlock.unlock();
+
+        // First try to update existing pin
+        if (self.pins.get(name)) |_| {
+            try self.pins.put(name, value);
+        } else {
+            // New pin - add it
+            try self.pins.put(name, value);
+        }
     }
 
     /// Add a new signal to the cache
@@ -232,7 +291,15 @@ pub const StateStore = struct {
         self.rwlock.lock();
         defer self.rwlock.unlock();
 
-        try self.signals.put(name, value);
+        // Check if key already exists
+        if (self.signals.get(name)) |_| {
+            // Key exists, just update the value
+            try self.signals.put(name, value);
+        } else {
+            // New key - dupe it so HashMap owns the memory
+            const name_owned = try self.allocator.dupe(u8, name);
+            try self.signals.put(name_owned, value);
+        }
     }
 
     /// Add a new parameter to the cache
@@ -260,7 +327,15 @@ pub const StateStore = struct {
         self.rwlock.lock();
         defer self.rwlock.unlock();
 
-        try self.params.put(name, value);
+        // Check if key already exists
+        if (self.params.get(name)) |_| {
+            // Key exists, just update the value
+            try self.params.put(name, value);
+        } else {
+            // New key - dupe it so HashMap owns the memory
+            const name_owned = try self.allocator.dupe(u8, name);
+            try self.params.put(name_owned, value);
+        }
     }
 
     /// Get a signal value by name
@@ -600,7 +675,10 @@ pub const StateStore = struct {
         self.rwlock.lock();
         defer self.rwlock.unlock();
 
-        _ = self.pins.remove(name);
+        if (self.pins.fetchRemove(name)) |entry| {
+            // Free the owned key
+            self.allocator.free(entry.key);
+        }
     }
 
     /// Remove a signal from the cache
@@ -626,7 +704,10 @@ pub const StateStore = struct {
         self.rwlock.lock();
         defer self.rwlock.unlock();
 
-        _ = self.signals.remove(name);
+        if (self.signals.fetchRemove(name)) |entry| {
+            // Free the owned key
+            self.allocator.free(entry.key);
+        }
     }
 
     /// Remove a parameter from the cache
@@ -652,7 +733,10 @@ pub const StateStore = struct {
         self.rwlock.lock();
         defer self.rwlock.unlock();
 
-        _ = self.params.remove(name);
+        if (self.params.fetchRemove(name)) |entry| {
+            // Free the owned key
+            self.allocator.free(entry.key);
+        }
     }
 };
 

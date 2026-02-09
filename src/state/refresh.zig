@@ -274,8 +274,6 @@ pub const RefreshThread = struct {
         }
 
         // Discover all pins by calling halcmd list pin
-        std.debug.print("refreshPins: discovering all pins from HAL\n", .{});
-
         var pin_names = discovery.listPinNames(self.allocator) catch |err| {
             std.log.err("refreshPins: halcmd failed: {}", .{err});
             return err;
@@ -289,11 +287,12 @@ pub const RefreshThread = struct {
 
         var pin_count: usize = 0;
         for (pin_names.items) |pin_name| {
-            std.debug.print("  pin: {s}\n", .{pin_name});
-
             // Copy the pin name so HashMap owns it (pin_names memory gets freed)
             const pin_name_copy = try self.allocator.dupe(u8, pin_name);
-            try discovered_names.put(pin_name_copy, {});
+            discovered_names.put(pin_name_copy, {}) catch |err| {
+                self.allocator.free(pin_name_copy);
+                return err;
+            };
 
             // Create null-terminated version for FFI call
             const pin_name_z = try self.allocator.dupeZ(u8, pin_name);
@@ -305,11 +304,9 @@ pub const RefreshThread = struct {
                 };
                 pin_count += 1;
             } else |err| {
-                std.debug.print("refreshPins: skipping {s}: {}\n", .{ pin_name, err });
+                std.log.err("refreshPins: skipping {s}: {}\n", .{ pin_name, err });
             }
         }
-
-        std.debug.print("refreshPins: discovered {d} pins from HAL\n", .{pin_count});
 
         // Remove pins from cache that are no longer in HAL
         const cached_names = try self.store.listPins(self.allocator);
@@ -321,7 +318,6 @@ pub const RefreshThread = struct {
         for (cached_names) |name| {
             if (discovered_names.get(name) == null) {
                 self.store.removePin(name) catch {};
-                std.debug.print("refreshPins: removed stale pin {s}\n", .{name});
             }
         }
     }
@@ -348,8 +344,6 @@ pub const RefreshThread = struct {
         }
 
         // Discover all signals by calling halcmd list sig
-        std.debug.print("refreshSignals: discovering all signals from HAL\n", .{});
-
         var sig_names = discovery.listSignalNames(self.allocator) catch |err| {
             std.log.err("refreshSignals: halcmd failed: {}", .{err});
             return err;
@@ -361,10 +355,7 @@ pub const RefreshThread = struct {
             sig_names.deinit(self.allocator);
         }
 
-        var sig_count: usize = 0;
         for (sig_names.items) |sig_name| {
-            std.debug.print("  signal: {s}\n", .{sig_name});
-
             // Copy the signal name so HashMap owns it (sig_names memory gets freed)
             const sig_name_copy = try self.allocator.dupe(u8, sig_name);
             try discovered_names.put(sig_name_copy, {});
@@ -377,13 +368,10 @@ pub const RefreshThread = struct {
                 self.store.addSignal(sig_name, v) catch {
                     self.store.updateSignal(sig_name, v) catch {};
                 };
-                sig_count += 1;
             } else |err| {
-                std.debug.print("refreshSignals: skipping {s}: {}\n", .{ sig_name, err });
+                std.log.err("refreshSignals: skipping {s}: {}\n", .{ sig_name, err });
             }
         }
-
-        std.debug.print("refreshSignals: discovered {d} signals from HAL\n", .{sig_count});
 
         // Remove signals from cache that are no longer in HAL
         const cached_names = try self.store.listSignals(self.allocator);
@@ -395,7 +383,6 @@ pub const RefreshThread = struct {
         for (cached_names) |name| {
             if (discovered_names.get(name) == null) {
                 self.store.removeSignal(name) catch {};
-                std.debug.print("refreshSignals: removed stale signal {s}\n", .{name});
             }
         }
     }
@@ -422,8 +409,6 @@ pub const RefreshThread = struct {
         }
 
         // Discover all params by calling halcmd list param
-        std.debug.print("refreshParams: discovering all params from HAL\n", .{});
-
         var param_names = discovery.listParamNames(self.allocator) catch |err| {
             std.log.err("refreshParams: halcmd failed: {}", .{err});
             return err;
@@ -435,10 +420,7 @@ pub const RefreshThread = struct {
             param_names.deinit(self.allocator);
         }
 
-        var param_count: usize = 0;
         for (param_names.items) |param_name| {
-            std.debug.print("  param: {s}\n", .{param_name});
-
             // Copy the param name so HashMap owns it (param_names memory gets freed)
             const param_name_copy = try self.allocator.dupe(u8, param_name);
             try discovered_names.put(param_name_copy, {});
@@ -451,13 +433,10 @@ pub const RefreshThread = struct {
                 self.store.addParam(param_name, v) catch {
                     self.store.updateParam(param_name, v) catch {};
                 };
-                param_count += 1;
             } else |err| {
-                std.debug.print("refreshParams: skipping {s}: {}\n", .{ param_name, err });
+                std.log.err("refreshParams: skipping {s}: {}\n", .{ param_name, err });
             }
         }
-
-        std.debug.print("refreshParams: discovered {d} params from HAL\n", .{param_count});
 
         // Remove params from cache that are no longer in HAL
         const cached_names = try self.store.listParams(self.allocator);

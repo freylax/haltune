@@ -81,8 +81,6 @@ pub fn listPinNames(allocator: std.mem.Allocator) !std.ArrayList([]const u8) {
     const cmd_result = try runHalcmd(allocator, &[_][]const u8{ "list", "pin" });
     defer cmd_result.deinit();
 
-    // std.debug.print("DEBUG: halcmd output: {s}\n", .{cmd_result.output});
-
     // Trim trailing whitespace to avoid empty tokens
     const trimmed = std.mem.trimRight(u8, cmd_result.output, " \t\n\r");
     var iter = std.mem.tokenizeScalar(u8, trimmed, ' ');
@@ -94,7 +92,6 @@ pub fn listPinNames(allocator: std.mem.Allocator) !std.ArrayList([]const u8) {
         }
     }
 
-    // std.debug.print("DEBUG: parsed {d} pin names\n", .{result.items.len});
     return result;
 }
 
