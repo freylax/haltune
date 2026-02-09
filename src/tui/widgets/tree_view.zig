@@ -93,12 +93,32 @@ pub const Node = struct {
     }
 };
 
+/// Get pin direction as string (IN/OUT/IO/empty)
+fn getPinDirectionString(self: *TreeView, node: *const Node) []const u8 {
+    if (node.item_type != .pin) return "";
+
+    // Try to get direction from HAL
+    const name_z = self.allocator.dupeZ(u8, node.full_name) catch return "";
+    defer self.allocator.free(name_z);
+
+    if (safe.getPinDir(name_z)) |dir| {
+        return switch (dir) {
+            .in => " IN",
+            .out => " OUT",
+            .io => " IO",
+            .unspecified => "",
+        };
+    } else |_| {
+        return "";
+    }
+}
+
 /// Format a HAL value for display in the value column
-/// Uses compact formatting: ●/○ for BIT, 6-char precision for FLOAT/U32
+/// Uses compact formatting: ●/○ for BIT, no trailing zeros for FLOAT
 fn formatHalValue(value: HalValue, allocator: std.mem.Allocator) ![]const u8 {
     return switch (value) {
         .bit => |v| if (v) "\xe2\x97\x8f" else "\xe2\x97\x8b", // UTF-8 for ●/○
-        .float => |v| std.fmt.allocPrint(allocator, "{d:.6}", .{v}) catch "ERR",
+        .float => |v| std.fmt.allocPrint(allocator, "{d}", .{v}) catch "ERR", // No trailing zeros
         .s32 => |v| std.fmt.allocPrint(allocator, "{d}", .{v}) catch "ERR",
         .u32 => |v| std.fmt.allocPrint(allocator, "{d}", .{v}) catch "ERR",
     };
@@ -1035,6 +1055,7 @@ pub const TreeView = struct {
                     // Type-specific character validation
                     if (key.codepoint >= 32 and key.codepoint < 127) {
                         const new_char = @as(u8, @intCast(key.codepoint));
+
                         const orig_value = self.store.getPin(self.edit_item.?.full_name) catch
                             self.store.getSignal(self.edit_item.?.full_name) catch
                             self.store.getParam(self.edit_item.?.full_name) catch null;
@@ -1115,23 +1136,29 @@ pub const TreeView = struct {
                     }
 
                     // Leaf nodes: check if value is writable
-                    // Input pins connected to signals are NOT writable
+                    // Only OUT pins are writable, IN pins and connected pins are NOT writable
                     const is_writable = blk: {
                         if (node.item_type == .pin) {
                             // Check if pin is connected to a signal
                             if (self.store.pin_links.get(node.full_name)) |_| {
                                 break :blk false; // Connected pins get value from signal
                             }
+
+                            // Check pin direction - IN and IO pins are writable (OUT pins are read-only outputs)
+                            const name_z = try self.allocator.dupeZ(u8, node.full_name);
+                            defer self.allocator.free(name_z);
+
+                            if (safe.getPinDir(name_z)) |dir| {
+                                break :blk dir == .in or dir == .io; // IN and IO pins are writable
+                            } else |_| {
+                                break :blk true; // Can't determine direction, assume writable
+                            }
                         }
                         break :blk true; // Signals and params are always writable
                     };
 
                     if (!is_writable) {
-                        // Use status line instead of setError for cleaner API
-                        const pin_signal = self.store.pin_links.get(node.full_name).?;
-                        const msg = try std.fmt.allocPrint(self.allocator, "Cannot edit - pin connected to '{s}'", .{pin_signal});
-                        defer self.allocator.free(msg);
-                        // For now just skip editing - could show message in status line later
+                        // Skip editing - status message would be shown by caller if needed
                         ctx.consumeAndRedraw();
                         return;
                     }

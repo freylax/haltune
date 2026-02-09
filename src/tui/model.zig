@@ -11,6 +11,7 @@ const VisibilityState = @import("widgets/tree_view.zig").VisibilityState;
 const DataTable = @import("widgets/data_table.zig").DataTable;
 const ItemType = @import("widgets/data_table.zig").ItemType;
 const SignalDialog = @import("widgets/signal_dialog.zig").SignalDialog;
+const safe = @import("../ffi/safe.zig");
 
 /// View mode enumeration for single-panel layout switching
 pub const ViewMode = enum {
@@ -316,13 +317,14 @@ pub const Model = struct {
 
     /// Get full precision value string for a HAL item
     ///
-    /// Returns a formatted string showing the item's name, type, and full
+    /// Returns a formatted string showing the item's name, type, direction (for pins), and full
     /// precision value. Unlike the compact format used in tree view (6 chars),
     /// this uses full precision for floats and word-format for bits.
     ///
     /// Example output:
-    ///   - "motion.digital-in-00: BIT TRUE"
-    ///   - "motion.analog-in-00: FLOAT 3.14159265358979"
+    ///   - "motion.digital-in-00: BIT IN FALSE"
+    ///   - "motion.analog-in-00: FLOAT IN 3.14159265358979"
+    ///   - "pid.enable: BIT OUT TRUE"
     pub fn getFullValueString(self: *const Model, allocator: std.mem.Allocator, item_name: []const u8, item_type: ItemType) ![]const u8 {
         const value = switch (item_type) {
             .pin => self.store.getPin(item_name) catch null,
@@ -345,7 +347,23 @@ pub const Model = struct {
                 .u32 => |u| try std.fmt.allocPrint(allocator, "{d}", .{u}),
             };
 
-            return std.fmt.allocPrint(allocator, "{s}: {s} {s}", .{ item_name, type_str, value_str });
+            // Get direction for pins
+            const dir_str = if (item_type == .pin) dir: {
+                const name_z = try allocator.dupeZ(u8, item_name);
+                defer allocator.free(name_z);
+                if (safe.getPinDir(name_z)) |dir| {
+                    break :dir switch (dir) {
+                        .in => " IN",
+                        .out => " OUT",
+                        .io => " IO",
+                        .unspecified => "",
+                    };
+                } else |_| {
+                    break :dir "";
+                }
+            } else "";
+
+            return std.fmt.allocPrint(allocator, "{s}: {s}{s} {s}", .{ item_name, type_str, dir_str, value_str });
         } else {
             return std.fmt.allocPrint(allocator, "{s}: (no value)", .{item_name});
         }
@@ -424,11 +442,15 @@ pub const Model = struct {
                     ctx.consumeAndRedraw();
                 }
 
-                // Forward navigation keys to TreeView if no modal dialogs are visible
+                // Forward ALL keys to TreeView when in edit mode, or specific navigation keys otherwise
                 if (!self.signal_dialog.visible and !self.save_dialog_visible) {
-                    // TreeView handles: arrow keys, Enter (expand/collapse), Space (checkbox), '/' (search), Backspace (collapse)
                     const tree_widget = self.tree_view.widget();
-                    if (key.matches(vaxis.Key.up, .{}) or
+                    const in_edit_mode = self.tree_view.edit_mode;
+
+                    // In edit mode, forward ALL keys (including digits, decimal point, minus, Escape)
+                    // Otherwise, forward only navigation keys
+                    if (in_edit_mode or
+                        key.matches(vaxis.Key.up, .{}) or
                         key.matches(vaxis.Key.down, .{}) or
                         key.matches(vaxis.Key.enter, .{}) or
                         key.matches(' ', .{}) or
