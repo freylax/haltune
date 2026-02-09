@@ -348,24 +348,26 @@ pub const DataTable = struct {
         var direction: PinDirection = .none;
         var is_writable: bool = false;
 
-        // Import discovery module for getPinDir
-        const discovery = @import("../../ffi/safe_discovery.zig");
-
         // Try to get the item from StateStore to determine its type
         // Try pin first
         if (self.store.getPin(name)) |value| {
             item_type = .pin;
             hal_type = halTypeFromHalValue(value);
 
-            // Get direction from HAL via halcmd
+            // Get direction from HAL by accessing hal_pin_t structure directly
+            // This uses halpr_find_pin_by_name to get the pin structure,
+            // then reads the dir field - just like halcmd does.
             direction = blk: {
-                if (discovery.getPinDir(self.allocator, name)) |dir| switch (dir) {
+                const name_z = try self.allocator.dupeZ(u8, name);
+                defer self.allocator.free(name_z);
+
+                if (safe.getPinDir(name_z)) |dir| switch (dir) {
                     .in => break :blk PinDirection.in,
                     .out => break :blk PinDirection.out,
                     .io => break :blk PinDirection.io,
                     .unspecified => break :blk PinDirection.none,
                 } else |err| {
-                    // Fallback to name-based detection if halcmd fails
+                    // Fallback to name-based detection if HAL access fails
                     std.log.warn("Failed to get pin direction for '{s}': {}, using name heuristic", .{ name, err });
                     if (std.mem.indexOf(u8, name, "-out") != null or
                         std.mem.indexOf(u8, name, "-io") != null)

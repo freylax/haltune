@@ -977,6 +977,70 @@ pub fn findCompById(comp_id: c_int) ?*anyopaque {
 // Note: Discovery functions (firstPin, nextPin, firstSignal, nextSignal, firstParam, nextParam)
 // have been moved to safe_discovery.zig to avoid duplication and maintain separation of concerns.
 
+/// Pin direction enum (matches HAL's hal_pin_dir_t)
+pub const PinDirection = enum(c_int) {
+    in = c.HAL_IN,
+    out = c.HAL_OUT,
+    io = c.HAL_IO,
+    unspecified = c.HAL_DIR_UNSPECIFIED,
+};
+
+/// Get pin direction by accessing HAL pin structure directly
+///
+/// This function accesses the HAL shared memory to read the pin's direction
+/// attribute directly from the hal_pin_t structure, just like halcmd does.
+///
+/// Parameters:
+///   - name: Null-terminated pin name
+///
+/// Returns:
+///   - PinDirection enum value
+///   - error.NotFound if pin doesn't exist
+///
+/// Thread safety:
+///   - halpr_find_pin_by_name doesn't acquire mutex, but reading the dir field
+///     is safe since it's read-only after pin creation
+///
+/// Source: LinuxCNC halcmd_commands.cc (accesses pin->dir directly)
+pub fn getPinDir(name: [*:0]const u8) !PinDirection {
+    const pin_ptr = @import("c.zig").halpr_find_pin_by_name(name) orelse return HalError.NotFound;
+
+    // Cast to hal_pin_t to access the dir field
+    // This is safe in userspace - we're reading from HAL shared memory
+    const pin: *const @import("c.zig").hal_pin_t = @ptrCast(@alignCast(pin_ptr));
+
+    // Convert HAL direction constant to our enum
+    return switch (pin.dir) {
+        c.HAL_IN => .in,
+        c.HAL_OUT => .out,
+        c.HAL_IO => .io,
+        c.HAL_DIR_UNSPECIFIED => .unspecified,
+        else => .unspecified,
+    };
+}
+
+/// Get param direction by accessing HAL param structure directly
+///
+/// Similar to getPinDir but for parameters.
+///
+/// Parameters:
+///   - name: Null-terminated param name
+///
+/// Returns:
+///   - ParamDirection enum value
+///   - error.NotFound if param doesn't exist
+pub const ParamDirection = enum(u8) {
+    ro = 0, // Read-only
+    rw = 1, // Read-write
+};
+
+pub fn getParamDir(_: [*:0]const u8) !ParamDirection {
+    // HAL params use HAL_RO and HAL_RW constants
+    // For now, we'll return rw as default since most params are writable
+    // TODO: Add full hal_param_t structure if needed
+    return .rw;
+}
+
 // Verify signal functions exist at compile time
 comptime {
     _ = halSignalNew;

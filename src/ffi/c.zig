@@ -49,6 +49,13 @@ pub extern "c" fn hal_comp_name(comp_id: c_int) [*:0]const u8;
 // Name is stored at the end of each HAL struct as char name[HAL_NAME_LEN + 1]
 pub const HAL_NAME_LEN = 47;
 
+// HAL pin direction constants (from hal.h)
+// Source: LinuxCNC HAL source code (src/hal/hal.h)
+pub const HAL_DIR_UNSPECIFIED = -1;
+pub const HAL_IN = 16;
+pub const HAL_OUT = 32;
+pub const HAL_IO = 48; // HAL_IN | HAL_OUT
+
 // HAL shared memory base pointer (exported by liblinuxcnchal.so)
 // This points to the base of HAL shared memory where hal_data_t is located
 pub extern "c" var hal_shmem_base: [*c]u8;
@@ -103,3 +110,27 @@ pub extern "c" fn hal_get_param_value_by_name(
     type_ptr: *c_int,
     data_ptr: [*c][*c]c.hal_data_u,
 ) c_int;
+
+// HAL pin direction type (from hal.h)
+pub const hal_pin_dir_t = c_int;
+
+// HAL pin structure (from hal_priv.h)
+// This is the actual structure layout in HAL shared memory.
+// Source: LinuxCNC HAL source code (src/hal/hal_priv.h)
+//
+// NOTE: In userspace (ULAPI), we access this via halpr_find_pin_by_name
+// which returns a pointer to this structure in shared memory.
+pub const hal_pin_t = extern struct {
+    next_ptr: [*c]hal_pin_t,
+    data_ptr_addr: ?*anyopaque,
+    owner_ptr: ?*anyopaque,
+    signal: ?*anyopaque,
+    dummysig: c.hal_data_u,
+    oldname: ?*anyopaque,
+    type: c_int,
+    dir: hal_pin_dir_t, // This is what we need - pin direction!
+    name: [HAL_NAME_LEN + 1]u8,
+};
+
+// HAL param direction type (from hal.h)
+pub const hal_param_dir_t = c_int;
