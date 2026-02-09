@@ -104,19 +104,6 @@ fn formatHalValue(value: HalValue, allocator: std.mem.Allocator) ![]const u8 {
     };
 }
 
-/// Get HAL pin pointer by name
-/// Returns a pointer to the pin data that can be used with pin*Set functions
-fn getPinPointer(self: *TreeView, name: []const u8) !*const anyerror {
-    // Allocate with null terminator for C API
-    const name_c = try self.allocator.alloc(u8, name.len + 1);
-    defer self.allocator.free(name_c);
-    @memcpy(name_c[0..name.len], name);
-    name_c[name.len] = 0;
-
-    const pin_ptr = safe.halprFindPinByName(@ptrCast(name_c)) orelse return error.PinNotFound;
-    return @ptrCast(@alignCast(pin_ptr));
-}
-
 /// Tree navigation widget
 pub const TreeView = struct {
     /// Memory allocator
@@ -993,37 +980,27 @@ pub const TreeView = struct {
                                 // HAL value is written before cache update matches it
                                 const hal_write_ok = blk: {
                                     if (node.item_type == .pin) {
-                                        // Try to find pin in HAL - if not found, it's a cache-only pin (test data)
-                                        const pin_ptr = getPinPointer(self, node.full_name) catch {
-                                            // Pin not in HAL - this is a cache-only pin (test data)
-                                            // Just update cache and continue, don't stay in edit mode
-                                            std.debug.print("Pin '{s}' not in HAL, updating cache only\n", .{node.full_name});
-                                            break :blk false;
-                                        };
+                                        // Use setPinValueByName which uses hal_get_pin_value_by_name
+                                        // to get the data pointer, then writes to it
+                                        const name_z = try self.allocator.dupeZ(u8, node.full_name);
+                                        defer self.allocator.free(name_z);
 
-                                        // Call appropriate pin*Set function based on value type
-                                        switch (new_value) {
-                                            .bit => |val| safe.pinBitSet(@ptrCast(@alignCast(@constCast(pin_ptr))), val) catch |err| {
-                                                std.debug.print("FFI write failed: pinBitSet '{s}' error {}\n", .{ node.full_name, err });
-                                                ctx.consumeAndRedraw();
-                                                return;
-                                            },
-                                            .float => |val| safe.pinFloatSet(@ptrCast(@alignCast(@constCast(pin_ptr))), val) catch |err| {
-                                                std.debug.print("FFI write failed: pinFloatSet '{s}' error {}\n", .{ node.full_name, err });
-                                                ctx.consumeAndRedraw();
-                                                return;
-                                            },
-                                            .s32 => |val| safe.pinS32Set(@ptrCast(@alignCast(@constCast(pin_ptr))), val) catch |err| {
-                                                std.debug.print("FFI write failed: pinS32Set '{s}' error {}\n", .{ node.full_name, err });
-                                                ctx.consumeAndRedraw();
-                                                return;
-                                            },
-                                            .u32 => |val| safe.pinU32Set(@ptrCast(@alignCast(@constCast(pin_ptr))), val) catch |err| {
-                                                std.debug.print("FFI write failed: pinU32Set '{s}' error {}\n", .{ node.full_name, err });
-                                                ctx.consumeAndRedraw();
-                                                return;
-                                            },
-                                        }
+                                        safe.setPinValueByName(name_z, new_value) catch |err| {
+                                            std.debug.print("FFI write failed: setPinValueByName '{s}' error {}\n", .{ node.full_name, err });
+                                            // Stay in edit mode on error so user can retry
+                                            ctx.consumeAndRedraw();
+                                            return;
+                                        };
+                                    } else if (node.item_type == .param) {
+                                        // Params are writable too
+                                        const name_z = try self.allocator.dupeZ(u8, node.full_name);
+                                        defer self.allocator.free(name_z);
+
+                                        safe.setParamValueByName(name_z, new_value) catch |err| {
+                                            std.debug.print("FFI write failed: setParamValueByName '{s}' error {}\n", .{ node.full_name, err });
+                                            ctx.consumeAndRedraw();
+                                            return;
+                                        };
                                     }
                                     break :blk true;
                                 };
@@ -1172,19 +1149,14 @@ pub const TreeView = struct {
 
                                 // Write to HAL for pins only (signals are read-only)
                                 if (node.item_type == .pin) {
-                                    // Try to find pin in HAL - if not found, it's a cache-only pin (test data)
-                                    const pin_ptr = getPinPointer(self, node.full_name) catch {
-                                        // Pin not in HAL - just update cache
-                                        std.debug.print("Pin '{s}' not in HAL, updating cache only\n", .{node.full_name});
-                                        try self.store.updatePin(node.full_name, HalValue{ .bit = new_value });
-                                        ctx.consumeAndRedraw();
-                                        return;
-                                    };
+                                    // Use setPinValueByName which uses hal_get_pin_value_by_name
+                                    // to get the data pointer, then writes to it
+                                    const name_z = try self.allocator.dupeZ(u8, node.full_name);
+                                    defer self.allocator.free(name_z);
 
-                                    safe.pinBitSet(@ptrCast(@alignCast(@constCast(pin_ptr))), new_value) catch |err| {
-                                        std.debug.print("FFI write failed: pinBitSet '{s}' error {}\n", .{ node.full_name, err });
-                                        ctx.consumeAndRedraw();
-                                        return;
+                                    safe.setPinValueByName(name_z, HalValue{ .bit = new_value }) catch |err| {
+                                        std.debug.print("FFI write failed: setPinValueByName '{s}' error {}\n", .{ node.full_name, err });
+                                        // Even if HAL write fails, update cache and continue
                                     };
                                 }
 
