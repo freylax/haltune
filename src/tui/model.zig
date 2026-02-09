@@ -96,6 +96,7 @@ pub const Model = struct {
         try @import("../ffi/errors.zig").checkHalAvailable();
 
         // Initialize HAL component
+        // halInit will try "haltune", "haltune1", "haltune2", etc. if there are conflicts
         const comp_id = try ffi.halInit("haltune");
         errdefer ffi.halExit(comp_id);
 
