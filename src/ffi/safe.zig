@@ -391,6 +391,92 @@ pub fn pinBitSet(pin: ?[*c]volatile u8, value: bool) !void {
     pin_ptr.* = @intFromBool(value);
 }
 
+/// Set the value of a HAL bit pin by name
+///
+/// This is the preferred way to write pin values from userspace.
+/// It uses hal_get_pin_value_by_name to get the data pointer,
+/// then writes directly to it.
+///
+/// Parameters:
+///   - name: Null-terminated pin name
+///   - value: New boolean value
+///
+/// Returns:
+///   - void on success
+///   - error.NotFound if pin doesn't exist
+///   - error.TypeMismatch if pin type doesn't match
+pub fn setPinBitByName(name: [*:0]const u8, value: bool) !void {
+    var hal_type: c_int = undefined;
+    var data_ptr: [*c]c.hal_data_u = undefined;
+    var connected: bool = undefined;
+
+    const rc = c.hal_get_pin_value_by_name(name, &hal_type, &data_ptr, &connected);
+    if (rc != 0) return HalError.NotFound;
+
+    const data = data_ptr orelse return HalError.NotFound;
+    if (hal_type != c.HAL_BIT) return HalError.TypeMismatch;
+
+    data.*.b = value;
+}
+
+/// Set the value of a HAL float pin by name
+pub fn setPinFloatByName(name: [*:0]const u8, value: f64) !void {
+    var hal_type: c_int = undefined;
+    var data_ptr: [*c]c.hal_data_u = undefined;
+    var connected: bool = undefined;
+
+    const rc = c.hal_get_pin_value_by_name(name, &hal_type, &data_ptr, &connected);
+    if (rc != 0) return HalError.NotFound;
+
+    const data = data_ptr orelse return HalError.NotFound;
+    if (hal_type != c.HAL_FLOAT) return HalError.TypeMismatch;
+
+    data.*.f = value;
+}
+
+/// Set the value of a HAL s32 pin by name
+pub fn setPinS32ByName(name: [*:0]const u8, value: i32) !void {
+    var hal_type: c_int = undefined;
+    var data_ptr: [*c]c.hal_data_u = undefined;
+    var connected: bool = undefined;
+
+    const rc = c.hal_get_pin_value_by_name(name, &hal_type, &data_ptr, &connected);
+    if (rc != 0) return HalError.NotFound;
+
+    const data = data_ptr orelse return HalError.NotFound;
+    if (hal_type != c.HAL_S32) return HalError.TypeMismatch;
+
+    data.*.s = value;
+}
+
+/// Set the value of a HAL u32 pin by name
+pub fn setPinU32ByName(name: [*:0]const u8, value: u32) !void {
+    var hal_type: c_int = undefined;
+    var data_ptr: [*c]c.hal_data_u = undefined;
+    var connected: bool = undefined;
+
+    const rc = c.hal_get_pin_value_by_name(name, &hal_type, &data_ptr, &connected);
+    if (rc != 0) return HalError.NotFound;
+
+    const data = data_ptr orelse return HalError.NotFound;
+    if (hal_type != c.HAL_U32) return HalError.TypeMismatch;
+
+    data.*.u = value;
+}
+
+/// Set the value of a HAL pin by name (union-based)
+///
+/// This is a convenience function that dispatches to the type-specific
+/// setPin*ByName functions based on the HalValue tag.
+pub fn setPinValueByName(name: [*:0]const u8, value: @import("../state/cache.zig").HalValue) !void {
+    switch (value) {
+        .bit => |v| try setPinBitByName(name, v),
+        .float => |v| try setPinFloatByName(name, v),
+        .s32 => |v| try setPinS32ByName(name, v),
+        .u32 => |v| try setPinU32ByName(name, v),
+    }
+}
+
 /// Set the value of a HAL float pin
 ///
 /// Parameters:
@@ -585,6 +671,75 @@ pub fn getParamValueByName(name: [*:0]const u8) !@import("../state/cache.zig").H
         c.HAL_U32 => HalValue{ .u32 = data.*.u },
         else => HalError.TypeMismatch,
     };
+}
+
+/// Set the value of a HAL bit param by name
+pub fn setParamBitByName(name: [*:0]const u8, value: bool) !void {
+    var hal_type: c_int = undefined;
+    var data_ptr: [*c]c.hal_data_u = undefined;
+
+    const rc = c.hal_get_param_value_by_name(name, &hal_type, &data_ptr);
+    if (rc != 0) return HalError.NotFound;
+
+    const data = data_ptr orelse return HalError.NotFound;
+    if (hal_type != c.HAL_BIT) return HalError.TypeMismatch;
+
+    data.*.b = value;
+}
+
+/// Set the value of a HAL float param by name
+pub fn setParamFloatByName(name: [*:0]const u8, value: f64) !void {
+    var hal_type: c_int = undefined;
+    var data_ptr: [*c]c.hal_data_u = undefined;
+
+    const rc = c.hal_get_param_value_by_name(name, &hal_type, &data_ptr);
+    if (rc != 0) return HalError.NotFound;
+
+    const data = data_ptr orelse return HalError.NotFound;
+    if (hal_type != c.HAL_FLOAT) return HalError.TypeMismatch;
+
+    data.*.f = value;
+}
+
+/// Set the value of a HAL s32 param by name
+pub fn setParamS32ByName(name: [*:0]const u8, value: i32) !void {
+    var hal_type: c_int = undefined;
+    var data_ptr: [*c]c.hal_data_u = undefined;
+
+    const rc = c.hal_get_param_value_by_name(name, &hal_type, &data_ptr);
+    if (rc != 0) return HalError.NotFound;
+
+    const data = data_ptr orelse return HalError.NotFound;
+    if (hal_type != c.HAL_S32) return HalError.TypeMismatch;
+
+    data.*.s = value;
+}
+
+/// Set the value of a HAL u32 param by name
+pub fn setParamU32ByName(name: [*:0]const u8, value: u32) !void {
+    var hal_type: c_int = undefined;
+    var data_ptr: [*c]c.hal_data_u = undefined;
+
+    const rc = c.hal_get_param_value_by_name(name, &hal_type, &data_ptr);
+    if (rc != 0) return HalError.NotFound;
+
+    const data = data_ptr orelse return HalError.NotFound;
+    if (hal_type != c.HAL_U32) return HalError.TypeMismatch;
+
+    data.*.u = value;
+}
+
+/// Set the value of a HAL param by name (union-based)
+///
+/// This is a convenience function that dispatches to the type-specific
+/// setParam*ByName functions based on the HalValue tag.
+pub fn setParamValueByName(name: [*:0]const u8, value: @import("../state/cache.zig").HalValue) !void {
+    switch (value) {
+        .bit => |v| try setParamBitByName(name, v),
+        .float => |v| try setParamFloatByName(name, v),
+        .s32 => |v| try setParamS32ByName(name, v),
+        .u32 => |v| try setParamU32ByName(name, v),
+    }
 }
 
 // SetParam functions are disabled for ULAPI build due to opaque types

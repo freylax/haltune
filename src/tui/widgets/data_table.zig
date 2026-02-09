@@ -348,20 +348,34 @@ pub const DataTable = struct {
         var direction: PinDirection = .none;
         var is_writable: bool = false;
 
+        // Import discovery module for getPinDir
+        const discovery = @import("../../ffi/safe_discovery.zig");
+
         // Try to get the item from StateStore to determine its type
         // Try pin first
         if (self.store.getPin(name)) |value| {
             item_type = .pin;
             hal_type = halTypeFromHalValue(value);
-            // TODO: Determine direction from HAL (not available in cache yet)
-            // For now, assume IN based on naming pattern
-            direction = if (std.mem.indexOf(u8, name, "-out") != null or
-                std.mem.indexOf(u8, name, "-io") != null)
-                .out
-            else if (std.mem.indexOf(u8, name, "-in") != null)
-                .in
-            else
-                .none;
+
+            // Get direction from HAL via halcmd
+            direction = blk: {
+                if (discovery.getPinDir(self.allocator, name)) |dir| switch (dir) {
+                    .in => break :blk PinDirection.in,
+                    .out => break :blk PinDirection.out,
+                    .io => break :blk PinDirection.io,
+                    .unspecified => break :blk PinDirection.none,
+                } else |err| {
+                    // Fallback to name-based detection if halcmd fails
+                    std.log.warn("Failed to get pin direction for '{s}': {}, using name heuristic", .{ name, err });
+                    if (std.mem.indexOf(u8, name, "-out") != null or
+                        std.mem.indexOf(u8, name, "-io") != null)
+                        break :blk PinDirection.out
+                    else if (std.mem.indexOf(u8, name, "-in") != null)
+                        break :blk PinDirection.in
+                    else
+                        break :blk PinDirection.none;
+                }
+            };
             is_writable = (direction == .out or direction == .io);
         } else |_| {
             // Try signal
@@ -416,56 +430,26 @@ pub const DataTable = struct {
     }
 
     /// Get HAL pin pointer by name
-    fn getPinPointer(self: *DataTable, name: []const u8) !*const anyerror {
-        const ffi = @import("../../ffi/safe.zig");
-        // Allocate with null terminator for C API
-        const name_c = try self.allocator.alloc(u8, name.len + 1);
-        defer self.allocator.free(name_c);
-        @memcpy(name_c[0..name.len], name);
-        name_c[name.len] = 0;
-
-        const pin_ptr = ffi.halprFindPinByName(@ptrCast(name_c)) orelse return error.PinNotFound;
-        return @ptrCast(@alignCast(pin_ptr));
-    }
-
-    /// Get HAL param pointer by name
-    fn getParamPointer(self: *DataTable, name: []const u8) !*const anyerror {
-        const ffi = @import("../../ffi/safe.zig");
-        // Allocate with null terminator for C API
-        const name_c = try self.allocator.alloc(u8, name.len + 1);
-        defer self.allocator.free(name_c);
-        @memcpy(name_c[0..name.len], name);
-        name_c[name.len] = 0;
-
-        const param_ptr = ffi.halprFindParamByName(@ptrCast(name_c)) orelse return error.ParamNotFound;
-        return @ptrCast(@alignCast(param_ptr));
-    }
-
     /// Write value to HAL item
     fn writeValue(self: *DataTable, item: TableItem, value: HalValue) !void {
         switch (item.item_type) {
             .pin => {
-                const pin_ptr = self.getPinPointer(item.name) catch {
-                    // Pin not in HAL - this is a cache-only pin (test data)
-                    // Just update cache, don't fail the edit
-                    std.log.info("Pin '{s}' not in HAL, updating cache only", .{item.name});
-                    return;
-                };
-                switch (value) {
-                    .bit => |v| try safe.pinBitSet(@ptrCast(@alignCast(@constCast(pin_ptr))), v),
-                    .float => |v| try safe.pinFloatSet(@ptrCast(@alignCast(@constCast(pin_ptr))), v),
-                    .s32 => |v| try safe.pinS32Set(@ptrCast(@alignCast(@constCast(pin_ptr))), v),
-                    .u32 => |v| try safe.pinU32Set(@ptrCast(@alignCast(@constCast(pin_ptr))), v),
-                }
+                // Create null-terminated name for HAL API
+                const name_z = try self.allocator.dupeZ(u8, item.name);
+                defer self.allocator.free(name_z);
+
+                // Use setPinValueByName which uses hal_get_pin_value_by_name
+                // to get the data pointer, then writes to it
+                try safe.setPinValueByName(name_z, value);
             },
             .param => {
-                const param_ptr = try self.getParamPointer(item.name);
-                switch (value) {
-                    .bit => |v| try safe.setParamBit(@ptrCast(@alignCast(@constCast(param_ptr))), v),
-                    .float => |v| try safe.setParamFloat(@ptrCast(@alignCast(@constCast(param_ptr))), v),
-                    .s32 => |v| try safe.setParamS32(@ptrCast(@alignCast(@constCast(param_ptr))), v),
-                    .u32 => |v| try safe.setParamU32(@ptrCast(@alignCast(@constCast(param_ptr))), v),
-                }
+                // Create null-terminated name for HAL API
+                const name_z = try self.allocator.dupeZ(u8, item.name);
+                defer self.allocator.free(name_z);
+
+                // Use setParamValueByName which uses hal_get_param_value_by_name
+                // to get the data pointer, then writes to it
+                try safe.setParamValueByName(name_z, value);
             },
             .signal => {
                 return error.ReadOnly; // Signals are read-only
@@ -607,7 +591,35 @@ pub const DataTable = struct {
                                 if (orig_value) |v| {
                                     // Parse and validate input based on type
                                     const new_value: HalValue = switch (v) {
-                                        .bit => |b| .{ .bit = b },
+                                        .bit => |b| blk: {
+                                            // Parse "0"/"1"/"true"/"false" (case-insensitive)
+                                            const trimmed = std.mem.trim(u8, input, " \t");
+                                            if (trimmed.len == 0) {
+                                                // Empty input - keep current value
+                                                break :blk .{ .bit = b };
+                                            }
+                                            // Convert to lowercase for comparison
+                                            var lower_buf: [32]u8 = undefined;
+                                            const lower_len = @min(trimmed.len, lower_buf.len);
+                                            for (0..lower_len) |i| {
+                                                lower_buf[i] = std.ascii.toLower(trimmed[i]);
+                                            }
+                                            const lower = lower_buf[0..lower_len];
+                                            const value = if (std.mem.eql(u8, lower, "1") or
+                                                std.mem.eql(u8, lower, "true") or
+                                                std.mem.eql(u8, lower, "t")) true else if (std.mem.eql(u8, lower, "0") or
+                                                std.mem.eql(u8, lower, "false") or
+                                                std.mem.eql(u8, lower, "f")) false else {
+                                                self.setError("Invalid bit: use 0/1/true/false") catch {};
+                                                self.error_timeout = @intCast(std.time.nanoTimestamp() + 2_000_000_000);
+                                                ctx.consumeAndRedraw();
+                                                self.table_edit_mode = false;
+                                                self.table_edit_row = null;
+                                                self.table_edit_buffer.clearRetainingCapacity();
+                                                return;
+                                            };
+                                            break :blk .{ .bit = value };
+                                        },
                                         .float => blk: {
                                             const parsed = std.fmt.parseFloat(f64, input) catch {
                                                 self.setError("Invalid float") catch {};
@@ -707,7 +719,15 @@ pub const DataTable = struct {
                                         break :blk result;
                                     },
                                     .u32 => new_char >= '0' and new_char <= '9',
-                                    .bit => false, // BIT values toggle, no edit mode
+                                    .bit => blk: {
+                                        // Allow: 0, 1, t, f, r, u, e, a, l, s (for true/false)
+                                        const result = new_char == '0' or new_char == '1' or
+                                            new_char == 't' or new_char == 'f' or
+                                            new_char == 'r' or new_char == 'u' or
+                                            new_char == 'e' or new_char == 'a' or
+                                            new_char == 'l' or new_char == 's';
+                                        break :blk result;
+                                    },
                                 };
 
                                 if (allowed) {
@@ -1235,7 +1255,7 @@ pub const DataTable = struct {
     /// Matches tree_view.zig formatting for consistency
     fn formatHalValue(value: HalValue, allocator: std.mem.Allocator) ![]const u8 {
         return switch (value) {
-            .bit => |v| if (v) "\xe2\x97\x8f" else "\xe2\x97\x8b", // UTF-8 for ●/○
+            .bit => |v| if (v) "1" else "0", // Use 1/0 for editable display
             .float => |v| std.fmt.allocPrint(allocator, "{d:.6}", .{v}) catch "ERR",
             .s32 => |v| std.fmt.allocPrint(allocator, "{d}", .{v}) catch "ERR",
             .u32 => |v| std.fmt.allocPrint(allocator, "{d}", .{v}) catch "ERR",
