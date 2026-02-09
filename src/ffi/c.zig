@@ -56,6 +56,10 @@ pub const HAL_IN = 16;
 pub const HAL_OUT = 32;
 pub const HAL_IO = 48; // HAL_IN | HAL_OUT
 
+// HAL parameter direction constants (from hal.h)
+pub const HAL_RO = 64;
+pub const HAL_RW = 192; // HAL_RO | 128
+
 // HAL shared memory base pointer (exported by liblinuxcnchal.so)
 // This points to the base of HAL shared memory where hal_data_t is located
 pub extern "c" var hal_shmem_base: [*c]u8;
@@ -134,3 +138,16 @@ pub const hal_pin_t = extern struct {
 
 // HAL param direction type (from hal.h)
 pub const hal_param_dir_t = c_int;
+
+// HAL param structure (from hal_priv.h)
+// This is the actual structure layout in HAL shared memory.
+// Source: LinuxCNC HAL source code (src/hal/hal_priv.h)
+pub const hal_param_t = extern struct {
+    next_ptr: [*c]hal_param_t,
+    data_ptr: ?*anyopaque,
+    owner_ptr: ?*anyopaque,
+    oldname: ?*anyopaque,
+    type: c_int,
+    dir: hal_param_dir_t, // Parameter direction (RO or RW)
+    name: [HAL_NAME_LEN + 1]u8,
+};

@@ -1019,6 +1019,12 @@ pub fn getPinDir(name: [*:0]const u8) !PinDirection {
     };
 }
 
+/// Parameter direction enum (matches HAL's hal_param_dir_t)
+pub const ParamDirection = enum(c_int) {
+    ro = c.HAL_RO,
+    rw = c.HAL_RW,
+};
+
 /// Get param direction by accessing HAL param structure directly
 ///
 /// Similar to getPinDir but for parameters.
@@ -1029,16 +1035,19 @@ pub fn getPinDir(name: [*:0]const u8) !PinDirection {
 /// Returns:
 ///   - ParamDirection enum value
 ///   - error.NotFound if param doesn't exist
-pub const ParamDirection = enum(u8) {
-    ro = 0, // Read-only
-    rw = 1, // Read-write
-};
+pub fn getParamDir(name: [*:0]const u8) !ParamDirection {
+    const param_ptr = @import("c.zig").halpr_find_param_by_name(name) orelse return HalError.NotFound;
 
-pub fn getParamDir(_: [*:0]const u8) !ParamDirection {
-    // HAL params use HAL_RO and HAL_RW constants
-    // For now, we'll return rw as default since most params are writable
-    // TODO: Add full hal_param_t structure if needed
-    return .rw;
+    // Cast to hal_param_t to access the dir field
+    // This is safe in userspace - we're reading from HAL shared memory
+    const param: *const @import("c.zig").hal_param_t = @ptrCast(@alignCast(param_ptr));
+
+    // Convert HAL direction constant to our enum
+    return switch (param.dir) {
+        c.HAL_RO => .ro,
+        c.HAL_RW => .rw,
+        else => .ro, // Default to read-only if unknown
+    };
 }
 
 // Verify signal functions exist at compile time

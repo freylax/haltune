@@ -347,7 +347,7 @@ pub const Model = struct {
                 .u32 => |u| try std.fmt.allocPrint(allocator, "{d}", .{u}),
             };
 
-            // Get direction for pins
+            // Get direction for pins and params
             const dir_str = if (item_type == .pin) dir: {
                 const name_z = try allocator.dupeZ(u8, item_name);
                 defer allocator.free(name_z);
@@ -357,6 +357,17 @@ pub const Model = struct {
                         .out => " OUT",
                         .io => " IO",
                         .unspecified => "",
+                    };
+                } else |_| {
+                    break :dir "";
+                }
+            } else if (item_type == .param) dir: {
+                const name_z = try allocator.dupeZ(u8, item_name);
+                defer allocator.free(name_z);
+                if (safe.getParamDir(name_z)) |dir| {
+                    break :dir switch (dir) {
+                        .ro => " RO",
+                        .rw => " RW",
                     };
                 } else |_| {
                     break :dir "";

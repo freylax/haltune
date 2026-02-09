@@ -93,24 +93,30 @@ pub const Node = struct {
     }
 };
 
-/// Get pin direction as string (IN/OUT/IO/empty)
-fn getPinDirectionString(self: *TreeView, node: *const Node) []const u8 {
-    if (node.item_type != .pin) return "";
-
+/// Get pin/param direction as string (IN/OUT/IO/RO/RW/empty)
+fn getDirectionString(self: *TreeView, node: *const Node) []const u8 {
     // Try to get direction from HAL
     const name_z = self.allocator.dupeZ(u8, node.full_name) catch return "";
     defer self.allocator.free(name_z);
 
-    if (safe.getPinDir(name_z)) |dir| {
-        return switch (dir) {
-            .in => " IN",
-            .out => " OUT",
-            .io => " IO",
-            .unspecified => "",
-        };
-    } else |_| {
-        return "";
+    if (node.item_type == .pin) {
+        if (safe.getPinDir(name_z)) |dir| {
+            return switch (dir) {
+                .in => " IN",
+                .out => " OUT",
+                .io => " IO",
+                .unspecified => "",
+            };
+        } else |_| return "";
+    } else if (node.item_type == .param) {
+        if (safe.getParamDir(name_z)) |dir| {
+            return switch (dir) {
+                .ro => " RO",
+                .rw => " RW",
+            };
+        } else |_| return "";
     }
+    return "";
 }
 
 /// Format a HAL value for display in the value column
@@ -1153,8 +1159,18 @@ pub const TreeView = struct {
                             } else |_| {
                                 break :blk true; // Can't determine direction, assume writable
                             }
+                        } else if (node.item_type == .param) {
+                            // Check param direction - only RW params are writable
+                            const name_z = try self.allocator.dupeZ(u8, node.full_name);
+                            defer self.allocator.free(name_z);
+
+                            if (safe.getParamDir(name_z)) |dir| {
+                                break :blk dir == .rw; // Only RW params are writable
+                            } else |_| {
+                                break :blk true; // Can't determine direction, assume writable
+                            }
                         }
-                        break :blk true; // Signals and params are always writable
+                        break :blk true; // Signals are always writable
                     };
 
                     if (!is_writable) {
