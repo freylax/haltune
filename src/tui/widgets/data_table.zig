@@ -121,10 +121,8 @@ pub const TableItem = struct {
 
 /// Data table widget
 ///
-/// Displays selected HAL items in a tabular format with columns:
+/// Displays selected HAL items in a simple format:
 /// - Name: HAL item name
-/// - Type: Data type (BIT, FLOAT, S32, U32)
-/// - Direction: Pin direction (IN, OUT, IO) or empty for signals/params
 /// - Value: Current value from StateStore
 ///
 /// The table uses color coding:
@@ -188,6 +186,9 @@ pub const DataTable = struct {
     table_edit_mode: bool = false,
     table_edit_row: ?usize = null,
     table_edit_buffer: std.ArrayList(u8),
+
+    /// Width of name column (calculated from longest name)
+    name_column_width: usize = 0,
 
     /// Initialize a new DataTable
     ///
@@ -254,6 +255,8 @@ pub const DataTable = struct {
     /// editability, then populates the items list. Items are filtered
     /// by type and component if filters are active.
     ///
+    /// Also calculates the name column width for alignment.
+    ///
     /// Parameters:
     ///   - item_names: Slice of HAL item names to display
     ///
@@ -275,6 +278,9 @@ pub const DataTable = struct {
             }
         }
         self.items.clearRetainingCapacity();
+
+        // Reset name column width
+        self.name_column_width = 0;
 
         // Parse each item name and add to table (with filtering)
         for (item_names) |name| {
@@ -319,9 +325,12 @@ pub const DataTable = struct {
 
             try self.items.append(self.allocator, item_with_owner);
             std.log.debug("  appended: name='{s}' name_ptr={*}", .{ item_with_owner.name, item_with_owner.name.ptr });
+
+            // Update name column width (for alignment)
+            self.name_column_width = @max(self.name_column_width, item_with_owner.name.len);
         }
 
-        std.log.debug("setItems: now have {} items in table", .{self.items.items.len});
+        std.log.debug("setItems: now have {} items in table, name_column_width={}", .{ self.items.items.len, self.name_column_width });
         for (self.items.items, 0..) |item, i| {
             std.log.debug("  [{}] name='{s}' name_ptr={*} owner_ptr={*}", .{ i, item.name, item.name.ptr, if (item.name_owner) |o| o.ptr else null });
         }
@@ -761,6 +770,29 @@ pub const DataTable = struct {
                     return;
                 }
 
+                // Page Up: move cursor up by page size
+                if (key.matches(vaxis.Key.page_up, .{})) {
+                    const page_size = 10; // TODO: calculate based on visible rows
+                    if (self.cursor_row > 0) {
+                        self.cursor_row = if (self.cursor_row > page_size)
+                            self.cursor_row - page_size
+                        else
+                            0;
+                        ctx.consumeAndRedraw();
+                    }
+                    return;
+                }
+
+                // Page Down: move cursor down by page size
+                if (key.matches(vaxis.Key.page_down, .{})) {
+                    const page_size = 10; // TODO: calculate based on visible rows
+                    if (self.cursor_row + 1 < self.items.items.len) {
+                        self.cursor_row = @min(self.cursor_row + page_size, self.items.items.len - 1);
+                        ctx.consumeAndRedraw();
+                    }
+                    return;
+                }
+
                 // "Enter": Edit value or toggle BIT at cursor
                 if (key.matches(vaxis.Key.enter, .{})) {
                     if (self.items.items.len == 0 or self.cursor_row >= self.items.items.len) return;
@@ -836,85 +868,79 @@ pub const DataTable = struct {
                     }
                 }
 
-                // Legacy edit mode handling
-                if (self.edit_mode) {
-                    // Escape: cancel edit
-                    if (key.matches(vaxis.Key.escape, .{})) {
-                        self.edit_mode = false;
-                        self.edit_item = null;
-                        self.edit_buffer.clearRetainingCapacity();
-                        ctx.consumeAndRedraw();
-                        return;
-                    }
+                // Legacy edit mode handling (no longer used, removed)
+                // Table edit mode (handled earlier in this function)
 
-                    // Enter: confirm edit
-                    if (key.matches(vaxis.Key.enter, .{})) {
-                        if (self.edit_item) |idx| {
-                            const item = self.items.items[idx];
-                            const input = self.edit_buffer.items;
+                // Space to toggle BIT values (when not in edit mode)
+                // Same logic as TreeView: check if pin is connected to signal first
+                if (!self.table_edit_mode and !self.edit_mode and key.matches(' ', .{})) {
+                    if (self.items.items.len == 0 or self.cursor_row >= self.items.items.len) return;
 
-                            // Parse and write value based on type
-                            switch (item.hal_type) {
-                                .bit => {
-                                    // Accept "0", "1", "false", "true"
-                                    const value = if (std.mem.eql(u8, input, "1") or
-                                        std.mem.eql(u8, input, "true")) true else false;
-                                    try self.writeValue(item, HalValue{ .bit = value });
-                                },
-                                .float => {
-                                    const value = std.fmt.parseFloat(f64, input) catch {
-                                        try self.setError("Invalid float: expected numeric value");
-                                        ctx.consumeAndRedraw();
-                                        return;
-                                    };
-                                    try self.writeValue(item, HalValue{ .float = value });
-                                },
-                                .s32 => {
-                                    const value = std.fmt.parseInt(i32, input, 10) catch {
-                                        try self.setError("Invalid integer: expected whole number");
-                                        ctx.consumeAndRedraw();
-                                        return;
-                                    };
-                                    try self.writeValue(item, HalValue{ .s32 = value });
-                                },
-                                .u32 => {
-                                    const value = std.fmt.parseInt(u32, input, 10) catch {
-                                        try self.setError("Invalid unsigned: expected positive whole number");
-                                        ctx.consumeAndRedraw();
-                                        return;
-                                    };
-                                    try self.writeValue(item, HalValue{ .u32 = value });
-                                },
+                    const item = &self.items.items[self.cursor_row];
+
+                    // Check if value is writable (input pins connected to signals are NOT writable)
+                    // Same logic as TreeView Enter handler
+                    const is_writable = blk: {
+                        if (item.item_type == .pin) {
+                            // Check if pin is connected to a signal
+                            if (self.store.pin_links.get(item.name)) |_| {
+                                break :blk false; // Connected pins get value from signal
                             }
-
-                            // Mark as pending and clear edit mode
-                            try self.pending_edits.put(item.name, {});
-                            self.edit_mode = false;
-                            self.edit_item = null;
-                            self.edit_buffer.clearRetainingCapacity();
-                            ctx.consumeAndRedraw();
-                            return;
                         }
-                    }
+                        break :blk item.is_writable; // Use TableItem's is_writable field
+                    };
 
-                    // Backspace: remove last character
-                    if (key.codepoint == 127) { // ASCII DEL (backspace)
-                        if (self.edit_buffer.items.len > 0) {
-                            _ = self.edit_buffer.pop();
-                            ctx.consumeAndRedraw();
-                        }
-                        return;
-                    }
-
-                    // Regular character: add to edit buffer
-                    if (key.codepoint >= 32 and key.codepoint < 127) {
-                        const new_char = @as(u8, @intCast(key.codepoint));
-                        try self.edit_buffer.append(self.allocator, new_char);
+                    if (!is_writable) {
+                        self.setError("Cannot toggle - pin is connected to signal") catch {};
+                        self.error_timeout = @intCast(std.time.nanoTimestamp() + 3_000_000_000); // 3 seconds
                         ctx.consumeAndRedraw();
                         return;
                     }
 
-                    return; // Ignore other keys in edit mode
+                    // Only BIT values can be toggled
+                    const value = blk: {
+                        if (item.item_type == .pin) break :blk self.store.getPin(item.name) catch null;
+                        if (item.item_type == .signal) break :blk self.store.getSignal(item.name) catch null;
+                        if (item.item_type == .param) break :blk self.store.getParam(item.name) catch null;
+                        break :blk null;
+                    };
+
+                    if (value) |v| {
+                        switch (v) {
+                            .bit => {
+                                // Toggle BIT value (same as TreeView)
+                                const new_value = !v.bit;
+                                const new_hal_value = HalValue{ .bit = new_value };
+
+                                // Write to HAL first (persists value to hardware)
+                                self.writeValue(item.*, new_hal_value) catch |err| {
+                                    std.log.err("FFI write failed for '{s}': {}", .{ item.name, err });
+                                    self.setError("FFI write failed") catch {};
+                                    self.error_timeout = @intCast(std.time.nanoTimestamp() + 2_000_000_000);
+                                    ctx.consumeAndRedraw();
+                                    return;
+                                };
+
+                                // Then update store cache (same as TreeView)
+                                if (item.item_type == .pin) {
+                                    try self.store.updatePin(item.name, new_hal_value);
+                                } else if (item.item_type == .signal) {
+                                    try self.store.updateSignal(item.name, new_hal_value);
+                                } else if (item.item_type == .param) {
+                                    try self.store.updateParam(item.name, new_hal_value);
+                                }
+                                ctx.consumeAndRedraw();
+                                return;
+                            },
+                            else => {
+                                // Non-BIT values: show error
+                                self.setError("Cannot toggle - use Enter to edit numeric values") catch {};
+                                self.error_timeout = @intCast(std.time.nanoTimestamp() + 2_000_000_000);
+                                ctx.consumeAndRedraw();
+                                return;
+                            },
+                        }
+                    }
                 }
 
                 // Normal mode handling
@@ -943,53 +969,6 @@ pub const DataTable = struct {
                     ctx.consumeAndRedraw();
                     return;
                 }
-
-                // Enter: Start editing or toggle bit value
-                if (key.matches(vaxis.Key.enter, .{})) {
-                    if (self.items.items.len > 0) {
-                        // For simplicity, edit first item (TODO: add cursor selection)
-                        const item = &self.items.items[0];
-
-                        if (!item.is_writable) {
-                            // Item is read-only - show error
-                            try self.setError("Cannot edit read-only item");
-                            ctx.consumeAndRedraw();
-                            return;
-                        }
-
-                        if (item.hal_type == .bit) {
-                            // Boolean: toggle value
-                            const current_value = self.getItemValue(item.*) catch {
-                                try self.setError("Failed to read value");
-                                ctx.consumeAndRedraw();
-                                return;
-                            };
-                            const new_value = switch (current_value) {
-                                .bit => |v| !v,
-                                else => {
-                                    try self.setError("Type mismatch");
-                                    ctx.consumeAndRedraw();
-                                    return;
-                                },
-                            };
-                            self.writeValue(item.*, HalValue{ .bit = new_value }) catch {
-                                try self.setError("Write failed");
-                                ctx.consumeAndRedraw();
-                                return;
-                            };
-                            try self.pending_edits.put(item.name, {});
-                            ctx.consumeAndRedraw();
-                            return;
-                        } else {
-                            // Numeric: enter edit mode
-                            self.edit_mode = true;
-                            self.edit_item = 0;
-                            self.edit_buffer.clearRetainingCapacity();
-                            ctx.consumeAndRedraw();
-                            return;
-                        }
-                    }
-                }
             },
             else => {},
         }
@@ -1002,37 +981,15 @@ pub const DataTable = struct {
     ) std.mem.Allocator.Error!vxfw.Surface {
         const self: *DataTable = @ptrCast(@alignCast(ptr));
 
-        // Get available size
-        const max = ctx.max.size();
-
-        // Calculate column widths in characters
-        const name_width = (max.width * self.column_widths[0]) / 100;
-        const type_width = (max.width * self.column_widths[1]) / 100;
-        const dir_width = (max.width * self.column_widths[2]) / 100;
-        const value_width = (max.width * self.column_widths[3]) / 100;
-
         // Build list of text widgets for table content
         var widgets = std.ArrayList(vxfw.Widget).initCapacity(ctx.arena, 0) catch unreachable;
         defer widgets.deinit(ctx.arena);
 
-        // Show filter indicators if filters are active
-        if (self.filter_type != .all or self.filter_component.len > 0 or self.component_filter_input) {
+        // Show filter indicator if type filter is active
+        if (self.filter_type != .all) {
             var filter_text = std.ArrayList(u8).initCapacity(ctx.arena, 0) catch unreachable;
-            try filter_text.append(ctx.arena, '[');
-
-            // Type filter
-            try filter_text.appendSlice(ctx.arena, "Type: ");
+            try filter_text.appendSlice(ctx.arena, "[Type: ");
             try filter_text.appendSlice(ctx.arena, self.filter_type.toString());
-
-            // Component filter
-            if (self.filter_component.len > 0) {
-                try filter_text.appendSlice(ctx.arena, ", Comp: ");
-                try filter_text.appendSlice(ctx.arena, self.filter_component);
-            } else if (self.component_filter_input) {
-                try filter_text.appendSlice(ctx.arena, ", Comp: ");
-                try filter_text.appendSlice(ctx.arena, self.component_buffer.items);
-            }
-
             try filter_text.append(ctx.arena, ']');
 
             const filter_style = vaxis.Style{ .bold = true, .fg = .{ .index = 3 } }; // Yellow
@@ -1041,60 +998,8 @@ pub const DataTable = struct {
             try widgets.append(ctx.arena, filter_text_widget.widget());
         }
 
-        // Row 1: Header
-        const header_style = vaxis.Style{ .bold = true };
-        // Build header string manually to avoid format specifier issues
-        var header_buffer = std.ArrayList(u8).initCapacity(ctx.arena, 0) catch unreachable;
-        try header_buffer.appendSlice(ctx.arena, "Name");
-        {
-            var i: usize = header_buffer.items.len;
-            while (i < name_width) : (i += 1) {
-                try header_buffer.append(ctx.arena, ' ');
-            }
-        }
-        try header_buffer.appendSlice(ctx.arena, "Type");
-        {
-            var i: usize = header_buffer.items.len;
-            while (i < name_width + type_width) : (i += 1) {
-                try header_buffer.append(ctx.arena, ' ');
-            }
-        }
-        try header_buffer.appendSlice(ctx.arena, "Dir");
-        {
-            var i: usize = header_buffer.items.len;
-            while (i < name_width + type_width + dir_width) : (i += 1) {
-                try header_buffer.append(ctx.arena, ' ');
-            }
-        }
-        try header_buffer.appendSlice(ctx.arena, "Value");
-        {
-            const header_text = try ctx.arena.create(vxfw.Text);
-            header_text.* = .{ .text = header_buffer.items, .style = header_style };
-            try widgets.append(ctx.arena, header_text.widget());
-        }
-
-        // Row 2: Separator
-        const total_width = name_width + type_width + dir_width + value_width;
-        // Create separator string by repeating '-' character
-        var sep_buffer = std.ArrayList(u8).initCapacity(ctx.arena, 0) catch unreachable;
-        {
-            var i: u16 = 0;
-            while (i < total_width) : (i += 1) {
-                try sep_buffer.append(ctx.arena, '-');
-            }
-        }
-        const separator = sep_buffer.items;
-
-        {
-            const sep_text = try ctx.arena.create(vxfw.Text);
-            sep_text.* = .{ .text = separator };
-            try widgets.append(ctx.arena, sep_text.widget());
-        }
-
-        // Data rows
+        // Data rows - simplified: just Name and Value with aligned values
         for (self.items.items, 0..) |item, idx| {
-            std.log.debug("draw row [{}]: name='{s}' name_ptr={*}", .{ idx, item.name, item.name.ptr });
-
             // Determine base row color
             const base_style = if (item.is_writable)
                 vaxis.Style{ .fg = .{ .index = 2 } } // Green for editable
@@ -1104,31 +1009,13 @@ pub const DataTable = struct {
             // Highlight cursor row
             const is_cursor = (idx == self.cursor_row);
 
-            // Highlight row being edited (legacy edit mode or table edit mode)
-            const final_style = if (self.edit_mode and self.edit_item != null and self.edit_item.? == idx)
-                vaxis.Style{ .fg = .{ .index = 2 }, .bold = true, .reverse = true } // Bold reverse for edit
-            else if (self.table_edit_mode and self.table_edit_row != null and self.table_edit_row.? == idx)
+            // Highlight row being edited
+            const final_style = if (self.table_edit_mode and self.table_edit_row != null and self.table_edit_row.? == idx)
                 vaxis.Style{ .fg = base_style.fg, .reverse = true } // Reverse for table edit
             else if (is_cursor)
                 vaxis.Style{ .fg = base_style.fg, .reverse = true } // Reverse for cursor
             else
                 base_style;
-
-            // Format item type
-            const type_str = switch (item.hal_type) {
-                .bit => "BIT",
-                .float => "FLOAT",
-                .s32 => "S32",
-                .u32 => "U32",
-            };
-
-            // Format direction
-            const dir_str = switch (item.direction) {
-                .in => "IN",
-                .out => "OUT",
-                .io => "IO",
-                .none => "",
-            };
 
             // Get current value or edit buffer
             const value_str = blk: {
@@ -1138,11 +1025,6 @@ pub const DataTable = struct {
                         self.table_edit_buffer.items
                     else
                         "_";
-                }
-
-                // If editing this item (legacy), show edit buffer
-                if (self.edit_mode and self.edit_item != null and self.edit_item.? == idx) {
-                    break :blk self.edit_buffer.items;
                 }
 
                 // If pending edit, show "..."
@@ -1158,61 +1040,30 @@ pub const DataTable = struct {
                 break :blk formatHalValue(value, ctx.arena) catch "ERR";
             };
 
-            // Format row manually to avoid format specifier issues
+            // Format row: "name  value" (values aligned at name_column_width + 1 space)
             var row_buffer = std.ArrayList(u8).initCapacity(ctx.arena, 0) catch unreachable;
 
             // Add name
             try row_buffer.appendSlice(ctx.arena, item.name);
-            {
-                var i: usize = row_buffer.items.len;
-                while (i < name_width) : (i += 1) {
-                    try row_buffer.append(ctx.arena, ' ');
-                }
+
+            // Add padding to align values (1 space after longest name)
+            const padding = if (item.name.len < self.name_column_width)
+                self.name_column_width - item.name.len + 1
+            else
+                1;
+            var i: usize = 0;
+            while (i < padding) : (i += 1) {
+                try row_buffer.append(ctx.arena, ' ');
             }
 
-            // Add type
-            try row_buffer.appendSlice(ctx.arena, type_str);
-            {
-                var i: usize = row_buffer.items.len;
-                while (i < name_width + type_width) : (i += 1) {
-                    try row_buffer.append(ctx.arena, ' ');
-                }
-            }
-
-            // Add direction
-            try row_buffer.appendSlice(ctx.arena, dir_str);
-            {
-                var i: usize = row_buffer.items.len;
-                while (i < name_width + type_width + dir_width) : (i += 1) {
-                    try row_buffer.append(ctx.arena, ' ');
-                }
-            }
-
-            // Add value (right-aligned in value_width column)
-            // Calculate current position and pad to right-align value
-            const current_pos = row_buffer.items.len;
-            const value_end_pos = name_width + type_width + dir_width + value_width;
-            const value_width_needed = @min(ctx.stringWidth(value_str), value_width);
-            const value_start_pos = value_end_pos -| value_width_needed;
-
-            // Pad to start of value column
-            {
-                var i: usize = current_pos;
-                while (i < value_start_pos) : (i += 1) {
-                    try row_buffer.append(ctx.arena, ' ');
-                }
-            }
-
-            // Add value string (use graphemeIterator for proper Unicode width)
+            // Add value string
             var char_iter = ctx.graphemeIterator(value_str);
             while (char_iter.next()) |char| {
                 const grapheme = char.bytes(value_str);
                 try row_buffer.appendSlice(ctx.arena, grapheme);
             }
 
-            std.log.debug("  row_buffer='{s}'", .{row_buffer.items});
-            // IMPORTANT: Allocate Text widget in arena so it persists
-            // The widget stores a pointer to itself, so stack allocation would be invalidated
+            // Create row text widget
             const row_text = try ctx.arena.create(vxfw.Text);
             row_text.* = .{ .text = row_buffer.items, .style = final_style };
             try widgets.append(ctx.arena, row_text.widget());
@@ -1236,7 +1087,7 @@ pub const DataTable = struct {
         }
 
         return .{
-            .size = .{ .width = max.width, .height = @intCast(widgets.items.len) },
+            .size = .{ .width = ctx.max.size().width, .height = @intCast(widgets.items.len) },
             .widget = self.widget(),
             .buffer = &.{},
             .children = children,
@@ -1257,8 +1108,8 @@ pub const DataTable = struct {
     /// Matches tree_view.zig formatting for consistency
     fn formatHalValue(value: HalValue, allocator: std.mem.Allocator) ![]const u8 {
         return switch (value) {
-            .bit => |v| if (v) "1" else "0", // Use 1/0 for editable display
-            .float => |v| std.fmt.allocPrint(allocator, "{d:.6}", .{v}) catch "ERR",
+            .bit => |v| if (v) "1" else "0",
+            .float => |v| std.fmt.allocPrint(allocator, "{d}", .{v}) catch "ERR", // No trailing zeros
             .s32 => |v| std.fmt.allocPrint(allocator, "{d}", .{v}) catch "ERR",
             .u32 => |v| std.fmt.allocPrint(allocator, "{d}", .{v}) catch "ERR",
         };

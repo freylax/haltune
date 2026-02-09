@@ -454,12 +454,37 @@ pub const Model = struct {
                 }
 
                 // Forward ALL keys to TreeView when in edit mode, or specific navigation keys otherwise
+                // Forward to DataTable when in table view
                 if (!self.signal_dialog.visible and !self.save_dialog_visible) {
                     const tree_widget = self.tree_view.widget();
+                    const table_widget = self.data_table.widget();
                     const in_edit_mode = self.tree_view.edit_mode;
+                    const in_table_edit = self.data_table.edit_mode or self.data_table.table_edit_mode;
 
-                    // In edit mode, forward ALL keys (including digits, decimal point, minus, Escape)
-                    // Otherwise, forward only navigation keys
+                    // Table view: forward ALL keys when in edit mode, or navigation/edit keys otherwise
+                    if (self.current_view == .table_only) {
+                        if (in_table_edit or
+                            key.matches(vaxis.Key.up, .{}) or
+                            key.matches(vaxis.Key.down, .{}) or
+                            key.matches(vaxis.Key.enter, .{}) or
+                            key.matches(vaxis.Key.page_up, .{}) or
+                            key.matches(vaxis.Key.page_down, .{}) or
+                            key.matches(' ', .{}) or
+                            key.matches(vaxis.Key.escape, .{}) or
+                            key.matches(vaxis.Key.backspace, .{}))
+                        {
+                            // Forward to DataTable's event handler
+                            if (table_widget.eventHandler) |handler| {
+                                const table_event: vxfw.Event = .{ .key_press = key };
+                                handler(table_widget.userdata, ctx, table_event) catch |err| {
+                                    std.log.err("DataTable event handler error: {}", .{err});
+                                };
+                            }
+                            return;
+                        }
+                    }
+
+                    // Tree view: forward keys to TreeView
                     if (in_edit_mode or
                         key.matches(vaxis.Key.up, .{}) or
                         key.matches(vaxis.Key.down, .{}) or
