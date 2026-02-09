@@ -60,6 +60,17 @@ pub const RefreshThread = struct {
     /// Uses page_allocator which is thread-safe (mmap-based)
     allocator: std.mem.Allocator,
 
+    /// Optional redraw flag to trigger UI updates when StateStore is populated
+    /// If set, this flag will be set to true when pins/signals/params are first discovered
+    redraw_flag: ?*std.atomic.Value(bool) = null,
+
+    /// Optional vxfw App to schedule tick events for redraw
+    /// This is more reliable than redraw_flag for triggering initial population
+    vxfw_app: ?*anyopaque = null,
+
+    /// Track if we've ever populated StateStore (for initial redraw trigger)
+    populated: std.atomic.Value(bool) = std.atomic.Value(bool).init(false),
+
     /// Initialize a new RefreshThread
     ///
     /// Creates a refresh thread instance with default 100ms interval.
@@ -95,6 +106,11 @@ pub const RefreshThread = struct {
             .interval_ns = 100 * std.time.ns_per_ms, // Default 100ms
             .allocator = std.heap.page_allocator,
         };
+    }
+
+    /// Set the redraw flag for UI updates
+    pub fn setRedrawFlag(self: *RefreshThread, flag: *std.atomic.Value(bool)) void {
+        self.redraw_flag = flag;
     }
 
     /// Clean up RefreshThread resources
@@ -161,14 +177,12 @@ pub const RefreshThread = struct {
             } else |err| {
                 // Error occurred - log it
                 std.log.err("Refresh error: {}", .{err});
-                std.debug.print("Refresh error: {}\n", .{err});
                 consecutive_errors += 1;
 
                 // If we get multiple consecutive errors, HAL is likely shut down
                 // Exit the thread to prevent assertion failures
                 if (consecutive_errors >= 3) {
                     std.log.warn("Multiple refresh errors - assuming HAL shutdown, exiting thread", .{});
-                    std.debug.print("Multiple refresh errors - exiting RefreshThread\n", .{});
                     return;
                 }
             }
@@ -318,6 +332,15 @@ pub const RefreshThread = struct {
         for (cached_names) |name| {
             if (discovered_names.get(name) == null) {
                 self.store.removePin(name) catch {};
+            }
+        }
+
+        // Trigger redraw on first successful population
+        if (pin_count > 0 and !self.populated.load(.acquire)) {
+            self.populated.store(true, .release);
+            if (self.redraw_flag) |flag| {
+                flag.store(true, .release);
+                std.log.info("RefreshThread: StateStore populated, triggering redraw", .{});
             }
         }
     }

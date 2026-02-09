@@ -95,6 +95,8 @@ pub fn main(test_mode: bool) !void {
     // Using c_allocator (like flow does) for both main and refresh threads
     const refresh_thread = try thread_safe_allocator.create(RefreshThread);
     refresh_thread.* = RefreshThread.init(thread_safe_allocator, &store);
+    // Set redraw flag so refresh thread can trigger UI updates when StateStore is populated
+    refresh_thread.setRedrawFlag(&model.redraw_flag);
     _ = try refresh_thread.start();
     defer {
         std.log.info("Stopping RefreshThread...", .{});

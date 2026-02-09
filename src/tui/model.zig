@@ -109,9 +109,9 @@ pub const Model = struct {
         errdefer allocator.destroy(tree_view);
         tree_view.* = try TreeView.init(allocator, store);
 
-        // Build initial tree (will be populated by refresh thread)
+        // Build initial tree (may be empty if StateStore not yet populated)
         try tree_view.buildTree();
-        std.log.info("Tree initialized with {d} components (will populate from HAL)", .{tree_view.root.items.len});
+        std.log.info("Tree initialized with {d} components", .{tree_view.root.items.len});
 
         // Create DataTable widget
         const data_table = try allocator.create(DataTable);
@@ -555,7 +555,14 @@ pub const Model = struct {
                 }
             },
 
-            else => {},
+            else => {
+                // For any other event, also check the redraw flag
+                // This handles the case where the refresh thread populates StateStore
+                if (self.redraw_flag.load(.acquire)) {
+                    ctx.consumeAndRedraw();
+                    self.redraw_flag.store(false, .release);
+                }
+            },
         }
     }
 

@@ -150,6 +150,12 @@ pub const TreeView = struct {
     /// Current cursor position (index into visible nodes)
     cursor_index: usize,
 
+    /// Scroll offset (index of first visible node)
+    scroll_offset: usize = 0,
+
+    /// Visible height (number of nodes that fit on screen)
+    visible_height: usize = 20,
+
     /// List of visible nodes (built during draw, respecting expand/collapse)
     visible_nodes: std.ArrayList(*Node),
 
@@ -300,6 +306,7 @@ pub const TreeView = struct {
             for (params) |p| self.allocator.free(p);
             self.allocator.free(params);
         }
+
 
         // HashMap to group items by component
         // Note: ComponentGroup now owns its name copy, so we don't need to free HashMap keys
@@ -476,22 +483,18 @@ pub const TreeView = struct {
 
     /// Rebuild tree if it's empty but StateStore has data
     /// This handles the case where refresh thread populates StateStore after initialization
-    fn rebuildTreeIfNeeded(self: *TreeView) !void {
-        // Only rebuild once when tree is empty
-        if (self.root.items.len == 0) {
-            // Check if StateStore has any data (using count to avoid allocations)
-            const has_data = blk: {
-                self.store.rwlock.lockShared();
-                defer self.store.rwlock.unlockShared();
-                break :blk self.store.pins.count() > 0 or
-                    self.store.signals.count() > 0 or
-                    self.store.params.count() > 0;
-            };
+    pub fn rebuildTreeIfNeeded(self: *TreeView) !void {
+        // Check StateStore data
+        const pin_count = blk: {
+            self.store.rwlock.lockShared();
+            defer self.store.rwlock.unlockShared();
+            break :blk self.store.pins.count();
+        };
 
-            if (has_data) {
-                std.log.info("StateStore populated, rebuilding tree", .{});
-                try self.buildTree();
-            }
+        // Rebuild if tree is empty but StateStore has pins
+        // This handles initial startup where refresh thread hasn't populated StateStore yet
+        if (self.root.items.len == 0 and pin_count > 0) {
+            try self.buildTree();
         }
     }
 
@@ -511,6 +514,32 @@ pub const TreeView = struct {
         self.visible_nodes.clearRetainingCapacity();
         try self.buildVisibleNodes(&self.visible_nodes);
 
+        // Update visible_height based on constrained context
+        // Reserve 1 line for search input if active
+        const search_lines: usize = if (self.search_input) 1 else 0;
+        const available_height = ctx.max.size().height;
+        self.visible_height = if (available_height > search_lines)
+            @as(usize, @intCast(available_height -| search_lines))
+        else
+            1;
+
+        // Ensure scroll_offset is valid
+        if (self.visible_nodes.items.len > 0) {
+            self.cursor_index = @min(self.cursor_index, self.visible_nodes.items.len - 1);
+            // Adjust scroll_offset if cursor moved out of view or list shrank
+            if (self.scroll_offset + self.visible_height > self.visible_nodes.items.len) {
+                self.scroll_offset = if (self.visible_nodes.items.len > self.visible_height)
+                    self.visible_nodes.items.len - self.visible_height
+                else
+                    0;
+            }
+        }
+
+        // Calculate the slice of visible nodes to render (respecting scroll_offset)
+        const render_start = self.scroll_offset;
+        const render_end = @min(self.scroll_offset + self.visible_height, self.visible_nodes.items.len);
+        const nodes_to_render = self.visible_nodes.items[render_start..render_end];
+
         // Count lines and find max width for surface sizing
         var line_count: usize = 0;
         var max_width: usize = 0;
@@ -522,8 +551,8 @@ pub const TreeView = struct {
             max_width = @max(max_width, search_width);
         }
 
-        // Count visible nodes
-        for (self.visible_nodes.items) |node| {
+        // Count only rendered nodes
+        for (nodes_to_render) |node| {
             line_count += 1;
             const depth = node.getDepth();
             const indent = depth * 2;
@@ -537,18 +566,18 @@ pub const TreeView = struct {
             const value_col_width: usize = if (node.item_type == .component) 0 else 9;
             const line_len = 1 + indent + sym_len + node.name.len + value_col_width;
             max_width = @max(max_width, line_len);
+
+            std.log.info("  Line: name='{s}' depth={} indent={} line_len={} max_width={}",
+                .{ node.name, depth, indent, line_len, max_width });
         }
 
-        // Ensure cursor is within bounds
-        if (self.visible_nodes.items.len > 0) {
-            self.cursor_index = @min(self.cursor_index, self.visible_nodes.items.len - 1);
-        }
-
-        // Create surface with calculated size
+        // Create surface with calculated size (use constrained height)
+        const surface_height = @min(line_count, ctx.max.size().height);
+        const surface_width = @min(@as(u16, @intCast(max_width)), ctx.max.size().width);
         const surface = try vxfw.Surface.init(
             ctx.arena,
             self.widget(),
-            .{ .width = @intCast(max_width), .height = @intCast(line_count) },
+            .{ .width = surface_width, .height = @intCast(surface_height) },
         );
 
         // Initialize buffer with default cells
@@ -573,8 +602,9 @@ pub const TreeView = struct {
             row += 1;
         }
 
-        // Write each tree node
-        for (self.visible_nodes.items, 0..) |node, node_idx| {
+        // Write each tree node (only rendered slice)
+        for (nodes_to_render, 0..) |node, rel_idx| {
+            const node_idx = render_start + rel_idx; // Actual index in visible_nodes
             const state = self.checked_items.get(node.full_name) orelse .none;
             const is_cursor = node_idx == self.cursor_index;
             const depth = node.getDepth();
@@ -1107,6 +1137,41 @@ pub const TreeView = struct {
                 if (key.matches(vaxis.Key.up, .{})) {
                     if (self.cursor_index > 0) {
                         self.cursor_index -= 1;
+                        // Scroll up if cursor is above visible area
+                        if (self.cursor_index < self.scroll_offset) {
+                            self.scroll_offset = self.cursor_index;
+                        }
+                        ctx.consumeAndRedraw();
+                    }
+                    return;
+                }
+
+                // Page Down: move cursor down by visible_height
+                if (key.matches(vaxis.Key.page_down, .{})) {
+                    if (self.visible_nodes.items.len > 0) {
+                        const page_size = @max(self.visible_height, 1);
+                        const new_cursor = @min(self.cursor_index + page_size, self.visible_nodes.items.len - 1);
+                        self.cursor_index = new_cursor;
+                        // Adjust scroll_offset to keep cursor in view
+                        const bottom_visible = self.scroll_offset + self.visible_height;
+                        if (self.cursor_index >= bottom_visible) {
+                            self.scroll_offset = self.cursor_index - self.visible_height + 1;
+                        }
+                        ctx.consumeAndRedraw();
+                    }
+                    return;
+                }
+
+                // Page Up: move cursor up by visible_height
+                if (key.matches(vaxis.Key.page_up, .{})) {
+                    if (self.visible_nodes.items.len > 0) {
+                        const page_size = @max(self.visible_height, 1);
+                        const new_cursor = if (page_size >= self.cursor_index) 0 else self.cursor_index - page_size;
+                        self.cursor_index = new_cursor;
+                        // Adjust scroll_offset to keep cursor in view
+                        if (self.cursor_index < self.scroll_offset) {
+                            self.scroll_offset = self.cursor_index;
+                        }
                         ctx.consumeAndRedraw();
                     }
                     return;
@@ -1116,6 +1181,11 @@ pub const TreeView = struct {
                 if (key.matches(vaxis.Key.down, .{})) {
                     if (self.visible_nodes.items.len > 0 and self.cursor_index < self.visible_nodes.items.len - 1) {
                         self.cursor_index += 1;
+                        // Scroll down if cursor is below visible area
+                        const bottom_visible = self.scroll_offset + self.visible_height;
+                        if (self.visible_height > 0 and self.cursor_index >= bottom_visible) {
+                            self.scroll_offset = self.cursor_index - self.visible_height + 1;
+                        }
                         ctx.consumeAndRedraw();
                     }
                     return;
