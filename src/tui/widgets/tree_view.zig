@@ -598,6 +598,24 @@ pub const TreeView = struct {
             const depth = node.getDepth();
             var col: u16 = 0;
 
+            // Determine if this node is writable (for color coding)
+            // Same logic as DataTable: green for writable, dim gray for read-only
+            const is_writable = if (node.item_type != .component) blk: {
+                const item_type = switch (node.item_type) {
+                    .pin => hal_value.ItemType.pin,
+                    .signal => hal_value.ItemType.signal,
+                    .param => hal_value.ItemType.param,
+                    .component => unreachable,
+                };
+                break :blk hal_value.isItemWritable(self.allocator, self.store, item_type, node.full_name);
+            } else false;
+
+            // Base style: green for writable, dim gray for read-only
+            const base_style = if (is_writable)
+                vaxis.Style{ .fg = .{ .index = 2 } } // Green for editable
+            else
+                vaxis.Style{ .fg = .{ .index = 8 } }; // Dim gray for read-only
+
             // Cursor indicator ('>' for current line)
             const cursor_char = if (is_cursor) ">" else " ";
             surface.writeCell(col, row, .{
@@ -614,7 +632,7 @@ pub const TreeView = struct {
                 col += 1;
             }
 
-            // Write node name
+            // Write node name with color
             var char_iter = ctx.graphemeIterator(node.name);
             while (char_iter.next()) |char| {
                 const grapheme = char.bytes(node.name);
@@ -622,7 +640,7 @@ pub const TreeView = struct {
                 if (col >= surface.size.width) break;
                 surface.writeCell(col, row, .{
                     .char = .{ .grapheme = grapheme, .width = grapheme_width },
-                    .style = .{},
+                    .style = if (node.item_type != .component) base_style else .{},
                 });
                 col += grapheme_width;
             }
@@ -691,9 +709,9 @@ pub const TreeView = struct {
                             surface.writeCell(col, row, .{
                                 .char = .{ .grapheme = grapheme, .width = grapheme_width },
                                 .style = if (self.edit_mode and self.edit_item == node)
-                                    .{ .reverse = true } // Highlight editing
+                                    vaxis.Style{ .fg = base_style.fg, .reverse = true } // Highlight editing
                                 else
-                                    .{},
+                                    base_style, // Use color for values too
                             });
                             col += grapheme_width;
                         }

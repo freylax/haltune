@@ -165,15 +165,6 @@ pub const DataTable = struct {
     /// Pending edit items (waiting for refresh)
     pending_edits: std.StringHashMap(void),
 
-    /// Error message to display at bottom of table
-    error_message: ?[]const u8,
-
-    /// Error message owner (allocated memory)
-    error_message_owner: ?[]const u8,
-
-    /// Error timeout timestamp (0 = no timeout set)
-    error_timeout: u64,
-
     /// Cursor for selecting rows (for value editing)
     cursor_row: usize = 0,
 
@@ -215,9 +206,6 @@ pub const DataTable = struct {
             .edit_item = null,
             .edit_buffer = edit_buffer,
             .pending_edits = std.StringHashMap(void).init(allocator),
-            .error_message = null,
-            .error_message_owner = null,
-            .error_timeout = 0,
             .cursor_row = 0,
             .table_edit_mode = false,
             .table_edit_row = null,
@@ -238,9 +226,6 @@ pub const DataTable = struct {
         self.edit_buffer.deinit(self.allocator);
         self.table_edit_buffer.deinit(self.allocator);
         self.pending_edits.deinit();
-        if (self.error_message_owner) |msg| {
-            self.allocator.free(msg);
-        }
         self.* = undefined;
     }
 
@@ -463,46 +448,6 @@ pub const DataTable = struct {
         }
     }
 
-    /// Set an error message to display
-    /// Error message will auto-clear after 5 seconds
-    fn setError(self: *DataTable, msg: []const u8) !void {
-        // Free old error message if exists
-        if (self.error_message_owner) |old_msg| {
-            self.allocator.free(old_msg);
-        }
-
-        // Allocate and store new error message
-        const msg_copy = try self.allocator.dupe(u8, msg);
-        self.error_message_owner = msg_copy;
-        self.error_message = msg_copy;
-
-        // Set timeout (5 seconds from now)
-        const now = std.time.milliTimestamp();
-        self.error_timeout = @intCast(now + 5000);
-    }
-
-    /// Clear the current error message
-    fn clearError(self: *DataTable) void {
-        if (self.error_message_owner) |msg| {
-            self.allocator.free(msg);
-        }
-        self.error_message_owner = null;
-        self.error_message = null;
-        self.error_timeout = 0;
-    }
-
-    /// Check if error timeout has expired and clear if so
-    fn checkErrorTimeout(self: *DataTable) bool {
-        if (self.error_timeout == 0) return false;
-
-        const now = std.time.milliTimestamp();
-        if (now >= self.error_timeout) {
-            self.clearError();
-            return true;
-        }
-        return false;
-    }
-
     /// Return a vxfw.Widget for this DataTable
     pub fn widget(self: *DataTable) vxfw.Widget {
         return .{
@@ -522,11 +467,6 @@ pub const DataTable = struct {
 
         switch (event) {
             .key_press => |key| {
-                // Check error timeout before handling key press
-                if (self.checkErrorTimeout()) {
-                    ctx.consumeAndRedraw();
-                }
-
                 // Component filter input mode handling
                 if (self.component_filter_input) {
                     // Escape: exit component filter mode and clear
@@ -616,8 +556,7 @@ pub const DataTable = struct {
                                                 std.mem.eql(u8, lower, "t")) true else if (std.mem.eql(u8, lower, "0") or
                                                 std.mem.eql(u8, lower, "false") or
                                                 std.mem.eql(u8, lower, "f")) false else {
-                                                self.setError("Invalid bit: use 0/1/true/false") catch {};
-                                                self.error_timeout = @intCast(std.time.nanoTimestamp() + 2_000_000_000);
+                                                // Invalid input - exit edit mode
                                                 ctx.consumeAndRedraw();
                                                 self.table_edit_mode = false;
                                                 self.table_edit_row = null;
@@ -628,10 +567,8 @@ pub const DataTable = struct {
                                         },
                                         .float => blk: {
                                             const parsed = std.fmt.parseFloat(f64, input) catch {
-                                                self.setError("Invalid float") catch {};
-                                                self.error_timeout = @intCast(std.time.nanoTimestamp() + 2_000_000_000);
+                                                // Invalid float - exit edit mode
                                                 ctx.consumeAndRedraw();
-                                                // Exit edit mode and return early from outer function
                                                 self.table_edit_mode = false;
                                                 self.table_edit_row = null;
                                                 self.table_edit_buffer.clearRetainingCapacity();
@@ -641,8 +578,7 @@ pub const DataTable = struct {
                                         },
                                         .s32 => blk: {
                                             const parsed = std.fmt.parseInt(i32, input, 10) catch {
-                                                self.setError("Invalid integer") catch {};
-                                                self.error_timeout = @intCast(std.time.nanoTimestamp() + 2_000_000_000);
+                                                // Invalid integer - exit edit mode
                                                 ctx.consumeAndRedraw();
                                                 self.table_edit_mode = false;
                                                 self.table_edit_row = null;
@@ -653,8 +589,7 @@ pub const DataTable = struct {
                                         },
                                         .u32 => blk: {
                                             const parsed = std.fmt.parseInt(u32, input, 10) catch {
-                                                self.setError("Invalid unsigned") catch {};
-                                                self.error_timeout = @intCast(std.time.nanoTimestamp() + 2_000_000_000);
+                                                // Invalid unsigned - exit edit mode
                                                 ctx.consumeAndRedraw();
                                                 self.table_edit_mode = false;
                                                 self.table_edit_row = null;
@@ -668,8 +603,6 @@ pub const DataTable = struct {
                                     // Write to HAL first (persists value to hardware)
                                     self.writeValue(item.*, new_value) catch |err| {
                                         std.log.err("FFI write failed for '{s}': {}", .{ item.name, err });
-                                        self.setError("FFI write failed") catch {};
-                                        self.error_timeout = @intCast(std.time.nanoTimestamp() + 2_000_000_000);
                                         // Exit edit mode but don't update store
                                         self.table_edit_mode = false;
                                         self.table_edit_row = null;
@@ -798,9 +731,7 @@ pub const DataTable = struct {
                     const is_writable = hal_value.isItemWritable(self.allocator, self.store, item.item_type, item.name);
 
                     if (!is_writable) {
-                        self.setError("Cannot edit - pin is connected to signal or is read-only") catch {};
-                        self.error_timeout = @intCast(std.time.nanoTimestamp() + 3_000_000_000); // 3 seconds
-                        ctx.consumeAndRedraw();
+                        // Not writable - silently ignore
                         return;
                     }
 
@@ -822,9 +753,6 @@ pub const DataTable = struct {
                                 // Write to HAL first (persists value to hardware)
                                 self.writeValue(item.*, new_hal_value) catch |err| {
                                     std.log.err("FFI write failed for '{s}': {}", .{ item.name, err });
-                                    self.setError("FFI write failed") catch {};
-                                    self.error_timeout = @intCast(std.time.nanoTimestamp() + 2_000_000_000);
-                                    ctx.consumeAndRedraw();
                                     return;
                                 };
 
@@ -869,9 +797,7 @@ pub const DataTable = struct {
                     const is_writable = hal_value.isItemWritable(self.allocator, self.store, item.item_type, item.name);
 
                     if (!is_writable) {
-                        self.setError("Cannot toggle - pin is connected to signal or is read-only") catch {};
-                        self.error_timeout = @intCast(std.time.nanoTimestamp() + 3_000_000_000); // 3 seconds
-                        ctx.consumeAndRedraw();
+                        // Not writable - silently ignore
                         return;
                     }
 
@@ -893,9 +819,6 @@ pub const DataTable = struct {
                                 // Write to HAL first (persists value to hardware)
                                 self.writeValue(item.*, new_hal_value) catch |err| {
                                     std.log.err("FFI write failed for '{s}': {}", .{ item.name, err });
-                                    self.setError("FFI write failed") catch {};
-                                    self.error_timeout = @intCast(std.time.nanoTimestamp() + 2_000_000_000);
-                                    ctx.consumeAndRedraw();
                                     return;
                                 };
 
@@ -911,10 +834,7 @@ pub const DataTable = struct {
                                 return;
                             },
                             else => {
-                                // Non-BIT values: show error
-                                self.setError("Cannot toggle - use Enter to edit numeric values") catch {};
-                                self.error_timeout = @intCast(std.time.nanoTimestamp() + 2_000_000_000);
-                                ctx.consumeAndRedraw();
+                                // Non-BIT values: silently ignore Space key
                                 return;
                             },
                         }
@@ -997,12 +917,14 @@ pub const DataTable = struct {
 
             // Get current value or edit buffer
             const value_str = blk: {
-                // If table editing this row, show edit buffer
+                // If table editing this row, show edit buffer with cursor indicator
                 if (self.table_edit_mode and self.table_edit_row != null and self.table_edit_row.? == idx) {
-                    break :blk if (self.table_edit_buffer.items.len > 0)
-                        self.table_edit_buffer.items
-                    else
-                        "_";
+                    const buf = self.table_edit_buffer.items;
+                    if (buf.len > 0) {
+                        break :blk buf;
+                    } else {
+                        break :blk "_"; // Placeholder for empty buffer shows cursor position
+                    }
                 }
 
                 // If pending edit, show "..."
@@ -1045,14 +967,6 @@ pub const DataTable = struct {
             const row_text = try ctx.arena.create(vxfw.Text);
             row_text.* = .{ .text = row_buffer.items, .style = final_style };
             try widgets.append(ctx.arena, row_text.widget());
-        }
-
-        // Show error message at bottom if present
-        if (self.error_message) |msg| {
-            const error_style = vaxis.Style{ .fg = .{ .index = 1 }, .bold = true }; // Red
-            const error_text = try ctx.arena.create(vxfw.Text);
-            error_text.* = .{ .text = msg, .style = error_style };
-            try widgets.append(ctx.arena, error_text.widget());
         }
 
         // Create surface with widgets as children
