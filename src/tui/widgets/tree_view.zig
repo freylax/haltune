@@ -729,21 +729,15 @@ pub const TreeView = struct {
 
                 // Show block cursor at end when editing and cursor is at or past end of visible text
                 if (is_editing) {
-                    std.log.warn("TREE CURSOR DEBUG: is_editing=true, edit_cursor_pos={}, char_idx={}, col={}, surface_width={}", .{ self.edit_cursor_pos, char_idx, col, surface.size.width });
                     if (self.edit_cursor_pos >= char_idx) {
                         // Cursor at or past end - show block cursor indicator
-                        std.log.warn("TREE CURSOR DEBUG: Condition satisfied, writing block cursor at col={}", .{col});
+                        // Use contrasting style: black foreground on green background
                         if (col < surface.size.width) {
                             surface.writeCell(col, row, .{
                                 .char = .{ .grapheme = "█", .width = 1 },
-                                .style = .{ .fg = base_style.fg, .reverse = true },
+                                .style = .{ .fg = .{ .index = 0 }, .bg = .{ .index = 2 } }, // Black on green
                             });
-                            std.log.warn("TREE CURSOR DEBUG: Block cursor written", .{});
-                        } else {
-                            std.log.warn("TREE CURSOR DEBUG: col >= surface_width, cannot write cursor", .{});
                         }
-                    } else {
-                        std.log.warn("TREE CURSOR DEBUG: Condition NOT satisfied (cursor_pos < char_idx)", .{});
                     }
                 }
             }

@@ -1070,22 +1070,14 @@ pub const DataTable = struct {
             }
 
             // Show block cursor at end when editing and cursor is at or past end of visible text
-            if (is_editing) {
-                std.log.warn("CURSOR DEBUG: is_editing=true, table_edit_cursor_pos={}, char_idx={}, col={}, width={}", .{ self.table_edit_cursor_pos, char_idx, col, width });
-                if (self.table_edit_cursor_pos >= char_idx) {
-                    // Cursor at or past end - show block cursor indicator
-                    std.log.warn("CURSOR DEBUG: Condition satisfied, writing block cursor at col={}", .{col});
-                    if (col < width) {
-                        surface.writeCell(col, row, .{
-                            .char = .{ .grapheme = "█", .width = 1 },
-                            .style = .{ .fg = base_style.fg, .reverse = true },
-                        });
-                        std.log.warn("CURSOR DEBUG: Block cursor written", .{});
-                    } else {
-                        std.log.warn("CURSOR DEBUG: col >= width, cannot write cursor", .{});
-                    }
-                } else {
-                    std.log.warn("CURSOR DEBUG: Condition NOT satisfied (cursor_pos < char_idx)", .{});
+            if (is_editing and self.table_edit_cursor_pos >= char_idx) {
+                // Cursor at or past end - show block cursor indicator
+                // Use contrasting style: black foreground on green background
+                if (col < width) {
+                    surface.writeCell(col, row, .{
+                        .char = .{ .grapheme = "█", .width = 1 },
+                        .style = .{ .fg = .{ .index = 0 }, .bg = .{ .index = 2 } }, // Black on green
+                    });
                 }
             }
 
