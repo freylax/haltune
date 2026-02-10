@@ -1074,10 +1074,10 @@ pub const DataTable = struct {
             if (is_editing and self.table_edit_cursor_pos >= char_idx) {
                 // Cursor at or past end - show cursor marker
                 if (col < width) {
-                    // Use a space with background color as cursor (visible block)
+                    // Use green background to match the reversed character cursor
                     surface.writeCell(col, row, .{
                         .char = .{ .grapheme = " ", .width = 1 },
-                        .style = .{ .fg = .{ .index = 0 }, .bg = .{ .index = 3 } }, // Black on yellow
+                        .style = .{ .fg = .{ .index = 7 }, .bg = .{ .index = 2 } }, // White on green (matches reverse style)
                     });
                 }
             }
