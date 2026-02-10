@@ -675,11 +675,8 @@ pub const TreeView = struct {
                 // Get display string: edit buffer if editing, otherwise current value
                 const value_str = blk: {
                     if (self.edit_mode and self.edit_item == node) {
-                        // Show edit buffer
-                        break :blk if (self.edit_buffer.items.len > 0)
-                            self.edit_buffer.items
-                        else
-                            "_"; // Placeholder for empty buffer
+                        // Show edit buffer (empty string when buffer is empty, not placeholder)
+                        break :blk self.edit_buffer.items;
                     } else {
                         // Show current value from store
                         const value = self.store.getPin(node.full_name) catch

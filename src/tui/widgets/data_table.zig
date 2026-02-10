@@ -985,12 +985,7 @@ pub const DataTable = struct {
             const value_str = blk: {
                 // If table editing this row, show edit buffer
                 if (is_editing) {
-                    const buf = self.table_edit_buffer.items;
-                    if (buf.len > 0) {
-                        break :blk buf;
-                    } else {
-                        break :blk ""; // Empty buffer - will show cursor
-                    }
+                    break :blk self.table_edit_buffer.items;
                 }
 
                 // If pending edit, show "..."
