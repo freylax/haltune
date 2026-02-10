@@ -1074,12 +1074,15 @@ pub const DataTable = struct {
                 char_idx += 1;
             }
 
-            // Show block cursor at end when editing and cursor is at or past end of buffer
-            if (is_editing and self.table_edit_cursor_pos >= char_idx and col < width) {
-                surface.writeCell(col, row, .{
-                    .char = .{ .grapheme = "█", .width = 1 },
-                    .style = .{ .fg = base_style.fg, .reverse = true },
-                });
+            // Show block cursor at end when editing and cursor is at or past end of visible text
+            if (is_editing and self.table_edit_cursor_pos >= char_idx) {
+                // Cursor at or past end - show block cursor indicator
+                if (col < width) {
+                    surface.writeCell(col, row, .{
+                        .char = .{ .grapheme = "█", .width = 1 },
+                        .style = .{ .fg = base_style.fg, .reverse = true },
+                    });
+                }
             }
 
             row += 1;
