@@ -693,6 +693,7 @@ pub const TreeView = struct {
                 // Check if we're editing this node
                 const is_editing = self.edit_mode and self.edit_item == node;
 
+                var char_idx: usize = 0;
                 if (value_str.len > 0) {
                     const value_width = ctx.stringWidth(value_str);
 
@@ -705,7 +706,6 @@ pub const TreeView = struct {
                     // Write value string with grapheme iterator for proper Unicode width
                     // Show cursor at edit_cursor_pos position
                     var value_char_iter = ctx.graphemeIterator(value_str);
-                    var char_idx: usize = 0;
                     while (value_char_iter.next()) |char| {
                         const grapheme = char.bytes(value_str);
                         const grapheme_width: u8 = @intCast(ctx.stringWidth(grapheme));
@@ -729,28 +729,15 @@ pub const TreeView = struct {
                 }
 
                 // Show block cursor at end when editing and cursor is at or past end of visible text
-                if (is_editing and self.edit_cursor_pos >= value_str.len) {
-                    // Position cursor at appropriate location
-                    if (value_str.len > 0) {
-                        // Has content - cursor goes after content
-                        if (col < surface.size.width) {
-                            surface.writeCell(col, row, .{
-                                .char = .{ .grapheme = "█", .width = 1 },
-                                .style = .{ .fg = base_style.fg, .reverse = true },
-                            });
-                        }
+                if (is_editing and self.edit_cursor_pos >= char_idx) {
+                    // Cursor at or past end - show block cursor indicator
+                    if (col >= surface.size.width) {
+                        // Past end of line - don't show cursor
                     } else {
-                        // Empty buffer - cursor goes at value column start
-                        const value_col_start = @min(surface.size.width -| 1, surface.size.width -| 8);
-                        if (col < value_col_start) {
-                            col = value_col_start;
-                        }
-                        if (col < surface.size.width) {
-                            surface.writeCell(col, row, .{
-                                .char = .{ .grapheme = "█", .width = 1 },
-                                .style = .{ .fg = base_style.fg, .reverse = true },
-                            });
-                        }
+                        surface.writeCell(col, row, .{
+                            .char = .{ .grapheme = "█", .width = 1 },
+                            .style = .{ .fg = base_style.fg, .reverse = true },
+                        });
                     }
                 }
             }
