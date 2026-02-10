@@ -727,14 +727,15 @@ pub const TreeView = struct {
                     }
                 }
 
-                // Show block cursor at end when editing and cursor is at or past end of visible text
-                if (is_editing) {
-                    // Always write a visible marker when editing - at col position
+                // Show cursor marker when editing
+                // Only show at end when cursor is past the last drawn character
+                if (is_editing and self.edit_cursor_pos >= char_idx) {
+                    // Cursor at or past end - show cursor marker
                     if (col < surface.size.width) {
-                        // Write a visible UNDERSCORE character at cursor position
+                        // Use a space with background color as cursor (visible block)
                         surface.writeCell(col, row, .{
-                            .char = .{ .grapheme = "_", .width = 1 },
-                            .style = .{ .fg = .{ .index = 7 }, .bold = true }, // White bold underscore
+                            .char = .{ .grapheme = " ", .width = 1 },
+                            .style = .{ .fg = .{ .index = 0 }, .bg = .{ .index = 3 } }, // Black on yellow
                         });
                     }
                 }

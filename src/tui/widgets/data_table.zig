@@ -1070,13 +1070,14 @@ pub const DataTable = struct {
             }
 
             // Show cursor marker when editing
-            if (is_editing) {
-                // Always write a visible marker when editing - at col position
+            // Only show at end when cursor is past the last drawn character
+            if (is_editing and self.table_edit_cursor_pos >= char_idx) {
+                // Cursor at or past end - show cursor marker
                 if (col < width) {
-                    // Write a visible UNDERSCORE character at cursor position
+                    // Use a space with background color as cursor (visible block)
                     surface.writeCell(col, row, .{
-                        .char = .{ .grapheme = "_", .width = 1 },
-                        .style = .{ .fg = .{ .index = 7 }, .bold = true }, // White bold underscore
+                        .char = .{ .grapheme = " ", .width = 1 },
+                        .style = .{ .fg = .{ .index = 0 }, .bg = .{ .index = 3 } }, // Black on yellow
                     });
                 }
             }
