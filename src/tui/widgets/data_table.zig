@@ -172,6 +172,7 @@ pub const DataTable = struct {
     table_edit_mode: bool = false,
     table_edit_row: ?usize = null,
     table_edit_buffer: std.ArrayList(u8),
+    table_edit_cursor_pos: usize = 0, // Cursor position within edit buffer
 
     /// Width of name column (calculated from longest name)
     name_column_width: usize = 0,
@@ -535,7 +536,26 @@ pub const DataTable = struct {
                         self.table_edit_mode = false;
                         self.table_edit_row = null;
                         self.table_edit_buffer.clearRetainingCapacity();
+                        self.table_edit_cursor_pos = 0;
                         ctx.consumeAndRedraw();
+                        return;
+                    }
+
+                    // Left arrow: move cursor left
+                    if (key.matches(vaxis.Key.left, .{})) {
+                        if (self.table_edit_cursor_pos > 0) {
+                            self.table_edit_cursor_pos -= 1;
+                            ctx.consumeAndRedraw();
+                        }
+                        return;
+                    }
+
+                    // Right arrow: move cursor right
+                    if (key.matches(vaxis.Key.right, .{})) {
+                        if (self.table_edit_cursor_pos < self.table_edit_buffer.items.len) {
+                            self.table_edit_cursor_pos += 1;
+                            ctx.consumeAndRedraw();
+                        }
                         return;
                     }
 
@@ -650,10 +670,12 @@ pub const DataTable = struct {
                         }
                     }
 
-                    // Backspace: remove last character
+                    // Backspace: remove character before cursor
                     if (key.codepoint == 127) {
-                        if (self.table_edit_buffer.items.len > 0) {
-                            _ = self.table_edit_buffer.pop();
+                        if (self.table_edit_cursor_pos > 0) {
+                            // Remove character at cursor_pos - 1
+                            _ = self.table_edit_buffer.orderedRemove(self.table_edit_cursor_pos - 1);
+                            self.table_edit_cursor_pos -= 1;
                             ctx.consumeAndRedraw();
                         }
                         return;
@@ -690,7 +712,9 @@ pub const DataTable = struct {
                                 };
 
                                 if (allowed) {
-                                    try self.table_edit_buffer.append(self.allocator, new_char);
+                                    // Insert character at cursor position
+                                    try self.table_edit_buffer.insert(self.allocator, self.table_edit_cursor_pos, new_char);
+                                    self.table_edit_cursor_pos += 1;
                                     ctx.consumeAndRedraw();
                                 }
                             }
@@ -792,10 +816,13 @@ pub const DataTable = struct {
                                 self.table_edit_mode = true;
                                 self.table_edit_row = self.cursor_row;
                                 self.table_edit_buffer.clearRetainingCapacity();
+                                self.table_edit_cursor_pos = 0;
                                 // Pre-populate with current value
                                 const current_str = hal_value.formatHalValue(v, self.allocator) catch "";
                                 defer self.allocator.free(current_str);
                                 try self.table_edit_buffer.appendSlice(self.allocator, current_str);
+                                // Set cursor to end of initial value
+                                self.table_edit_cursor_pos = self.table_edit_buffer.items.len;
                                 ctx.consumeAndRedraw();
                                 return;
                             },
@@ -1022,11 +1049,8 @@ pub const DataTable = struct {
                 col += 1;
             }
 
-            // Get cursor position for editing
-            const cursor_pos = if (is_editing) self.table_edit_buffer.items.len else 0;
-
             // Add value string with per-character styling
-            // When editing, only the character at cursor position is inverted
+            // Show cursor at table_edit_cursor_pos position
             var char_iter = ctx.graphemeIterator(value_str);
             var char_idx: usize = 0;
             while (char_iter.next()) |char| {
@@ -1034,8 +1058,8 @@ pub const DataTable = struct {
                 const grapheme = char.bytes(value_str);
                 const grapheme_width: u8 = @intCast(ctx.stringWidth(grapheme));
 
-                // When editing, invert only the character at cursor position
-                const char_style = if (is_editing and char_idx == cursor_pos)
+                // When editing, show cursor at current cursor position
+                const char_style = if (is_editing and char_idx == self.table_edit_cursor_pos)
                     vaxis.Style{ .fg = base_style.fg, .reverse = true } // Cursor position
                 else if (is_editing)
                     base_style // Other chars - base color without reverse
@@ -1050,8 +1074,8 @@ pub const DataTable = struct {
                 char_idx += 1;
             }
 
-            // When editing and buffer is empty, add block cursor at position
-            if (is_editing and cursor_pos == 0 and col < width) {
+            // Show block cursor at end when editing and cursor is at or past end of buffer
+            if (is_editing and self.table_edit_cursor_pos >= char_idx and col < width) {
                 surface.writeCell(col, row, .{
                     .char = .{ .grapheme = "█", .width = 1 },
                     .style = .{ .fg = base_style.fg, .reverse = true },

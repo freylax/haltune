@@ -163,6 +163,7 @@ pub const TreeView = struct {
     edit_mode: bool = false,
     edit_item: ?*Node = null,
     edit_buffer: std.ArrayList(u8),
+    edit_cursor_pos: usize = 0, // Cursor position within edit_buffer
 
     /// Signal editing state (for Ctrl+S connect/create/disconnect)
     signal_edit_mode: bool = false,
@@ -703,18 +704,17 @@ pub const TreeView = struct {
 
                     // Check if we're editing this node and get cursor position
                     const is_editing = self.edit_mode and self.edit_item == node;
-                    const cursor_pos = if (is_editing) self.edit_buffer.items.len else 0;
 
                     // Write value string with grapheme iterator for proper Unicode width
-                    // Only invert the character at cursor position when editing
+                    // Show cursor at edit_cursor_pos position
                     var value_char_iter = ctx.graphemeIterator(value_str);
                     var char_idx: usize = 0;
                     while (value_char_iter.next()) |char| {
                         const grapheme = char.bytes(value_str);
                         const grapheme_width: u8 = @intCast(ctx.stringWidth(grapheme));
                         if (col + grapheme_width <= surface.size.width) {
-                            // When editing, only invert the character at cursor position (end of buffer)
-                            const char_style = if (is_editing and char_idx == cursor_pos)
+                            // When editing, show cursor at current cursor position
+                            const char_style = if (is_editing and char_idx == self.edit_cursor_pos)
                                 vaxis.Style{ .fg = base_style.fg, .reverse = true } // Cursor position
                             else if (is_editing)
                                 base_style // Other chars use base color without reverse
@@ -730,9 +730,9 @@ pub const TreeView = struct {
                         char_idx += 1;
                     }
 
-                    // Add block cursor indicator when editing and at end of buffer
-                    if (is_editing and cursor_pos == 0) {
-                        // Empty buffer - show block cursor at position
+                    // Show block cursor at end when editing and cursor is at end of buffer
+                    if (is_editing and self.edit_cursor_pos >= value_str.len) {
+                        // Cursor at end - show block cursor indicator
                         if (col < surface.size.width) {
                             surface.writeCell(col, row, .{
                                 .char = .{ .grapheme = "█", .width = 1 },
@@ -1015,7 +1015,26 @@ pub const TreeView = struct {
                         self.edit_mode = false;
                         self.edit_item = null;
                         self.edit_buffer.clearRetainingCapacity();
+                        self.edit_cursor_pos = 0;
                         ctx.consumeAndRedraw();
+                        return;
+                    }
+
+                    // Left arrow: move cursor left
+                    if (key.matches(vaxis.Key.left, .{})) {
+                        if (self.edit_cursor_pos > 0) {
+                            self.edit_cursor_pos -= 1;
+                            ctx.consumeAndRedraw();
+                        }
+                        return;
+                    }
+
+                    // Right arrow: move cursor right
+                    if (key.matches(vaxis.Key.right, .{})) {
+                        if (self.edit_cursor_pos < self.edit_buffer.items.len) {
+                            self.edit_cursor_pos += 1;
+                            ctx.consumeAndRedraw();
+                        }
                         return;
                     }
 
@@ -1109,10 +1128,12 @@ pub const TreeView = struct {
                         }
                     }
 
-                    // Backspace: remove last character
+                    // Backspace: remove character before cursor
                     if (key.codepoint == 127) {
-                        if (self.edit_buffer.items.len > 0) {
-                            _ = self.edit_buffer.pop();
+                        if (self.edit_cursor_pos > 0) {
+                            // Remove character at cursor_pos - 1
+                            _ = self.edit_buffer.orderedRemove(self.edit_cursor_pos - 1);
+                            self.edit_cursor_pos -= 1;
                             ctx.consumeAndRedraw();
                         }
                         return;
@@ -1143,7 +1164,9 @@ pub const TreeView = struct {
                         } else false;
 
                         if (allowed) {
-                            try self.edit_buffer.append(self.allocator, new_char);
+                            // Insert character at cursor position
+                            try self.edit_buffer.insert(self.allocator, self.edit_cursor_pos, new_char);
+                            self.edit_cursor_pos += 1;
                             ctx.consumeAndRedraw();
                         }
                         return;
@@ -1290,10 +1313,13 @@ pub const TreeView = struct {
                                 self.edit_mode = true;
                                 self.edit_item = node;
                                 self.edit_buffer.clearRetainingCapacity();
+                                self.edit_cursor_pos = 0;
                                 // Pre-populate with current value
                                 const current_str = hal_value.formatHalValue(v, self.allocator) catch "";
                                 defer self.allocator.free(current_str);
                                 try self.edit_buffer.appendSlice(self.allocator, current_str);
+                                // Set cursor to end of initial value
+                                self.edit_cursor_pos = self.edit_buffer.items.len;
                                 ctx.consumeAndRedraw();
                                 return;
                             },
