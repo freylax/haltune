@@ -81,9 +81,9 @@ pub fn isItemWritable(
         } else |_| {
             break :blk true; // Can't determine direction, assume writable
         }
-    } else {
+    } else blk: {
         // Signals are always writable
-        true;
+        break :blk true;
     };
 }
 
