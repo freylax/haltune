@@ -768,6 +768,8 @@ pub const TreeView = struct {
                 }
             }
         }
+
+        std.log.warn("buildVisibleNodes: built list with {d} visible nodes (root has {d} components)", .{ list.items.len, self.root.items.len });
     }
 
     /// Event handler for keyboard navigation and interaction
