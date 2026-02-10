@@ -5,10 +5,11 @@
 // real-time via pubsub notifications from the RefreshThread.
 //
 // Design principles:
-// - Display Name, Type, Direction, and Current Value columns
+// - Display Name and Value in a simple format
 // - Show only checked items from tree view
 // - Read values from StateStore cache (fast, lock-free reads)
 // - Use color to distinguish editable from read-only items
+// - Share formatting and editing logic with TreeView via hal_value module
 
 const std = @import("std");
 const vxfw = @import("vaxis").vxfw;
@@ -16,16 +17,10 @@ const StateStore = @import("../../state/cache.zig").StateStore;
 const HalValue = @import("../../state/cache.zig").HalValue;
 const safe = @import("../../ffi/safe.zig");
 const vaxis = @import("vaxis");
+const hal_value = @import("hal_value.zig");
 
-/// HAL item type (pin, signal, or parameter)
-pub const ItemType = enum {
-    /// Pin (IN/OUT/IO)
-    pin,
-    /// Signal (wire connecting pins)
-    signal,
-    /// Parameter (configurable value)
-    param,
-};
+// Re-export ItemType from hal_value for compatibility
+pub const ItemType = hal_value.ItemType;
 
 /// HAL data type (bit, float, s32, u32)
 pub const HalType = enum {
@@ -387,14 +382,14 @@ pub const DataTable = struct {
                         break :blk PinDirection.none;
                 }
             };
-            is_writable = (direction == .out or direction == .io);
+            is_writable = (direction == .in or direction == .io); // IN and IO pins are writable
         } else |_| {
             // Try signal
             if (self.store.getSignal(name)) |value| {
                 item_type = .signal;
                 hal_type = halTypeFromHalValue(value);
                 direction = .none;
-                is_writable = false; // Signals are read-only
+                is_writable = true; // Signals are writable (you can set their value)
             } else |_| {
                 // Try param
                 if (self.store.getParam(name)) |value| {
@@ -799,19 +794,11 @@ pub const DataTable = struct {
 
                     const item = &self.items.items[self.cursor_row];
 
-                    // Check if value is writable (input pins connected to signals are NOT writable)
-                    const is_writable = blk: {
-                        if (item.item_type == .pin) {
-                            // Check if pin is connected to a signal
-                            if (self.store.pin_links.get(item.name)) |_| {
-                                break :blk false; // Connected pins get value from signal
-                            }
-                        }
-                        break :blk item.is_writable; // Use TableItem's is_writable field
-                    };
+                    // Check if value is writable using shared logic
+                    const is_writable = hal_value.isItemWritable(self.allocator, self.store, item.item_type, item.name);
 
                     if (!is_writable) {
-                        self.setError("Cannot edit - pin is connected to signal") catch {};
+                        self.setError("Cannot edit - pin is connected to signal or is read-only") catch {};
                         self.error_timeout = @intCast(std.time.nanoTimestamp() + 3_000_000_000); // 3 seconds
                         ctx.consumeAndRedraw();
                         return;
@@ -858,7 +845,7 @@ pub const DataTable = struct {
                                 self.table_edit_row = self.cursor_row;
                                 self.table_edit_buffer.clearRetainingCapacity();
                                 // Pre-populate with current value
-                                const current_str = formatHalValue(v, self.allocator) catch "";
+                                const current_str = hal_value.formatHalValue(v, self.allocator) catch "";
                                 defer self.allocator.free(current_str);
                                 try self.table_edit_buffer.appendSlice(self.allocator, current_str);
                                 ctx.consumeAndRedraw();
@@ -878,20 +865,11 @@ pub const DataTable = struct {
 
                     const item = &self.items.items[self.cursor_row];
 
-                    // Check if value is writable (input pins connected to signals are NOT writable)
-                    // Same logic as TreeView Enter handler
-                    const is_writable = blk: {
-                        if (item.item_type == .pin) {
-                            // Check if pin is connected to a signal
-                            if (self.store.pin_links.get(item.name)) |_| {
-                                break :blk false; // Connected pins get value from signal
-                            }
-                        }
-                        break :blk item.is_writable; // Use TableItem's is_writable field
-                    };
+                    // Check if value is writable using shared logic
+                    const is_writable = hal_value.isItemWritable(self.allocator, self.store, item.item_type, item.name);
 
                     if (!is_writable) {
-                        self.setError("Cannot toggle - pin is connected to signal") catch {};
+                        self.setError("Cannot toggle - pin is connected to signal or is read-only") catch {};
                         self.error_timeout = @intCast(std.time.nanoTimestamp() + 3_000_000_000); // 3 seconds
                         ctx.consumeAndRedraw();
                         return;
@@ -1037,7 +1015,7 @@ pub const DataTable = struct {
                     std.log.warn("Failed to get value for '{s}': {}", .{ item.name, err });
                     break :blk "ERR";
                 };
-                break :blk formatHalValue(value, ctx.arena) catch "ERR";
+                break :blk hal_value.formatHalValue(value, ctx.arena) catch "ERR";
             };
 
             // Format row: "name  value" (values aligned at name_column_width + 1 space)
@@ -1100,18 +1078,6 @@ pub const DataTable = struct {
             .pin => self.store.getPin(item.name),
             .signal => self.store.getSignal(item.name),
             .param => self.store.getParam(item.name),
-        };
-    }
-
-    /// Format a HAL value for display in the value column
-    /// Uses compact formatting: ●/○ for BIT, 6-char precision for FLOAT/U32
-    /// Matches tree_view.zig formatting for consistency
-    fn formatHalValue(value: HalValue, allocator: std.mem.Allocator) ![]const u8 {
-        return switch (value) {
-            .bit => |v| if (v) "1" else "0",
-            .float => |v| std.fmt.allocPrint(allocator, "{d}", .{v}) catch "ERR", // No trailing zeros
-            .s32 => |v| std.fmt.allocPrint(allocator, "{d}", .{v}) catch "ERR",
-            .u32 => |v| std.fmt.allocPrint(allocator, "{d}", .{v}) catch "ERR",
         };
     }
 

@@ -18,6 +18,7 @@ const StateStore = cache.StateStore;
 const HalValue = cache.HalValue;
 const glob = @import("glob");
 const safe = @import("../../ffi/safe.zig");
+const hal_value = @import("hal_value.zig");
 
 /// Node type enumeration
 pub const NodeType = enum {
@@ -117,17 +118,6 @@ fn getDirectionString(self: *TreeView, node: *const Node) []const u8 {
         } else |_| return "";
     }
     return "";
-}
-
-/// Format a HAL value for display in the value column
-/// Uses compact formatting: ●/○ for BIT, no trailing zeros for FLOAT
-fn formatHalValue(value: HalValue, allocator: std.mem.Allocator) ![]const u8 {
-    return switch (value) {
-        .bit => |v| if (v) "\xe2\x97\x8f" else "\xe2\x97\x8b", // UTF-8 for ●/○
-        .float => |v| std.fmt.allocPrint(allocator, "{d}", .{v}) catch "ERR", // No trailing zeros
-        .s32 => |v| std.fmt.allocPrint(allocator, "{d}", .{v}) catch "ERR",
-        .u32 => |v| std.fmt.allocPrint(allocator, "{d}", .{v}) catch "ERR",
-    };
 }
 
 /// Tree navigation widget
@@ -306,7 +296,6 @@ pub const TreeView = struct {
             for (params) |p| self.allocator.free(p);
             self.allocator.free(params);
         }
-
 
         // HashMap to group items by component
         // Note: ComponentGroup now owns its name copy, so we don't need to free HashMap keys
@@ -567,8 +556,7 @@ pub const TreeView = struct {
             const line_len = 1 + indent + sym_len + node.name.len + value_col_width;
             max_width = @max(max_width, line_len);
 
-            std.log.info("  Line: name='{s}' depth={} indent={} line_len={} max_width={}",
-                .{ node.name, depth, indent, line_len, max_width });
+            std.log.info("  Line: name='{s}' depth={} indent={} line_len={} max_width={}", .{ node.name, depth, indent, line_len, max_width });
         }
 
         // Create surface with calculated size (use constrained height)
@@ -678,7 +666,7 @@ pub const TreeView = struct {
                             self.store.getSignal(node.full_name) catch
                             self.store.getParam(node.full_name) catch null;
                         if (value) |v| {
-                            break :blk formatHalValue(v, ctx.arena) catch "ERR";
+                            break :blk hal_value.formatHalValue(v, ctx.arena) catch "ERR";
                         } else {
                             break :blk "";
                         }
@@ -1212,36 +1200,14 @@ pub const TreeView = struct {
                     }
 
                     // Leaf nodes: check if value is writable
-                    // Only OUT pins are writable, IN pins and connected pins are NOT writable
-                    const is_writable = blk: {
-                        if (node.item_type == .pin) {
-                            // Check if pin is connected to a signal
-                            if (self.store.pin_links.get(node.full_name)) |_| {
-                                break :blk false; // Connected pins get value from signal
-                            }
-
-                            // Check pin direction - IN and IO pins are writable (OUT pins are read-only outputs)
-                            const name_z = try self.allocator.dupeZ(u8, node.full_name);
-                            defer self.allocator.free(name_z);
-
-                            if (safe.getPinDir(name_z)) |dir| {
-                                break :blk dir == .in or dir == .io; // IN and IO pins are writable
-                            } else |_| {
-                                break :blk true; // Can't determine direction, assume writable
-                            }
-                        } else if (node.item_type == .param) {
-                            // Check param direction - only RW params are writable
-                            const name_z = try self.allocator.dupeZ(u8, node.full_name);
-                            defer self.allocator.free(name_z);
-
-                            if (safe.getParamDir(name_z)) |dir| {
-                                break :blk dir == .rw; // Only RW params are writable
-                            } else |_| {
-                                break :blk true; // Can't determine direction, assume writable
-                            }
-                        }
-                        break :blk true; // Signals are always writable
+                    // Uses shared logic from hal_value module
+                    const item_type = switch (node.item_type) {
+                        .pin => hal_value.ItemType.pin,
+                        .signal => hal_value.ItemType.signal,
+                        .param => hal_value.ItemType.param,
+                        .component => unreachable,
                     };
+                    const is_writable = hal_value.isItemWritable(self.allocator, self.store, item_type, node.full_name);
 
                     if (!is_writable) {
                         // Skip editing - status message would be shown by caller if needed
@@ -1283,7 +1249,7 @@ pub const TreeView = struct {
                                 self.edit_item = node;
                                 self.edit_buffer.clearRetainingCapacity();
                                 // Pre-populate with current value
-                                const current_str = formatHalValue(v, self.allocator) catch "";
+                                const current_str = hal_value.formatHalValue(v, self.allocator) catch "";
                                 defer self.allocator.free(current_str);
                                 try self.edit_buffer.appendSlice(self.allocator, current_str);
                                 ctx.consumeAndRedraw();
