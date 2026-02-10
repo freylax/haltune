@@ -481,9 +481,12 @@ pub const TreeView = struct {
             break :blk self.store.pins.count();
         };
 
+        std.log.warn("rebuildTreeIfNeeded: root.items.len={}, pin_count={}", .{ self.root.items.len, pin_count });
+
         // Rebuild if tree is empty but StateStore has pins
         // This handles initial startup where refresh thread hasn't populated StateStore yet
         if (self.root.items.len == 0 and pin_count > 0) {
+            std.log.warn("rebuildTreeIfNeeded: Rebuilding tree!", .{});
             try self.buildTree();
         }
     }
