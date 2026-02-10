@@ -729,15 +729,19 @@ pub const TreeView = struct {
                 }
 
                 // Show block cursor at end when editing and cursor is at or past end of visible text
-                if (is_editing and self.edit_cursor_pos >= char_idx) {
-                    // Cursor at or past end - show block cursor indicator
-                    if (col >= surface.size.width) {
-                        // Past end of line - don't show cursor
-                    } else {
-                        surface.writeCell(col, row, .{
-                            .char = .{ .grapheme = "█", .width = 1 },
-                            .style = .{ .fg = base_style.fg, .reverse = true },
-                        });
+                if (is_editing) {
+                    std.log.warn("DEBUG: is_editing=true, cursor_pos={}, char_idx={}, value_str.len={}, col={}", .{ self.edit_cursor_pos, char_idx, value_str.len, col });
+                    if (self.edit_cursor_pos >= char_idx) {
+                        std.log.warn("DEBUG: Showing block cursor at col={}", .{col});
+                        // Cursor at or past end - show block cursor indicator
+                        if (col < surface.size.width) {
+                            surface.writeCell(col, row, .{
+                                .char = .{ .grapheme = "█", .width = 1 },
+                                .style = .{ .fg = base_style.fg, .reverse = true },
+                            });
+                        } else {
+                            std.log.warn("DEBUG: col {} >= width {}, skipping cursor", .{ col, surface.size.width });
+                        }
                     }
                 }
             }
