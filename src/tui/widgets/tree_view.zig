@@ -693,16 +693,15 @@ pub const TreeView = struct {
                 // Check if we're editing this node
                 const is_editing = self.edit_mode and self.edit_item == node;
 
+                // Right-align value in 8-character column (also sets position for empty buffer)
+                const value_width = if (value_str.len > 0) ctx.stringWidth(value_str) else 0;
+                const value_col_start = @min(surface.size.width -| value_width, surface.size.width -| 8);
+                if (col < value_col_start) {
+                    col = value_col_start;
+                }
+
                 var char_idx: usize = 0;
                 if (value_str.len > 0) {
-                    const value_width = ctx.stringWidth(value_str);
-
-                    // Right-align value in 8-character column
-                    const value_col_start = @min(surface.size.width -| value_width, surface.size.width -| 8);
-                    if (col < value_col_start) {
-                        col = value_col_start;
-                    }
-
                     // Write value string with grapheme iterator for proper Unicode width
                     // Show cursor at edit_cursor_pos position
                     var value_char_iter = ctx.graphemeIterator(value_str);
@@ -730,17 +729,13 @@ pub const TreeView = struct {
 
                 // Show block cursor at end when editing and cursor is at or past end of visible text
                 if (is_editing) {
-                    std.log.warn("DEBUG: is_editing=true, cursor_pos={}, char_idx={}, value_str.len={}, col={}", .{ self.edit_cursor_pos, char_idx, value_str.len, col });
                     if (self.edit_cursor_pos >= char_idx) {
-                        std.log.warn("DEBUG: Showing block cursor at col={}", .{col});
                         // Cursor at or past end - show block cursor indicator
                         if (col < surface.size.width) {
                             surface.writeCell(col, row, .{
                                 .char = .{ .grapheme = "█", .width = 1 },
                                 .style = .{ .fg = base_style.fg, .reverse = true },
                             });
-                        } else {
-                            std.log.warn("DEBUG: col {} >= width {}, skipping cursor", .{ col, surface.size.width });
                         }
                     }
                 }
