@@ -260,6 +260,8 @@ pub const TreeView = struct {
         }
         self.root.clearRetainingCapacity();
 
+        std.log.warn("buildTree: starting rebuild", .{});
+
         // Reset edit mode when tree rebuilds (node pointers become invalid)
         self.edit_mode = false;
         self.edit_item = null;
@@ -434,6 +436,8 @@ pub const TreeView = struct {
                 }
             }
         }
+
+        std.log.warn("buildTree: rebuilt tree with {d} components", .{self.root.items.len});
     }
 
     /// Extract component name from HAL item name
