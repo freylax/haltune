@@ -904,21 +904,14 @@ pub const DataTable = struct {
             else
                 vaxis.Style{ .fg = .{ .index = 8 } }; // Dim gray for read-only
 
-            // Highlight cursor row
+            // Check if this row is being edited or has cursor
             const is_cursor = (idx == self.cursor_row);
-
-            // Highlight row being edited
-            const final_style = if (self.table_edit_mode and self.table_edit_row != null and self.table_edit_row.? == idx)
-                vaxis.Style{ .fg = base_style.fg, .reverse = true } // Reverse for table edit
-            else if (is_cursor)
-                vaxis.Style{ .fg = base_style.fg, .reverse = true } // Reverse for cursor
-            else
-                base_style;
+            const is_editing = self.table_edit_mode and self.table_edit_row != null and self.table_edit_row.? == idx;
 
             // Get current value or edit buffer
             const value_str = blk: {
                 // If table editing this row, show edit buffer with cursor indicator
-                if (self.table_edit_mode and self.table_edit_row != null and self.table_edit_row.? == idx) {
+                if (is_editing) {
                     const buf = self.table_edit_buffer.items;
                     if (buf.len > 0) {
                         break :blk buf;
@@ -940,8 +933,24 @@ pub const DataTable = struct {
                 break :blk hal_value.formatHalValue(value, ctx.arena) catch "ERR";
             };
 
-            // Format row: "name  value" (values aligned at name_column_width + 1 space)
+            // Format row: "▶ name  value" (arrow cursor like TreeView)
             var row_buffer = std.ArrayList(u8).initCapacity(ctx.arena, 0) catch unreachable;
+
+            // Add cursor indicator (▶ for cursor, space otherwise)
+            if (is_cursor) {
+                try row_buffer.appendSlice(ctx.arena, "▶");
+            } else {
+                try row_buffer.append(ctx.arena, ' ');
+            }
+
+            // Add space after cursor
+            try row_buffer.append(ctx.arena, ' ');
+
+            // Add name with appropriate style
+            const name_style = if (is_editing)
+                vaxis.Style{ .fg = base_style.fg, .reverse = true } // Highlight editing
+            else
+                base_style;
 
             // Add name
             try row_buffer.appendSlice(ctx.arena, item.name);
@@ -956,16 +965,21 @@ pub const DataTable = struct {
                 try row_buffer.append(ctx.arena, ' ');
             }
 
-            // Add value string
+            // Add value string (with cursor position indicator when editing)
             var char_iter = ctx.graphemeIterator(value_str);
             while (char_iter.next()) |char| {
                 const grapheme = char.bytes(value_str);
                 try row_buffer.appendSlice(ctx.arena, grapheme);
             }
 
+            // When editing and buffer is empty, add a visible block cursor
+            if (is_editing and self.table_edit_buffer.items.len == 0) {
+                try row_buffer.appendSlice(ctx.arena, "█"); // Block cursor indicator
+            }
+
             // Create row text widget
             const row_text = try ctx.arena.create(vxfw.Text);
-            row_text.* = .{ .text = row_buffer.items, .style = final_style };
+            row_text.* = .{ .text = row_buffer.items, .style = name_style };
             try widgets.append(ctx.arena, row_text.widget());
         }
 
