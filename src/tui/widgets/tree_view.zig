@@ -701,28 +701,37 @@ pub const TreeView = struct {
                         col = value_col_start;
                     }
 
-                    // Check if we're editing this node
+                    // Check if we're editing this node and get cursor position
                     const is_editing = self.edit_mode and self.edit_item == node;
+                    const cursor_pos = if (is_editing) self.edit_buffer.items.len else 0;
 
                     // Write value string with grapheme iterator for proper Unicode width
+                    // Only invert the character at cursor position when editing
                     var value_char_iter = ctx.graphemeIterator(value_str);
+                    var char_idx: usize = 0;
                     while (value_char_iter.next()) |char| {
                         const grapheme = char.bytes(value_str);
                         const grapheme_width: u8 = @intCast(ctx.stringWidth(grapheme));
                         if (col + grapheme_width <= surface.size.width) {
+                            // When editing, only invert the character at cursor position (end of buffer)
+                            const char_style = if (is_editing and char_idx == cursor_pos)
+                                vaxis.Style{ .fg = base_style.fg, .reverse = true } // Cursor position
+                            else if (is_editing)
+                                base_style // Other chars use base color without reverse
+                            else
+                                base_style; // Not editing - use base color
+
                             surface.writeCell(col, row, .{
                                 .char = .{ .grapheme = grapheme, .width = grapheme_width },
-                                .style = if (is_editing)
-                                    vaxis.Style{ .fg = base_style.fg, .reverse = true } // Highlight editing
-                                else
-                                    base_style, // Use color for values too
+                                .style = char_style,
                             });
                             col += grapheme_width;
                         }
+                        char_idx += 1;
                     }
 
                     // Add block cursor indicator when editing and at end of buffer
-                    if (is_editing and self.edit_buffer.items.len == 0) {
+                    if (is_editing and cursor_pos == 0) {
                         // Empty buffer - show block cursor at position
                         if (col < surface.size.width) {
                             surface.writeCell(col, row, .{

@@ -262,18 +262,38 @@ pub const DataTable = struct {
         // Reset name column width
         self.name_column_width = 0;
 
+        // Track which names have been added (to prevent duplicates)
+        var added_names = std.StringHashMap(void).init(self.allocator);
+        defer {
+            var iter = added_names.iterator();
+            while (iter.next()) |entry| {
+                self.allocator.free(entry.key_ptr.*);
+            }
+            added_names.deinit();
+        }
+
         // Parse each item name and add to table (with filtering)
         for (item_names) |name| {
-            // Duplicate the name so we own it (tree nodes may be freed)
-            const name_copy = try self.allocator.dupe(u8, name);
-            std.log.debug("  duplicating '{s}' -> '{s}' ptr={*}", .{ name, name_copy, name_copy.ptr });
+            // Skip duplicates
+            if (added_names.get(name) != null) {
+                std.log.warn("  skipping duplicate: '{s}'", .{name});
+                continue;
+            }
 
-            const item = try self.parseItem(name_copy);
+            // Track this name as added
+            const name_copy = try self.allocator.dupe(u8, name);
+            try added_names.put(name_copy, {});
+
+            // Duplicate the name so we own it (tree nodes may be freed)
+            const item_name_copy = try self.allocator.dupe(u8, name);
+            std.log.debug("  duplicating '{s}' -> '{s}' ptr={*}", .{ name, item_name_copy, item_name_copy.ptr });
+
+            const item = try self.parseItem(item_name_copy);
 
             // Store the owned copy
             const item_with_owner = TableItem{
-                .name = name_copy,
-                .name_owner = name_copy,
+                .name = item_name_copy,
+                .name_owner = item_name_copy,
                 .item_type = item.item_type,
                 .hal_type = item.hal_type,
                 .direction = item.direction,
@@ -290,7 +310,7 @@ pub const DataTable = struct {
                     .u32 => .u32,
                 };
                 if (item_with_owner.hal_type != filter_hal_type) {
-                    self.allocator.free(name_copy);
+                    self.allocator.free(item_name_copy);
                     continue;
                 }
             }
@@ -298,7 +318,7 @@ pub const DataTable = struct {
             // Apply component filter (prefix match)
             if (self.filter_component.len > 0) {
                 if (!std.mem.startsWith(u8, item_with_owner.name, self.filter_component)) {
-                    self.allocator.free(name_copy);
+                    self.allocator.free(item_name_copy);
                     continue;
                 }
             }
@@ -879,25 +899,51 @@ pub const DataTable = struct {
     ) std.mem.Allocator.Error!vxfw.Surface {
         const self: *DataTable = @ptrCast(@alignCast(ptr));
 
-        // Build list of text widgets for table content
-        var widgets = std.ArrayList(vxfw.Widget).initCapacity(ctx.arena, 0) catch unreachable;
-        defer widgets.deinit(ctx.arena);
+        // Calculate surface size
+        const num_rows: usize = self.items.items.len;
+        const num_filter_rows: usize = if (self.filter_type != .all) 1 else 0;
+        const total_rows = num_rows + num_filter_rows;
+        const height = @as(u16, @intCast(@min(total_rows, ctx.max.size().height)));
+        const width = ctx.max.size().width;
+
+        // Create surface (needs widget parameter)
+        var surface = try vxfw.Surface.init(ctx.arena, self.widget(), .{ .width = width, .height = height });
+        errdefer surface.deinit(ctx.arena);
+
+        var row: u16 = 0;
 
         // Show filter indicator if type filter is active
         if (self.filter_type != .all) {
-            var filter_text = std.ArrayList(u8).initCapacity(ctx.arena, 0) catch unreachable;
-            try filter_text.appendSlice(ctx.arena, "[Type: ");
-            try filter_text.appendSlice(ctx.arena, self.filter_type.toString());
-            try filter_text.append(ctx.arena, ']');
+            const filter_name = self.filter_type.toString();
+            var col: u16 = 0;
 
+            // Write filter text with yellow style
             const filter_style = vaxis.Style{ .bold = true, .fg = .{ .index = 3 } }; // Yellow
-            const filter_text_widget = try ctx.arena.create(vxfw.Text);
-            filter_text_widget.* = .{ .text = filter_text.items, .style = filter_style };
-            try widgets.append(ctx.arena, filter_text_widget.widget());
+
+            // Write "[Type: "
+            for ("[Type: ") |c| {
+                if (col >= width) break;
+                surface.writeCell(col, row, .{ .char = .{ .grapheme = &[_]u8{c}, .width = 1 }, .style = filter_style });
+                col += 1;
+            }
+
+            // Write type name
+            for (filter_name) |c| {
+                if (col >= width) break;
+                surface.writeCell(col, row, .{ .char = .{ .grapheme = &[_]u8{c}, .width = 1 }, .style = filter_style });
+                col += 1;
+            }
+
+            // Write "]"
+            surface.writeCell(col, row, .{ .char = .{ .grapheme = "]", .width = 1 }, .style = filter_style });
+
+            row += 1;
         }
 
-        // Data rows - simplified: just Name and Value with aligned values
+        // Data rows - render directly to surface for per-character styling
         for (self.items.items, 0..) |item, idx| {
+            if (row >= height) break;
+
             // Determine base row color
             const base_style = if (item.is_writable)
                 vaxis.Style{ .fg = .{ .index = 2 } } // Green for editable
@@ -910,13 +956,13 @@ pub const DataTable = struct {
 
             // Get current value or edit buffer
             const value_str = blk: {
-                // If table editing this row, show edit buffer with cursor indicator
+                // If table editing this row, show edit buffer
                 if (is_editing) {
                     const buf = self.table_edit_buffer.items;
                     if (buf.len > 0) {
                         break :blk buf;
                     } else {
-                        break :blk "_"; // Placeholder for empty buffer shows cursor position
+                        break :blk ""; // Empty buffer - will show cursor
                     }
                 }
 
@@ -933,71 +979,89 @@ pub const DataTable = struct {
                 break :blk hal_value.formatHalValue(value, ctx.arena) catch "ERR";
             };
 
-            // Format row: "▶ name  value" (arrow cursor like TreeView)
-            var row_buffer = std.ArrayList(u8).initCapacity(ctx.arena, 0) catch unreachable;
+            var col: u16 = 0;
 
             // Add cursor indicator (▶ for cursor, space otherwise)
-            if (is_cursor) {
-                try row_buffer.appendSlice(ctx.arena, "▶");
-            } else {
-                try row_buffer.append(ctx.arena, ' ');
+            const cursor_char = if (is_cursor) "▶" else " ";
+            const cursor_width = ctx.stringWidth(cursor_char);
+            if (col + cursor_width <= width) {
+                surface.writeCell(col, row, .{
+                    .char = .{ .grapheme = cursor_char, .width = @intCast(cursor_width) },
+                    .style = .{},
+                });
             }
+            col += @intCast(cursor_width);
 
             // Add space after cursor
-            try row_buffer.append(ctx.arena, ' ');
+            if (col < width) {
+                surface.writeCell(col, row, .{ .char = .{ .grapheme = " ", .width = 1 }, .style = .{} });
+                col += 1;
+            }
 
-            // Add name with appropriate style
-            const name_style = if (is_editing)
-                vaxis.Style{ .fg = base_style.fg, .reverse = true } // Highlight editing
-            else
-                base_style;
+            // Add name (no style on name)
+            var name_iter = ctx.graphemeIterator(item.name);
+            while (name_iter.next()) |char| {
+                if (col >= width) break;
+                const grapheme = char.bytes(item.name);
+                const grapheme_width: u8 = @intCast(ctx.stringWidth(grapheme));
+                surface.writeCell(col, row, .{
+                    .char = .{ .grapheme = grapheme, .width = grapheme_width },
+                    .style = base_style,
+                });
+                col += grapheme_width;
+            }
 
-            // Add name
-            try row_buffer.appendSlice(ctx.arena, item.name);
-
-            // Add padding to align values (1 space after longest name)
+            // Add padding to align values
             const padding = if (item.name.len < self.name_column_width)
                 self.name_column_width - item.name.len + 1
             else
                 1;
             var i: usize = 0;
-            while (i < padding) : (i += 1) {
-                try row_buffer.append(ctx.arena, ' ');
+            while (i < padding and col < width) : (i += 1) {
+                surface.writeCell(col, row, .{ .char = .{ .grapheme = " ", .width = 1 }, .style = .{} });
+                col += 1;
             }
 
-            // Add value string (with cursor position indicator when editing)
+            // Get cursor position for editing
+            const cursor_pos = if (is_editing) self.table_edit_buffer.items.len else 0;
+
+            // Add value string with per-character styling
+            // When editing, only the character at cursor position is inverted
             var char_iter = ctx.graphemeIterator(value_str);
+            var char_idx: usize = 0;
             while (char_iter.next()) |char| {
+                if (col >= width) break;
                 const grapheme = char.bytes(value_str);
-                try row_buffer.appendSlice(ctx.arena, grapheme);
+                const grapheme_width: u8 = @intCast(ctx.stringWidth(grapheme));
+
+                // When editing, invert only the character at cursor position
+                const char_style = if (is_editing and char_idx == cursor_pos)
+                    vaxis.Style{ .fg = base_style.fg, .reverse = true } // Cursor position
+                else if (is_editing)
+                    base_style // Other chars - base color without reverse
+                else
+                    base_style; // Not editing - base color
+
+                surface.writeCell(col, row, .{
+                    .char = .{ .grapheme = grapheme, .width = grapheme_width },
+                    .style = char_style,
+                });
+                col += grapheme_width;
+                char_idx += 1;
             }
 
-            // When editing and buffer is empty, add a visible block cursor
-            if (is_editing and self.table_edit_buffer.items.len == 0) {
-                try row_buffer.appendSlice(ctx.arena, "█"); // Block cursor indicator
+            // When editing and buffer is empty, add block cursor at position
+            if (is_editing and cursor_pos == 0 and col < width) {
+                surface.writeCell(col, row, .{
+                    .char = .{ .grapheme = "█", .width = 1 },
+                    .style = .{ .fg = base_style.fg, .reverse = true },
+                });
             }
 
-            // Create row text widget
-            const row_text = try ctx.arena.create(vxfw.Text);
-            row_text.* = .{ .text = row_buffer.items, .style = name_style };
-            try widgets.append(ctx.arena, row_text.widget());
+            row += 1;
         }
 
-        // Create surface with widgets as children
-        const children = try ctx.arena.alloc(vxfw.SubSurface, widgets.items.len);
-        for (widgets.items, 0..) |w, i| {
-            children[i] = .{
-                .origin = .{ .row = @intCast(i), .col = 0 },
-                .surface = try w.draw(ctx),
-            };
-        }
-
-        return .{
-            .size = .{ .width = ctx.max.size().width, .height = @intCast(widgets.items.len) },
-            .widget = self.widget(),
-            .buffer = &.{},
-            .children = children,
-        };
+        return surface;
     }
 
     /// Get current value for an item from StateStore
