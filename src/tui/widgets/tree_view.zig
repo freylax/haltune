@@ -478,20 +478,36 @@ pub const TreeView = struct {
     /// Rebuild tree if it's empty but StateStore has data
     /// This handles the case where refresh thread populates StateStore after initialization
     pub fn rebuildTreeIfNeeded(self: *TreeView) !void {
-        // Check StateStore data
-        const pin_count = blk: {
+        // Check StateStore data - get counts for all data types
+        const counts = blk: {
             self.store.rwlock.lockShared();
             defer self.store.rwlock.unlockShared();
-            break :blk self.store.pins.count();
+            break :blk .{
+                .pins = self.store.pins.count(),
+                .signals = self.store.signals.count(),
+                .params = self.store.params.count(),
+            };
         };
 
-        std.log.warn("rebuildTreeIfNeeded: root.items.len={}, pin_count={}", .{ self.root.items.len, pin_count });
+        std.log.warn("rebuildTreeIfNeeded: root.items.len={}, pins={}, signals={}, params={}",
+            .{ self.root.items.len, counts.pins, counts.signals, counts.params });
 
-        // Rebuild if tree is empty but StateStore has pins
-        // This handles initial startup where refresh thread hasn't populated StateStore yet
-        if (self.root.items.len == 0 and pin_count > 0) {
-            std.log.warn("rebuildTreeIfNeeded: Rebuilding tree!", .{});
-            try self.buildTree();
+        // Rebuild if tree is empty and StateStore has data
+        // Only rebuild once when we have substantial data (all types populated or at least some pins)
+        // This avoids race conditions where refresh thread is still populating
+        if (self.root.items.len == 0) {
+            // Check if we have enough data to rebuild:
+            // - Either all three types have some data (full population done)
+            // - OR we have pins and at least one other type (partial but usable)
+            // - OR we have significant pin count (>10) assuming signals/params might be empty
+            const should_rebuild = counts.pins > 0 and (
+                counts.signals > 0 or counts.params > 0 or counts.pins > 10
+            );
+
+            if (should_rebuild) {
+                std.log.warn("rebuildTreeIfNeeded: Rebuilding tree!", .{});
+                try self.buildTree();
+            }
         }
     }
 
