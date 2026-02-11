@@ -148,7 +148,7 @@ fn createHelpText(ctx: vxfw.DrawContext, view_mode: ViewMode, model: *const Mode
     // Create surface
     var surface = try vxfw.Surface.init(
         ctx.arena,
-        model.widget(),
+        @constCast(model).widget(),
         .{ .width = max_width, .height = height },
     );
 
