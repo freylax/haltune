@@ -446,15 +446,6 @@ pub const Model = struct {
                 ctx.consumeAndRedraw();
             },
 
-            // Tick event: check redraw flag periodically
-            .tick => {
-                // Check if redraw flag is set (from refresh thread)
-                if (self.redraw_flag.load(.acquire)) {
-                    ctx.consumeAndRedraw();
-                    self.redraw_flag.store(false, .release);
-                }
-            },
-
             // Handle key presses
             .key_press => |key| {
                 // Check error timeout before handling key press

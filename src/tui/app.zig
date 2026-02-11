@@ -98,6 +98,13 @@ pub fn main(test_mode: bool) !void {
     // Set redraw flag so refresh thread can trigger UI updates when StateStore is populated
     refresh_thread.setRedrawFlag(&model.redraw_flag);
     _ = try refresh_thread.start();
+
+    // Give refresh thread time to populate StateStore before first draw
+    // This ensures the tree is built with actual data, not empty
+    std.log.info("Waiting for refresh thread to populate StateStore...", .{});
+    std.Thread.sleep(200 * std.time.ns_per_ms); // 200ms delay
+    std.log.info("Refresh thread started, continuing to TUI", .{});
+
     defer {
         std.log.info("Stopping RefreshThread...", .{});
         refresh_thread.stop();
