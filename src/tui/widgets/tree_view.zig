@@ -174,9 +174,6 @@ pub const TreeView = struct {
     signal_delete_prompt: bool = false,
     pending_signal_delete: ?[]const u8 = null, // Owned memory, must free
 
-    /// Track if tree was built with incomplete data (for rebuild when complete)
-    built_with_incomplete_data: bool = false,
-
     /// Initialize a new TreeView
     pub fn init(allocator: std.mem.Allocator, store: *StateStore) !TreeView {
         // Initialize ArrayLists using initCapacity
@@ -262,11 +259,6 @@ pub const TreeView = struct {
             self.freeNode(node);
         }
         self.root.clearRetainingCapacity();
-
-        // Reset incomplete data flag when rebuilding
-        self.built_with_incomplete_data = false;
-
-        std.log.warn("buildTree: starting rebuild", .{});
 
         // Reset edit mode when tree rebuilds (node pointers become invalid)
         self.edit_mode = false;
@@ -442,8 +434,6 @@ pub const TreeView = struct {
                 }
             }
         }
-
-        std.log.warn("buildTree: rebuilt tree with {d} components", .{self.root.items.len});
     }
 
     /// Extract component name from HAL item name
@@ -484,38 +474,20 @@ pub const TreeView = struct {
     /// Rebuild tree if it's empty but StateStore has data
     /// This handles the case where refresh thread populates StateStore after initialization
     pub fn rebuildTreeIfNeeded(self: *TreeView) !void {
-        // Check StateStore data - get counts for all data types
-        const counts = blk: {
-            self.store.rwlock.lockShared();
-            defer self.store.rwlock.unlockShared();
-            break :blk .{
-                .pins = self.store.pins.count(),
-                .signals = self.store.signals.count(),
-                .params = self.store.params.count(),
+        // Only rebuild once when tree is empty
+        if (self.root.items.len == 0) {
+            // Check if StateStore has any data (using count to avoid allocations)
+            const has_data = blk: {
+                self.store.rwlock.lockShared();
+                defer self.store.rwlock.unlockShared();
+                break :blk self.store.pins.count() > 0 or
+                          self.store.signals.count() > 0 or
+                          self.store.params.count() > 0;
             };
-        };
 
-        std.log.warn("rebuildTreeIfNeeded: root.items.len={}, pins={}, signals={}, params={}, incomplete={}",
-            .{ self.root.items.len, counts.pins, counts.signals, counts.params, self.built_with_incomplete_data });
-
-        // Check if we have complete data (all types populated or substantial data)
-        const has_complete_data = counts.pins > 10 and (counts.signals > 0 or counts.params > 0);
-
-        // Rebuild if:
-        // 1. Tree is empty and we have enough data
-        // 2. Tree was built with incomplete data and now we have complete data
-        if (self.root.items.len == 0 or (self.built_with_incomplete_data and has_complete_data)) {
-            // Only rebuild when we have substantial data
-            if (counts.pins > 0 and (counts.signals > 0 or counts.params > 0 or counts.pins > 10)) {
-                std.log.warn("rebuildTreeIfNeeded: Rebuilding tree!", .{});
+            if (has_data) {
+                std.log.warn("StateStore populated, rebuilding tree", .{});
                 try self.buildTree();
-                // Mark as built with complete data if we have signals or params
-                self.built_with_incomplete_data = (counts.signals == 0 and counts.params == 0);
-            }
-        } else if (self.root.items.len > 0 and !self.built_with_incomplete_data) {
-            // Tree was built, mark if it might be incomplete (no signals/params yet)
-            if (counts.signals == 0 and counts.params == 0 and counts.pins > 0) {
-                self.built_with_incomplete_data = true;
             }
         }
     }
@@ -793,8 +765,6 @@ pub const TreeView = struct {
                 }
             }
         }
-
-        std.log.warn("buildVisibleNodes: built list with {d} visible nodes (root has {d} components)", .{ list.items.len, self.root.items.len });
     }
 
     /// Event handler for keyboard navigation and interaction
