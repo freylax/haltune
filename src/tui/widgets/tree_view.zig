@@ -487,17 +487,20 @@ pub const TreeView = struct {
                 };
             };
 
-            const has_data = data_counts.pins > 0 or data_counts.signals > 0 or data_counts.params > 0;
+            std.log.warn("rebuildTreeIfNeeded: root.items.len=0, pins={}, signals={}, params={}",
+                .{ data_counts.pins, data_counts.signals, data_counts.params });
 
-            std.log.warn("rebuildTreeIfNeeded: root.items.len=0, pins={}, signals={}, params={}, has_data={}",
-                .{ data_counts.pins, data_counts.signals, data_counts.params, has_data });
+            // Only rebuild if we have substantial data
+            // Wait for at least some pins AND either signals/params OR many pins
+            // This avoids rebuilding while discovery is still in progress
+            const should_rebuild = data_counts.pins >= 50 and (
+                data_counts.signals > 0 or data_counts.params > 0 or data_counts.pins >= 90
+            );
 
-            if (has_data) {
+            if (should_rebuild) {
                 std.log.warn("StateStore populated, rebuilding tree", .{});
                 try self.buildTree();
                 std.log.warn("rebuildTreeIfNeeded: Tree rebuilt, root.items.len={}", .{self.root.items.len});
-                // After rebuilding, visible_nodes will be built in the next part of drawFn
-                // so the surface will reflect the new tree
             }
         }
     }
