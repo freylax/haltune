@@ -6,6 +6,9 @@ const SubscriptionManager = @import("../state/pubsub.zig").SubscriptionManager;
 const RefreshThread = @import("../state/refresh.zig").RefreshThread;
 const HalError = @import("../ffi/errors.zig").HalError;
 
+/// Configuration for haltune from root.zig
+pub const Config = @import("../root.zig").Config;
+
 /// Main TUI application entry point
 ///
 /// This function:
@@ -13,12 +16,15 @@ const HalError = @import("../ffi/errors.zig").HalError;
 /// 2. Creates StateStore for HAL component data caching
 /// 3. Creates SubscriptionManager for pubsub notifications
 /// 4. Initializes Model with application state
-/// 5. Starts Vxfw application with two-panel layout
+/// 5. Parses configuration files for origin tracking
+/// 6. Starts Vxfw application with two-panel layout
 ///
 /// User controls:
 /// - Ctrl+C: Quit application
 /// - --test-mode: Bypass terminal size check for automated testing
-pub fn main(test_mode: bool) !void {
+/// - -f file.hal : Load .hal file for origin tracking
+/// - -i file.ini : Load .ini file for origin tracking
+pub fn main(config: Config) !void {
     // Use c_allocator throughout (like flow does)
     // Using page_allocator caused memory corruption with vaxis + refresh thread
     const allocator = std.heap.c_allocator;
@@ -35,6 +41,20 @@ pub fn main(test_mode: bool) !void {
     // MUST use page_allocator since it's accessed by refresh thread
     var pubsub = SubscriptionManager.init(thread_safe_allocator);
     defer pubsub.deinit();
+
+    // Parse configuration files if provided
+    // This builds origin tracking data before initializing Model
+    if (config.hal_files.items.len > 0 or config.ini_files.items.len > 0) {
+        std.log.info("Loading configuration files:", .{});
+        for (config.hal_files.items) |file| {
+            std.log.info("  .hal: {s}", .{file});
+        }
+        for (config.ini_files.items) |file| {
+            std.log.info("  .ini: {s}", .{file});
+        }
+        // TODO: Parse config files and populate origin tracker
+        // This will be implemented in next phase
+    }
 
     // Create Model with allocator, store, and pubsub
     // The Model holds all application state and implements vxfw.Widget
@@ -116,7 +136,7 @@ pub fn main(test_mode: bool) !void {
     // vaxis will panic with division by zero if screen dimensions are 0
     // This can happen when running via script/ssh without proper TTY allocation
     // In test mode, skip this check and use default dimensions
-    if (!test_mode) {
+    if (!config.test_mode) {
         const os = std.os.linux;
         const winsize = extern struct { ws_row: u16, ws_col: u16, ws_xpixel: u16, ws_ypixel: u16 };
         var ws: winsize = undefined;

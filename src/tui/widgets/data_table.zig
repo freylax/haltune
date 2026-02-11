@@ -112,6 +112,10 @@ pub const TableItem = struct {
 
     /// Whether this item is writable (OUT/I/O pins, writable params)
     is_writable: bool,
+
+    /// Origin information (where this value came from)
+    /// null means origin unknown/not tracked
+    origin: ?[]const u8,
 };
 
 /// Data table widget
@@ -196,9 +200,9 @@ pub const DataTable = struct {
             .allocator = allocator,
             .store = store,
             .items = items,
-            // Column widths: Name 40%, Type 10%, Direction 10%, Value 30%
+            // Column widths: Name 30%, Type 10%, Direction 10%, Origin 20%, Value 20%
             // Remaining 10% for spacing/padding
-            .column_widths = .{ 40, 10, 10, 30 },
+            .column_widths = .{ 30, 10, 10, 20, 20 },
             .filter_type = .all,
             .filter_component = "",
             .component_buffer = component_buffer,
@@ -428,6 +432,7 @@ pub const DataTable = struct {
             .hal_type = hal_type,
             .direction = direction,
             .is_writable = is_writable,
+            .origin = null, // TODO: populate from origin tracker
         };
     }
 
@@ -967,6 +972,18 @@ pub const DataTable = struct {
             row += 1;
         }
 
+        // Write Origin column header
+        if (self.filter_type == .all) {
+            const filter_style = vaxis.Style{ .bold = true, .fg = .{ .index = 3 } }; // Yellow
+            var col: u16 = 0;
+            for ("Origin:") |c| {
+                if (col >= width) break;
+                surface.writeCell(col, row, .{ .char = .{ .grapheme = &[_]u8{c}, .width = 1 }, .style = filter_style });
+                col += 1;
+            }
+            row += 1;
+        }
+
         // Data rows - render directly to surface for per-character styling
         for (self.items.items, 0..) |item, idx| {
             if (row >= height) break;
@@ -1067,6 +1084,28 @@ pub const DataTable = struct {
                 });
                 col += grapheme_width;
                 char_idx += 1;
+            }
+
+            // Add origin column
+            if (self.filter_type == .all) {
+                const origin_str = if (item.origin) |orig| orig else "";
+                var origin_iter = ctx.graphemeIterator(origin_str);
+                while (origin_iter.next()) |char| {
+                    if (col >= width) break;
+                    const grapheme = char.bytes(origin_str);
+                    const grapheme_width: u8 = @intCast(ctx.stringWidth(grapheme));
+                    surface.writeCell(col, row, .{
+                        .char = .{ .grapheme = grapheme, .width = grapheme_width },
+                        .style = base_style,
+                    });
+                    col += grapheme_width;
+                }
+                // Add padding before cursor
+                const origin_padding = if (col < width) 1 else 0;
+                if (origin_padding > 0) {
+                    surface.writeCell(col, row, .{ .char = .{ .grapheme = " ", .width = 1 }, .style = .{} });
+                    col += 1;
+                }
             }
 
             // Show cursor marker when editing
