@@ -477,40 +477,19 @@ pub const TreeView = struct {
         // Only rebuild once when tree is empty
         if (self.root.items.len == 0) {
             // Check if StateStore has any data (using count to avoid allocations)
-            const data_counts = blk: {
+            const has_data = blk: {
                 self.store.rwlock.lockShared();
                 defer self.store.rwlock.unlockShared();
-                break :blk .{
-                    .pins = self.store.pins.count(),
-                    .signals = self.store.signals.count(),
-                    .params = self.store.params.count(),
-                };
+                break :blk self.store.pins.count() > 0 or
+                          self.store.signals.count() > 0 or
+                          self.store.params.count() > 0;
             };
 
-            std.log.warn("rebuildTreeIfNeeded: root.items.len=0, pins={}, signals={}, params={}",
-                .{ data_counts.pins, data_counts.signals, data_counts.params });
-
-            // Only rebuild if we have substantial data
-            // Wait for at least some pins AND either signals/params OR many pins
-            // This avoids rebuilding while discovery is still in progress
-            const should_rebuild = data_counts.pins >= 50 and (
-                data_counts.signals > 0 or data_counts.params > 0 or data_counts.pins >= 90
-            );
-
-            if (should_rebuild) {
+            if (has_data) {
                 std.log.warn("StateStore populated, rebuilding tree", .{});
                 try self.buildTree();
-                std.log.warn("rebuildTreeIfNeeded: Tree rebuilt, root.items.len={}", .{self.root.items.len});
             }
         }
-    }
-
-    /// Force a rebuild even if tree is not empty
-    /// Used when we know data has changed significantly
-    pub fn forceRebuild(self: *TreeView) !void {
-        std.log.warn("forceRebuild: forcing tree rebuild", .{});
-        try self.buildTree();
-        std.log.warn("forceRebuild: Tree rebuilt, root.items.len={}", .{self.root.items.len});
     }
 
     /// Draw function - renders the tree with checkboxes and indicators
