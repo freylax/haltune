@@ -260,6 +260,9 @@ pub const TreeView = struct {
         }
         self.root.clearRetainingCapacity();
 
+        // Reset incomplete data flag when rebuilding
+        self.built_with_incomplete_data = false;
+
         std.log.warn("buildTree: starting rebuild", .{});
 
         // Reset edit mode when tree rebuilds (node pointers become invalid)
@@ -475,6 +478,9 @@ pub const TreeView = struct {
         };
     }
 
+    /// Track if tree was built with incomplete data (for rebuild when complete)
+    built_with_incomplete_data: bool = false,
+
     /// Rebuild tree if it's empty but StateStore has data
     /// This handles the case where refresh thread populates StateStore after initialization
     pub fn rebuildTreeIfNeeded(self: *TreeView) !void {
@@ -489,24 +495,27 @@ pub const TreeView = struct {
             };
         };
 
-        std.log.warn("rebuildTreeIfNeeded: root.items.len={}, pins={}, signals={}, params={}",
-            .{ self.root.items.len, counts.pins, counts.signals, counts.params });
+        std.log.warn("rebuildTreeIfNeeded: root.items.len={}, pins={}, signals={}, params={}, incomplete={}",
+            .{ self.root.items.len, counts.pins, counts.signals, counts.params, self.built_with_incomplete_data });
 
-        // Rebuild if tree is empty and StateStore has data
-        // Only rebuild once when we have substantial data (all types populated or at least some pins)
-        // This avoids race conditions where refresh thread is still populating
-        if (self.root.items.len == 0) {
-            // Check if we have enough data to rebuild:
-            // - Either all three types have some data (full population done)
-            // - OR we have pins and at least one other type (partial but usable)
-            // - OR we have significant pin count (>10) assuming signals/params might be empty
-            const should_rebuild = counts.pins > 0 and (
-                counts.signals > 0 or counts.params > 0 or counts.pins > 10
-            );
+        // Check if we have complete data (all types populated or substantial data)
+        const has_complete_data = counts.pins > 10 and (counts.signals > 0 or counts.params > 0);
 
-            if (should_rebuild) {
+        // Rebuild if:
+        // 1. Tree is empty and we have enough data
+        // 2. Tree was built with incomplete data and now we have complete data
+        if (self.root.items.len == 0 or (self.built_with_incomplete_data and has_complete_data)) {
+            // Only rebuild when we have substantial data
+            if (counts.pins > 0 and (counts.signals > 0 or counts.params > 0 or counts.pins > 10)) {
                 std.log.warn("rebuildTreeIfNeeded: Rebuilding tree!", .{});
                 try self.buildTree();
+                // Mark as built with complete data if we have signals or params
+                self.built_with_incomplete_data = (counts.signals == 0 and counts.params == 0);
+            }
+        } else if (self.root.items.len > 0 and !self.built_with_incomplete_data) {
+            // Tree was built, mark if it might be incomplete (no signals/params yet)
+            if (counts.signals == 0 and counts.params == 0 and counts.pins > 0) {
+                self.built_with_incomplete_data = true;
             }
         }
     }
