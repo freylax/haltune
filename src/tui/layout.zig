@@ -99,7 +99,7 @@ pub fn drawTwoPanelLayout(
 
 /// Create help text widget at bottom of screen with dynamic view mode hint
 fn createHelpText(ctx: vxfw.DrawContext, view_mode: ViewMode, model: *const Model) std.mem.Allocator.Error!vxfw.Surface {
-    // Get cursor value for status line
+    // Get cursor value for status line (left side)
     const cursor_value_text = blk: {
         if (view_mode == .tree_only) {
             // Tree mode
@@ -135,35 +135,68 @@ fn createHelpText(ctx: vxfw.DrawContext, view_mode: ViewMode, model: *const Mode
         break :blk "";
     };
 
-    // Build help text components
-    var text_parts = std.ArrayList([]const u8).initCapacity(ctx.arena, 4) catch unreachable;
-    defer text_parts.deinit(ctx.arena);
+    // Build key hints for right side
+    const key_hints = switch (view_mode) {
+        .tree_only => "Ctrl+T=Table View | Space=Check +/-=Visibility /=Search Esc=Clear",
+        .table_only => "Ctrl+T=Tree View | Space=Check /=Search Esc=Clear",
+    };
 
-    // Add cursor value if present
+    // Get max width
+    const max_width = ctx.max.size().width;
+    const height: u16 = 1;
+
+    // Create surface
+    var surface = try vxfw.Surface.init(
+        ctx.arena,
+        model.widget(),
+        .{ .width = max_width, .height = height },
+    );
+
+    // Initialize with default cells
+    const base_cell: vaxis.Cell = .{ .default = true };
+    @memset(surface.buffer, base_cell);
+
+    // Style for status line
+    const style = vaxis.Style{ .dim = true };
+
+    // Write cursor value on left
+    var col: u16 = 0;
     if (cursor_value_text.len > 0) {
-        try text_parts.append(ctx.arena, cursor_value_text);
+        var iter = ctx.graphemeIterator(cursor_value_text);
+        while (iter.next()) |char| {
+            if (col >= max_width) break;
+            const grapheme = char.bytes(cursor_value_text);
+            const grapheme_width: u8 = @intCast(ctx.stringWidth(grapheme));
+            surface.writeCell(col, 0, .{
+                .char = .{ .grapheme = grapheme, .width = grapheme_width },
+                .style = style,
+            });
+            col += grapheme_width;
+        }
     }
 
-    // Add view-switching hint
-    const view_hint = switch (view_mode) {
-        .tree_only => "Ctrl+T=Table View",
-        .table_only => "Ctrl+T=Tree View",
-    };
-    try text_parts.append(ctx.arena, view_hint);
-
-    // Add general help
-    try text_parts.append(ctx.arena, "Space=Check +/-=Visibility /=Search Esc=Clear");
-
-    // Combine with separator
-    const combined = if (text_parts.items.len > 0)
-        try std.mem.join(ctx.arena, " | ", text_parts.items)
+    // Calculate position for right-aligned key hints
+    const key_hints_width = ctx.stringWidth(key_hints);
+    const key_hints_start = if (max_width > key_hints_width)
+        @as(u16, @intCast(max_width - key_hints_width))
     else
-        "";
+        0;
 
-    const help_style = vaxis.Style{ .dim = true };
-    const text_widget = vxfw.Text{ .text = combined, .style = help_style };
+    // Write key hints on right
+    col = key_hints_start;
+    var iter = ctx.graphemeIterator(key_hints);
+    while (iter.next()) |char| {
+        if (col >= max_width) break;
+        const grapheme = char.bytes(key_hints);
+        const grapheme_width: u8 = @intCast(ctx.stringWidth(grapheme));
+        surface.writeCell(col, 0, .{
+            .char = .{ .grapheme = grapheme, .width = grapheme_width },
+            .style = style,
+        });
+        col += grapheme_width;
+    }
 
-    return try text_widget.widget().draw(ctx);
+    return surface;
 }
 
 /// Create left panel surface (30% width)
