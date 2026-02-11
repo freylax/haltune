@@ -264,6 +264,24 @@ pub const RefreshThread = struct {
         try self.refreshPins();
         try self.refreshSignals();
         try self.refreshParams();
+
+        // Trigger redraw on first successful population (after ALL types are loaded)
+        // Check if we have any data now
+        const has_data = blk: {
+            self.store.rwlock.lockShared();
+            defer self.store.rwlock.unlockShared();
+            break :blk self.store.pins.count() > 0 or
+                      self.store.signals.count() > 0 or
+                      self.store.params.count() > 0;
+        };
+
+        if (has_data and !self.populated.load(.acquire)) {
+            self.populated.store(true, .release);
+            if (self.redraw_flag) |flag| {
+                flag.store(true, .release);
+                std.log.info("RefreshThread: StateStore populated, triggering redraw", .{});
+            }
+        }
     }
 
     /// Refresh all pins from HAL
@@ -332,15 +350,6 @@ pub const RefreshThread = struct {
         for (cached_names) |name| {
             if (discovered_names.get(name) == null) {
                 self.store.removePin(name) catch {};
-            }
-        }
-
-        // Trigger redraw on first successful population
-        if (pin_count > 0 and !self.populated.load(.acquire)) {
-            self.populated.store(true, .release);
-            if (self.redraw_flag) |flag| {
-                flag.store(true, .release);
-                std.log.info("RefreshThread: StateStore populated, triggering redraw", .{});
             }
         }
     }
