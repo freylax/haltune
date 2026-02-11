@@ -477,17 +477,25 @@ pub const TreeView = struct {
         // Only rebuild once when tree is empty
         if (self.root.items.len == 0) {
             // Check if StateStore has any data (using count to avoid allocations)
-            const has_data = blk: {
+            const data_counts = blk: {
                 self.store.rwlock.lockShared();
                 defer self.store.rwlock.unlockShared();
-                break :blk self.store.pins.count() > 0 or
-                          self.store.signals.count() > 0 or
-                          self.store.params.count() > 0;
+                break :blk .{
+                    .pins = self.store.pins.count(),
+                    .signals = self.store.signals.count(),
+                    .params = self.store.params.count(),
+                };
             };
+
+            const has_data = data_counts.pins > 0 or data_counts.signals > 0 or data_counts.params > 0;
+
+            std.log.warn("rebuildTreeIfNeeded: root.items.len=0, pins={}, signals={}, params={}, has_data={}",
+                .{ data_counts.pins, data_counts.signals, data_counts.params, has_data });
 
             if (has_data) {
                 std.log.warn("StateStore populated, rebuilding tree", .{});
                 try self.buildTree();
+                std.log.warn("rebuildTreeIfNeeded: Tree rebuilt, root.items.len={}", .{self.root.items.len});
             }
         }
     }
