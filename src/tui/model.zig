@@ -109,9 +109,9 @@ pub const Model = struct {
         errdefer allocator.destroy(tree_view);
         tree_view.* = try TreeView.init(allocator, store);
 
-        // Build initial tree (may be empty if StateStore not yet populated)
-        try tree_view.buildTree();
-        std.log.info("Tree initialized with {d} components", .{tree_view.root.items.len});
+        // Don't build initial tree here - let rebuildTreeIfNeeded() handle it after StateStore is populated
+        // This prevents building an empty tree that the user sees before refresh thread runs
+        std.log.info("Tree initialized (will be built after StateStore populated)", .{});
 
         // Create DataTable widget
         const data_table = try allocator.create(DataTable);

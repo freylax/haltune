@@ -496,8 +496,18 @@ pub const TreeView = struct {
                 std.log.warn("StateStore populated, rebuilding tree", .{});
                 try self.buildTree();
                 std.log.warn("rebuildTreeIfNeeded: Tree rebuilt, root.items.len={}", .{self.root.items.len});
+                // After rebuilding, visible_nodes will be built in the next part of drawFn
+                // so the surface will reflect the new tree
             }
         }
+    }
+
+    /// Force a rebuild even if tree is not empty
+    /// Used when we know data has changed significantly
+    pub fn forceRebuild(self: *TreeView) !void {
+        std.log.warn("forceRebuild: forcing tree rebuild", .{});
+        try self.buildTree();
+        std.log.warn("forceRebuild: Tree rebuilt, root.items.len={}", .{self.root.items.len});
     }
 
     /// Draw function - renders the tree with checkboxes and indicators
