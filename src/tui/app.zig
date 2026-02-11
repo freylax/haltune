@@ -138,5 +138,6 @@ pub fn main(test_mode: bool) !void {
 
     // Run the application with our Model widget
     // This blocks until the user quits (Ctrl+C)
-    try app.run(model.widget(), .{});
+    // Enable tick rate to check redraw flag from refresh thread
+    try app.run(model.widget(), .{ .tick_rate = 100 * std.time.ns_per_ms });
 }
