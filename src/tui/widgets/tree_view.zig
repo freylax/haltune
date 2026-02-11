@@ -174,6 +174,9 @@ pub const TreeView = struct {
     signal_delete_prompt: bool = false,
     pending_signal_delete: ?[]const u8 = null, // Owned memory, must free
 
+    /// Track if tree was built with incomplete data (for rebuild when complete)
+    built_with_incomplete_data: bool = false,
+
     /// Initialize a new TreeView
     pub fn init(allocator: std.mem.Allocator, store: *StateStore) !TreeView {
         // Initialize ArrayLists using initCapacity
@@ -477,9 +480,6 @@ pub const TreeView = struct {
             .drawFn = typeErasedDrawFn,
         };
     }
-
-    /// Track if tree was built with incomplete data (for rebuild when complete)
-    built_with_incomplete_data: bool = false,
 
     /// Rebuild tree if it's empty but StateStore has data
     /// This handles the case where refresh thread populates StateStore after initialization
