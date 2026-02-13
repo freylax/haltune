@@ -12,6 +12,8 @@
 
 const std = @import("std");
 const HalError = @import("ffi-errors").HalError;
+const ItemOrigin = @import("../config/origin.zig").ItemOrigin;
+const OriginTracker = @import("../config/origin.zig").OriginTracker;
 
 /// HAL value union supporting all four HAL data types
 ///
@@ -47,6 +49,8 @@ pub const HalValue = union(enum) {
 pub const StateStore = struct {
     /// Memory allocator for HashMap storage
     allocator: std.mem.Allocator,
+    /// Configuration origin tracking
+    origin_tracker: OriginTracker,
 
     /// HashMap storing pin values indexed by name
     pins: std.StringHashMap(HalValue),
@@ -89,6 +93,7 @@ pub const StateStore = struct {
             .signals = std.StringHashMap(HalValue).init(allocator),
             .params = std.StringHashMap(HalValue).init(allocator),
             .pin_links = std.StringHashMap([]const u8).init(allocator),
+            .origin_tracker = try OriginTracker.init(allocator),
         };
     }
 
