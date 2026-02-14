@@ -3,6 +3,7 @@ const vxfw = @import("vaxis").vxfw;
 const vaxis = @import("vaxis");
 const StateStore = @import("../state/cache.zig").StateStore;
 const HalValue = @import("../state/cache.zig").HalValue;
+const ItemOrigin = @import("../config/origin.zig").ItemOrigin;
 const SubscriptionManager = @import("../state/pubsub.zig").SubscriptionManager;
 const RefreshThread = @import("../state/refresh.zig").RefreshThread;
 const TreeView = @import("widgets/tree_view.zig").TreeView;
@@ -15,6 +16,10 @@ const safe = @import("../ffi/safe.zig");
 
 /// Configuration for haltune from root.zig
 const Config = @import("../root.zig").Config;
+
+/// Configuration file parsers for origin tracking
+const hal_parser = @import("../config/hal_parser.zig");
+const ini_parser = @import("../config/ini_parser.zig");
 
 /// View mode enumeration for single-panel layout switching
 pub const ViewMode = enum {
@@ -131,7 +136,8 @@ pub const Model = struct {
         // Initialize redraw flag
         const redraw_flag = std.atomic.Value(bool).init(false);
 
-        return .{
+        // Create temporary Model instance to parse config files
+        var temp_model = Model{
             .allocator = allocator,
             .store = store,
             .pubsub = pubsub,
@@ -147,6 +153,76 @@ pub const Model = struct {
             .save_filename = std.ArrayList(u8).initCapacity(allocator, 0) catch unreachable,
             .config = config,
         };
+
+        // Parse configuration files for origin tracking
+        if (config.hal_files.items.len > 0 or config.ini_files.items.len > 0) {
+            temp_model.parseConfigFiles() catch |err| {
+                std.log.err("Failed to parse configuration files: {}", .{err});
+            };
+        }
+
+        return temp_model;
+    }
+
+    /// Parse configuration files and populate origin tracker
+    fn parseConfigFiles(self: *Model) !void {
+        const allocator = self.allocator;
+
+        // Parse .hal files
+        for (self.config.hal_files.items) |file_path| {
+            std.log.info("Parsing .hal file: {s}", .{file_path});
+            var commands = hal_parser.parseHalFile(allocator, file_path, null);
+            defer commands.deinit();
+
+            // Process commands and populate origin tracker
+            for (commands.commands.items) |cmd| {
+                switch (cmd) {
+                    .setp => |setp_cmd| {
+                        try self.store.origin_tracker.setParamOrigin(
+                            allocator,
+                            setp_cmd.name,
+                            ItemOrigin.fromHalFile(allocator, file_path, setp_cmd.line),
+                        );
+                    },
+                    .net => |net_cmd| {
+                        // Track signal origin from net command
+                        try self.store.origin_tracker.setSignalOrigin(
+                            allocator,
+                            net_cmd.signal_name,
+                            ItemOrigin.fromHalFile(allocator, file_path, net_cmd.line),
+                        );
+                    },
+                    else => {}, // Other commands don't need origin tracking yet
+                }
+            }
+        }
+
+        // Parse .ini files
+        for (self.config.ini_files.items) |file_path| {
+            std.log.info("Parsing .ini file: {s}", .{file_path});
+            var entries = ini_parser.parseIniFile(allocator, file_path);
+            defer entries.deinit();
+
+            // Process entries and populate origin tracker
+            for (entries.entries.items) |entry| {
+                switch (entry) {
+                    .key_value => |kv| {
+                        // Check if this is a HAL parameter reference
+                        if (std.mem.startsWith(u8, kv.key, "HAL_") or
+                            std.mem.startsWith(u8, kv.key, "PARAM_")) {
+                            // Map [SECTION]VARIABLE to param name
+                            const param_name = try std.fmt.allocPrint(allocator, "{s}.{s}", .{ kv.section, kv.key });
+                            try self.store.origin_tracker.setParamOrigin(
+                                allocator,
+                                param_name,
+                                ItemOrigin.fromIniFile(allocator, file_path, kv.section, kv.key, kv.line),
+                            );
+                        }
+                    },
+                    else => {},
+                }
+            }
+        }
     }
 
     /// Clean up Model resources
