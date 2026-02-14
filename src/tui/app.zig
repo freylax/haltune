@@ -62,7 +62,7 @@ pub fn main(config: Config) !void {
     errdefer allocator.destroy(model);
 
     // Initialize Model, catching HAL-specific errors
-    model.* = Model.init(allocator, &store, &pubsub) catch |err| {
+    model.* = Model.init(allocator, &store, &pubsub, config) catch |err| {
         // Handle HAL not available error with helpful message
         if (err == HalError.HalNotAvailable) {
             std.debug.print(

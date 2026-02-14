@@ -13,6 +13,9 @@ const ItemType = @import("widgets/data_table.zig").ItemType;
 const SignalDialog = @import("widgets/signal_dialog.zig").SignalDialog;
 const safe = @import("../ffi/safe.zig");
 
+/// Configuration for haltune from root.zig
+const Config = @import("../root.zig").Config;
+
 /// View mode enumeration for single-panel layout switching
 pub const ViewMode = enum {
     /// Tree view only: full width
@@ -86,11 +89,15 @@ pub const Model = struct {
     /// Current view mode for single-panel layout
     current_view: ViewMode = .tree_only,
 
+    /// Application configuration (file paths, etc)
+    config: Config,
+
     /// Initialize a new Model instance
     pub fn init(
         allocator: std.mem.Allocator,
         store: *StateStore,
         pubsub: *SubscriptionManager,
+        config: Config,
     ) !Model {
         // Check if HAL is available before attempting to initialize
         // This prevents EINTR crashes when LinuxCNC is not running
@@ -138,6 +145,7 @@ pub const Model = struct {
             .error_message_owner = null,
             .error_timeout = 0,
             .save_filename = std.ArrayList(u8).initCapacity(allocator, 0) catch unreachable,
+            .config = config,
         };
     }
 
