@@ -156,6 +156,9 @@ pub const StateStore = struct {
         }
         self.pin_links.deinit();
 
+        // Clean up origin tracker
+        self.origin_tracker.deinit();
+
         self.* = undefined;
     }
 
