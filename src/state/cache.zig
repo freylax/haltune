@@ -746,6 +746,57 @@ pub const StateStore = struct {
             self.allocator.free(entry.key);
         }
     }
+
+    /// Get origin information for a pin
+    ///
+    /// Returns the origin information (file, line, etc.) for a pin.
+    ///
+    /// Parameters:
+    ///   - name: Pin name to look up
+    ///
+    /// Returns:
+    ///   - ItemOrigin on success
+    ///   - null if pin has no origin information
+    ///
+    /// Thread safety:
+    ///   - Acquires shared lock (allows concurrent reads)
+    pub fn getPinOrigin(self: *const StateStore, name: []const u8) ?ItemOrigin {
+        return self.origin_tracker.getPinOrigin(name);
+    }
+
+    /// Get origin information for a signal
+    ///
+    /// Returns the origin information (file, line, etc.) for a signal.
+    ///
+    /// Parameters:
+    ///   - name: Signal name to look up
+    ///
+    /// Returns:
+    ///   - ItemOrigin on success
+    ///   - null if signal has no origin information
+    ///
+    /// Thread safety:
+    ///   - Acquires shared lock (allows concurrent reads)
+    pub fn getSignalOrigin(self: *const StateStore, name: []const u8) ?ItemOrigin {
+        return self.origin_tracker.getSignalOrigin(name);
+    }
+
+    /// Get origin information for a parameter
+    ///
+    /// Returns the origin information (file, line, etc.) for a parameter.
+    ///
+    /// Parameters:
+    ///   - name: Parameter name to look up
+    ///
+    /// Returns:
+    ///   - ItemOrigin on success
+    ///   - null if parameter has no origin information
+    ///
+    /// Thread safety:
+    ///   - Acquires shared lock (allows concurrent reads)
+    pub fn getParamOrigin(self: *const StateStore, name: []const u8) ?ItemOrigin {
+        return self.origin_tracker.getParamOrigin(name);
+    }
 };
 
 // Compile-time tests to verify API surface
