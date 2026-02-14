@@ -15,6 +15,8 @@ const std = @import("std");
 const vxfw = @import("vaxis").vxfw;
 const StateStore = @import("../../state/cache.zig").StateStore;
 const HalValue = @import("../../state/cache.zig").HalValue;
+const ItemOrigin = @import("../../config/origin.zig").ItemOrigin;
+const Origin = @import("../../config/origin.zig").Origin;
 const safe = @import("../../ffi/safe.zig");
 const vaxis = @import("vaxis");
 const hal_value = @import("hal_value.zig");
@@ -114,8 +116,7 @@ pub const TableItem = struct {
     is_writable: bool,
 
     /// Origin information (where this value came from)
-    /// null means origin unknown/not tracked
-    origin: ?[]const u8,
+    origin: ItemOrigin = .{},
 };
 
 /// Data table widget
@@ -303,6 +304,7 @@ pub const DataTable = struct {
                 .hal_type = item.hal_type,
                 .direction = item.direction,
                 .is_writable = item.is_writable,
+                .origin = item.origin,
             };
 
             // Apply type filter
@@ -420,6 +422,7 @@ pub const DataTable = struct {
                         .hal_type = .bit,
                         .direction = .none,
                         .is_writable = false,
+                        .origin = .{},
                     };
                 }
             }
@@ -432,7 +435,13 @@ pub const DataTable = struct {
             .hal_type = hal_type,
             .direction = direction,
             .is_writable = is_writable,
-            .origin = null, // TODO: populate from origin tracker
+            .origin = blk: {
+                // Get origin from StateStore based on item type
+                if (item_type == .pin) break :blk self.store.getPinOrigin(name);
+                if (item_type == .signal) break :blk self.store.getSignalOrigin(name);
+                if (item_type == .param) break :blk self.store.getParamOrigin(name);
+                break :blk null;
+            } orelse .{},
         };
     }
 
