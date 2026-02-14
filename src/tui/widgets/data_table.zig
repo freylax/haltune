@@ -94,6 +94,31 @@ pub const PinDirection = enum {
     none,
 };
 
+/// Get text style for origin type
+fn originStyle(origin: Origin) vxfw.Text.Style {
+    return switch (origin) {
+        .hal_file => .{ .fg = .{ .index = 4 } }, // Blue
+        .ini_file => .{ .fg = .{ .index = 2 } }, // Green
+        .runtime_modified => .{ .fg = .{ .index = 3 } }, // Yellow
+        .default_value, .none => .{}, // Default (no color)
+    };
+}
+
+/// Format origin as display string
+fn formatOrigin(allocator: std.mem.Allocator, origin: ItemOrigin) ![]const u8 {
+    if (origin.origin == .none or origin.origin == .default_value) {
+        return allocator.dupe(u8, "");
+    }
+
+    // Show file basename for .hal/.ini origins
+    if (origin.file_path) |file_path| {
+        const basename = std.fs.path.basename(file_path);
+        return std.fmt.allocPrint(allocator, "{s}", .{basename});
+    }
+
+    return allocator.dupe(u8, "runtime");
+}
+
 /// Table row representing a single HAL item
 pub const TableItem = struct {
     /// HAL item name (e.g., "motion.digital-in-00")
@@ -1097,7 +1122,8 @@ pub const DataTable = struct {
 
             // Add origin column
             if (self.filter_type == .all) {
-                const origin_str = if (item.origin) |orig| orig else "";
+                const origin_str = formatOrigin(ctx.arena, item.origin) catch "";
+                const origin_style = originStyle(item.origin.origin);
                 var origin_iter = ctx.graphemeIterator(origin_str);
                 while (origin_iter.next()) |char| {
                     if (col >= width) break;
@@ -1105,7 +1131,7 @@ pub const DataTable = struct {
                     const grapheme_width: u8 = @intCast(ctx.stringWidth(grapheme));
                     surface.writeCell(col, row, .{
                         .char = .{ .grapheme = grapheme, .width = grapheme_width },
-                        .style = base_style,
+                        .style = origin_style,
                     });
                     col += grapheme_width;
                 }
