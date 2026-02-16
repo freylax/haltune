@@ -124,7 +124,7 @@ pub fn parseHalFile(
     content: ?[]const u8,
 ) !HalParseResult {
     var result = HalParseResult{
-        .commands = std.ArrayList(HalCommand).init(allocator),
+        .commands = std.ArrayList(HalCommand){},
         .file_path = try allocator.dupe(u8, file_path),
     };
 
@@ -139,7 +139,7 @@ pub fn parseHalFile(
         for (continued_lines.items) |line| {
             allocator.free(line);
         }
-        continued_lines.deinit();
+        continued_lines.deinit(allocator);
     }
 
     // Parse each line
@@ -151,7 +151,7 @@ pub fn parseHalFile(
 
         // Check for comment
         if (isComment(trimmed)) {
-            try result.commands.append(.{
+            try result.commands.append(allocator, .{
                 .comment = .{
                     .text = try allocator.dupe(u8, trimmed),
                     .line = line_num + 1,
@@ -162,7 +162,7 @@ pub fn parseHalFile(
 
         // Parse command
         const cmd = try parseCommand(allocator, trimmed, line_num + 1);
-        try result.commands.append(cmd);
+        try result.commands.append(allocator, cmd);
     }
 
     return result;
@@ -176,11 +176,11 @@ fn processLineContinuations(
     allocator: std.mem.Allocator,
     content: []const u8,
 ) !std.ArrayList([]const u8) {
-    var lines = std.ArrayList([]const u8).init(allocator);
+    var lines = std.ArrayList([]const u8){};
     var line_iter = std.mem.splitScalar(u8, content, '\n');
 
-    var buffer = std.ArrayList(u8).init(allocator);
-    defer buffer.deinit();
+    var buffer = std.ArrayList(u8){};
+    defer buffer.deinit(allocator);
 
     while (line_iter.next()) |line| {
         // Trim trailing whitespace from line
@@ -188,18 +188,18 @@ fn processLineContinuations(
 
         if (trimmed_end.len > 0 and trimmed_end[trimmed_end.len - 1] == '\\') {
             // Line continuation - remove backslash and add to buffer
-            try buffer.appendSlice(trimmed_end[0 .. trimmed_end.len - 1]);
+            try buffer.appendSlice(allocator, trimmed_end[0 .. trimmed_end.len - 1]);
         } else {
             // End of continuation - add full line
-            try buffer.appendSlice(line);
-            try lines.append(try buffer.toOwnedSlice());
+            try buffer.appendSlice(allocator, line);
+            try lines.append(allocator, try buffer.toOwnedSlice());
             buffer.clearRetainingCapacity();
         }
     }
 
     // Handle last line if it doesn't end with newline
     if (buffer.items.len > 0) {
-        try lines.append(try buffer.toOwnedSlice());
+        try lines.append(allocator, try buffer.toOwnedSlice());
     }
 
     return lines;
@@ -311,7 +311,7 @@ fn parseNet(
     const signal_owned = try allocator.dupe(u8, signal_name);
 
     // Collect remaining tokens as pins
-    var pins = std.ArrayList([]const u8).init(allocator);
+    var pins = std.ArrayList([]const u8){};
 
     while (iter.next()) |token| {
         // Skip direction arrows (they're cosmetic)
@@ -323,7 +323,7 @@ fn parseNet(
         }
 
         // Store pin name
-        try pins.append(try allocator.dupe(u8, token));
+        try pins.append(allocator, try allocator.dupe(u8, token));
     }
 
     return .{
@@ -351,9 +351,9 @@ fn parseLoadrt(
     const component_owned = try allocator.dupe(u8, component);
 
     // Collect options
-    var options = std.ArrayList([]const u8).init(allocator);
+    var options = std.ArrayList([]const u8){};
     while (iter.next()) |token| {
-        try options.append(try allocator.dupe(u8, token));
+        try options.append(allocator, try allocator.dupe(u8, token));
     }
 
     return .{
@@ -381,9 +381,9 @@ fn parseLoadusr(
     const component_owned = try allocator.dupe(u8, component);
 
     // Collect options
-    var options = std.ArrayList([]const u8).init(allocator);
+    var options = std.ArrayList([]const u8){};
     while (iter.next()) |token| {
-        try options.append(try allocator.dupe(u8, token));
+        try options.append(allocator, try allocator.dupe(u8, token));
     }
 
     return .{
@@ -510,7 +510,7 @@ fn parseHalValue(allocator: std.mem.Allocator, str: []const u8) !HalValue {
 fn toLower(allocator: std.mem.Allocator, str: []const u8) ![]const u8 {
     var result = try std.ArrayList(u8).initCapacity(allocator, str.len);
     for (str) |c| {
-        try result.append(std.ascii.toLower(c));
+        try result.append(allocator, std.ascii.toLower(c));
     }
     return result.toOwnedSlice();
 }

@@ -95,7 +95,7 @@ pub const IniParseResult = struct {
                 },
             }
         }
-        self.entries.deinit();
+        self.entries.deinit(self.allocator);
         self.* = undefined;
     }
 
@@ -120,11 +120,11 @@ pub const IniParseResult = struct {
 
     /// Get all HALFILE references
     pub fn listHalfiles(self: *const IniParseResult) std.ArrayList([]const u8) {
-        var files = std.ArrayList([]const u8).init(self.allocator);
+        var files = std.ArrayList([]const u8){};
 
         for (self.entries.items) |entry| {
             if (entry == .halfile) {
-                files.append(entry.halfile.filename) catch {};
+                files.append(self.allocator, entry.halfile.filename) catch {};
             }
         }
 
@@ -162,8 +162,7 @@ pub const IniParseResult = struct {
 /// // List all HAL files
 /// const halfiles = result.listHalfiles();
 /// defer {
-///     for (halfiles.items) |f| allocator.free(f);
-///     halfiles.deinit();
+///     halfiles.deinit(allocator);
 /// }
 /// ```
 pub fn parseIniFile(
@@ -171,7 +170,7 @@ pub fn parseIniFile(
     file_path: []const u8,
 ) !IniParseResult {
     var result = IniParseResult{
-        .entries = std.ArrayList(IniEntry).init(allocator),
+        .entries = std.ArrayList(IniEntry){},
         .file_path = try allocator.dupe(u8, file_path),
         .allocator = allocator,
     };
@@ -194,7 +193,7 @@ pub fn parseIniFile(
 
         // Parse entry
         const entry = try parseIniLine(allocator, trimmed, line_num, &result);
-        try result.entries.append(entry);
+        try result.entries.append(allocator, entry);
     }
 
     return result;
