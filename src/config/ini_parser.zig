@@ -176,7 +176,7 @@ pub fn parseIniFile(
     };
 
     // Read file
-    const content = try std.fs.cwd().readFileAlloc(allocator, file_path);
+    const content = try std.fs.cwd().readFileAlloc(allocator, file_path, 1024 * 1024 * 10); // 10MB max
     defer allocator.free(content);
 
     // Parse each line

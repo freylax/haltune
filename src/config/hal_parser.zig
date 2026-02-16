@@ -130,7 +130,7 @@ pub fn parseHalFile(
 
     // Read file if content not provided
     const file_content = content orelse
-        try std.fs.cwd().readFileAlloc(allocator, file_path);
+        try std.fs.cwd().readFileAlloc(allocator, file_path, 1024 * 1024 * 10); // 10MB max
     defer if (content == null) allocator.free(file_content);
 
     // Process line continuations first
