@@ -6,16 +6,16 @@ See: .planning/PROJECT.md (updated 2026-02-05)
 
 **Core value:** Make LinuxCNC HAL manipulation and machine setup efficient through an intuitive TUI interface, replacing cryptic halcmd commands with structured workflows for machine configuration and tuning.
 
-**Current focus:** Milestone v0.7: Bookmarks & Plugins
+**Current focus:** Milestone v0.7: Configuration Origin & Plugins
 
 ## Current Position
 
-Phase: 06-live-values (Live Values & Editing)
-Plan: 09 of 9 (gap closure)
-Status: Complete
-Last activity: 2026-02-08 — Completed Phase 06 (Live Values & Editing)
+Phase: 07-config-plugins (Configuration Origin & Plugins)
+Plan: 01 of 5 (origin tracking integration)
+Status: Planning
+Last activity: 2026-02-13 — Phase 07 plans written
 
-Progress: [██████████] 100%
+Progress: [░░░░░░░░░░░] 0%
 
 ## Performance Metrics
 

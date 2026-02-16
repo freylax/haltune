@@ -101,21 +101,28 @@ Plans:
 - [x] 06-08-PLAN.md — Add FFI write calls to tree view value editing (gap closure)
 - [x] 06-09-PLAN.md — Add FFI write calls to table view value editing (gap closure)
 
-### Phase 7: Bookmarks & Plugins
+### Phase 7: Configuration Origin & Plugins
 
-**Goal**: Quick access to frequently monitored items and extensible plugin architecture for domain-specific workflows
+**Goal**: Configuration origin tracking and extensible plugin architecture for domain-specific workflows
 
 **Depends on**: Phase 6
 
-**Requirements**: BKMK-01, BKMK-02, BKMK-03, BKMK-04, PLUGIN-01, PLUGIN-02, PLUGIN-03, PLUGIN-04
+**Requirements**: PLUGIN-01, PLUGIN-02, PLUGIN-03, PLUGIN-04, RIO-01, RIO-02, RIO-05
 
 **Success Criteria** (what must be TRUE):
-1. User can add pins/signals/params to bookmark list and quickly jump to bookmarked items from main view
-2. Bookmark list persists across application restarts (saved to config file)
-3. Plugin manager can discover and list available plugins (even if only foundation plugins exist initially)
-4. Plugin foundation provides API for plugins to request scoped views (e.g., PID plugin can show only PID-related components and hide others)
+1. Configuration origin tracking integrated into StateStore and displayed in UI
+2. Plugin manager can discover and list available plugins
+3. Plugin foundation provides API for plugins to request scoped views
+4. Example plugin demonstrates plugin system works
 
-**Plans**: TBD
+**Plans**: 5 plans in 2 waves
+
+Plans:
+- [ ] 07-01-PLAN.md — Integrate origin tracking into StateStore
+- [ ] 07-02-PLAN.md — Display origin in UI
+- [ ] 07-03-PLAN.md — Define plugin API
+- [ ] 07-04-PLAN.md — Implement plugin manager
+- [ ] 07-05-PLAN.md — Create example plugin
 
 ### Phase 8: Polish & Optimization
 
@@ -147,5 +154,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8
 | 4. Configuration & Editing | 3/3 | Complete | 2026-01-29 |
 | 5. View Switching | 2/2 | Complete | 2026-02-06 |
 | 6. Live Values & Editing | 9/9 | Complete | 2026-02-08 |
-| 7. Bookmarks & Plugins | 0/0 | Not started | - |
-| 8. Polish & Optimization | 0/0 | Not started | - |
+| 7. Configuration Origin & Plugins | 0/5 | Not started | - |
+| 8. Bookmarks & Polish | 0/0 | Not started | - |
+| 9. Polish & Optimization | 0/0 | Not started | - |
