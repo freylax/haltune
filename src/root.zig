@@ -60,7 +60,7 @@ pub const Config = struct {
 pub fn parseArgs(allocator: std.mem.Allocator, args: []const []const u8) !Config {
     var config = Config.init(allocator);
 
-    var i: usize = 1;
+    var i: usize = 0;
     while (i < args.len) : (i += 1) {
         const arg = args[i];
 
