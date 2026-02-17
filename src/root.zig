@@ -4,16 +4,8 @@ const std = @import("std");
 const logging = @import("log.zig");
 
 /// std.log configuration - redirects logs to file or disables them
-pub const std_options = struct {
-    /// Log function that writes to file or discards output
-    pub fn log(
-        comptime level: std.log.Level,
-        comptime scope: @TypeOf(.enum_literal),
-        comptime format: []const u8,
-        args: anytype,
-    ) void {
-        logging.logWrite(level, scope, format, args);
-    }
+pub const std_options = .{
+    .log_fn = logging.logWrite,
 };
 
 /// Command-line configuration for haltune

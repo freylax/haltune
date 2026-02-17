@@ -11,8 +11,9 @@ pub var log_file: ?std.fs.File = null;
 var log_mutex: std.Thread.Mutex = .{};
 
 /// Write to log file (thread-safe, internal)
+/// This function has the signature expected by std.options.log_fn
 pub fn logWrite(
-    comptime level: std.log.Level,
+    comptime message_level: std.log.Level,
     comptime scope: @TypeOf(.enum_literal),
     comptime format: []const u8,
     args: anytype,
@@ -23,7 +24,7 @@ pub fn logWrite(
 
     // Format: [timestamp] [LEVEL] scope: message
     const timestamp = std.time.timestamp();
-    const level_txt = comptime level.asText();
+    const level_txt = comptime message_level.asText();
     file.writer().print(
         "[{d}] [{s}] {s}: " ++ format ++ "\n",
         .{ timestamp, level_txt, @tagName(scope) } ++ args,
@@ -35,7 +36,7 @@ pub fn logWrite(
 pub fn init(file_path: ?[]const u8) !void {
     if (file_path) |path| {
         log_file = try std.fs.cwd().createFile(path, .{ .read = true });
-        logWriteAll("=== haltune log started ===\n");
+        try logWriteAll("=== haltune log started ===\n");
     } else {
         log_file = null;
     }
