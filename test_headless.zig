@@ -122,8 +122,8 @@ pub fn main() !void {
     defer test_origin.deinit(allocator);
 
     std.debug.print("  Created test origin: ", .{});
-    const stdout = std.io.getStdOut();
-    try test_origin.format(stdout.writer());
+    const stdout_file = std.io.getStdOut().file;
+    try test_origin.format(stdout_file.writer());
     std.debug.print("\n", .{});
 
     std.debug.print("\n=== All Tests Complete ===\n", .{});
