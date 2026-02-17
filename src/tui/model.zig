@@ -179,7 +179,6 @@ pub const Model = struct {
                 switch (cmd) {
                     .setp => |setp_cmd| {
                         try self.store.origin_tracker.setParamOrigin(
-                            allocator,
                             setp_cmd.name,
                             ItemOrigin.fromHalFile(allocator, file_path, setp_cmd.line),
                         );
@@ -187,7 +186,6 @@ pub const Model = struct {
                     .net => |net_cmd| {
                         // Track signal origin from net command
                         try self.store.origin_tracker.setSignalOrigin(
-                            allocator,
                             net_cmd.signal_name,
                             ItemOrigin.fromHalFile(allocator, file_path, net_cmd.line),
                         );
@@ -213,7 +211,6 @@ pub const Model = struct {
                             // Map [SECTION]VARIABLE to param name
                             const param_name = try std.fmt.allocPrint(allocator, "{s}.{s}", .{ kv.section, kv.key });
                             try self.store.origin_tracker.setParamOrigin(
-                                allocator,
                                 param_name,
                                 ItemOrigin.fromIniFile(allocator, file_path, kv.section, kv.key, kv.line),
                             );
