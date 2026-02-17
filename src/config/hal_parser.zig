@@ -331,7 +331,7 @@ fn parseNet(
     return .{
         .net = .{
             .signal_name = signal_owned,
-            .pins = try pins.toOwnedSlice(),
+            .pins = try pins.toOwnedSlice(allocator),
             .line = line_num,
         },
     };
@@ -361,7 +361,7 @@ fn parseLoadrt(
     return .{
         .loadrt = .{
             .component = component_owned,
-            .options = try options.toOwnedSlice(),
+            .options = try options.toOwnedSlice(allocator),
             .line = line_num,
         },
     };
@@ -391,7 +391,7 @@ fn parseLoadusr(
     return .{
         .loadusr = .{
             .component = component_owned,
-            .options = try options.toOwnedSlice(),
+            .options = try options.toOwnedSlice(allocator),
             .line = line_num,
         },
     };
