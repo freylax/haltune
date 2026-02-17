@@ -1,9 +1,7 @@
 // Import TUI application
 const tui_app = @import("tui/app.zig");
 const std = @import("std");
-
-/// Global log file handle (set by --log-file option)
-var log_file: ?std.fs.File = null;
+const log = @import("log.zig");
 
 /// Command-line configuration for haltune
 pub const Config = struct {
@@ -157,15 +155,17 @@ pub fn main() !void {
     var config = try parseArgs(allocator, args[1..]);
     defer config.deinit();
 
-    // Open log file if specified
+    // Initialize logging
     if (config.log_file_path) |path| {
-        log_file = std.fs.cwd().createFile(path, .{}) catch |err| {
+        log.init(path) catch |err| {
             std.debug.print("ERROR: Failed to open log file '{s}': {}\n", .{ path, err });
             std.process.exit(1);
         };
-        // Note: log_file is closed by process exit
-        // For proper cleanup, we'd need to use defer, but std.fs.File doesn't have close() on this Zig version
+    } else {
+        // Disable logging to avoid interfering with TUI
+        log.init(null) catch {};
     }
+    defer log.deinit();
 
     // Run the TUI application with config
     // This initializes HAL, starts the refresh thread, and runs the Vaxis TUI
