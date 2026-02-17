@@ -226,7 +226,7 @@ fn parseCommand(
     const cmd_word = iter.next() orelse return error.InvalidCommand;
 
     // Lowercase for comparison
-    const cmd_lower = toLower(allocator, cmd_word);
+    const cmd_lower = try toLower(allocator, cmd_word);
     defer allocator.free(cmd_lower);
 
     if (std.mem.eql(u8, cmd_lower, "setp")) {
@@ -512,5 +512,5 @@ fn toLower(allocator: std.mem.Allocator, str: []const u8) ![]const u8 {
     for (str) |c| {
         try result.append(allocator, std.ascii.toLower(c));
     }
-    return result.toOwnedSlice();
+    return result.toOwnedSlice(allocator);
 }

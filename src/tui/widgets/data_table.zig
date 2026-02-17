@@ -175,7 +175,7 @@ pub const DataTable = struct {
 
     /// Column widths (as percentages of total width)
     /// [Name, Type, Direction, Value]
-    column_widths: [4]u16,
+    column_widths: [5]u16,
 
     /// Type filter (null = show all types)
     filter_type: TypeFilter,
