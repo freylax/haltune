@@ -8,7 +8,7 @@ const ini_parser = @import("src/config/ini_parser.zig");
 const ItemOrigin = @import("src/config/origin.zig").ItemOrigin;
 
 pub fn main() !void {
-    const allocator = std.heap.c_allocator;
+    const allocator = std.heap.page_allocator;
 
     std.debug.print("\n=== haltune Headless Test ===\n\n", .{});
 
@@ -27,7 +27,10 @@ pub fn main() !void {
     std.debug.print("  RefreshThread initialized\n", .{});
 
     // Wait a bit for discovery
-    std.time.sleep(100 * std.time.ns_per_ms);
+    const ns = 100_000_000; // 100ms
+    const secs = ns / 1_000_000_000;
+    const rem = @rem(ns, 1_000_000_000);
+    std.os.nanosleep(secs, rem);
 
     // Check what we discovered
     const pin_count = store.pins.count();
