@@ -1,4 +1,3 @@
-#!/usr/bin/env zig run
 //! Headless test for haltune - tests core functionality without TUI
 
 const std = @import("std");
