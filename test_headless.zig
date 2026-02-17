@@ -107,7 +107,7 @@ pub fn main() !void {
     std.debug.print("  Parsed {} entries from test .ini file\n", .{ini_result.entries.items.len});
 
     // Count halfiles
-    const halfiles = ini_result.listHalfiles(allocator);
+    const halfiles = ini_result.listHalfiles();
     defer {
         for (halfiles.items) |f| allocator.free(f);
         halfiles.deinit(allocator);
