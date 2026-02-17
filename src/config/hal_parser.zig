@@ -275,10 +275,12 @@ fn parseSetp(
     const name_owned = try allocator.dupe(u8, name);
 
     // Get remaining text as value string
-    const value_start = iter.index orelse return error.MissingArgument;
+    // pib's tokenizer doesn't have .index, so we search for the name in the line
+    const value_start = std.mem.indexOf(u8, line, name) orelse return error.MissingArgument;
+    const value_start_pos = value_start + name.len;
 
     // Extract value string (handling quotes)
-    const value_str = std.mem.trim(u8, line[value_start..], &std.ascii.whitespace);
+    const value_str = std.mem.trim(u8, line[value_start_pos..], &std.ascii.whitespace);
 
     // Parse value based on type
     const value = try parseHalValue(allocator, value_str);
