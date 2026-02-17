@@ -23,25 +23,21 @@ pub fn main() !void {
     var refresh_thread = try allocator.create(RefreshThread);
     defer allocator.destroy(refresh_thread);
 
-    refresh_thread.* = RefreshThread.init(allocator, &store) catch |err| {
-        std.debug.print("  Warning: Could not start RefreshThread: {}\n", .{err});
-        std.debug.print("  (This is expected if LinuxCNC HAL is not running)\n", .{});
-    } else {
-        std.debug.print("  RefreshThread started\n", .{});
+    refresh_thread.* = RefreshThread.init(allocator, &store);
+    std.debug.print("  RefreshThread initialized\n", .{});
 
-        // Wait a bit for discovery
-        std.time.sleep(100 * std.time.ns_per_ms);
+    // Wait a bit for discovery
+    std.time.sleep(100 * std.time.ns_per_ms);
 
-        // Check what we discovered
-        const pin_count = store.pins.count();
-        const sig_count = store.signals.count();
-        const param_count = store.params.count();
+    // Check what we discovered
+    const pin_count = store.pins.count();
+    const sig_count = store.signals.count();
+    const param_count = store.params.count();
 
-        std.debug.print("  Discovered {} pins, {} signals, {} params\n", .{ pin_count, sig_count, param_count });
+    std.debug.print("  Discovered {} pins, {} signals, {} params\n", .{ pin_count, sig_count, param_count });
 
-        refresh_thread.stop();
-        std.debug.print("  RefreshThread stopped\n", .{});
-    }
+    refresh_thread.stop();
+    std.debug.print("  RefreshThread stopped\n", .{});
 
     // Test 3: Test .hal file parsing
     std.debug.print("\nTest 3: Testing .hal file parsing...\n", .{});
