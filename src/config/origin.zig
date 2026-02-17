@@ -95,11 +95,10 @@ pub const ItemOrigin = struct {
     }
 
     /// Free allocated resources
-    pub fn deinit(self: *ItemOrigin, allocator: std.mem.Allocator) void {
+    pub fn deinit(self: *const ItemOrigin, allocator: std.mem.Allocator) void {
         if (self.file_path) |p| allocator.free(p);
         if (self.ini_section) |s| allocator.free(s);
         if (self.ini_variable) |v| allocator.free(v);
-        self.* = undefined;
     }
 
     /// Format origin as display string

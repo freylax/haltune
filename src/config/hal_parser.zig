@@ -81,8 +81,8 @@ pub const HalParseResult = struct {
     file_path: []const u8,
 
     /// Deinitialize and free all resources
-    pub fn deinit(self: *HalParseResult) void {
-        self.commands.deinit();
+    pub fn deinit(self: *HalParseResult, allocator: std.mem.Allocator) void {
+        self.commands.deinit(allocator);
         self.* = undefined;
     }
 };

@@ -172,7 +172,7 @@ pub const Model = struct {
         for (self.config.hal_files.items) |file_path| {
             std.log.info("Parsing .hal file: {s}", .{file_path});
             var parse_result = try hal_parser.parseHalFile(allocator, file_path, null);
-            defer parse_result.deinit();
+            defer parse_result.deinit(allocator);
 
             // Process commands and populate origin tracker
             for (parse_result.commands.items) |cmd| {
@@ -199,7 +199,7 @@ pub const Model = struct {
         for (self.config.ini_files.items) |file_path| {
             std.log.info("Parsing .ini file: {s}", .{file_path});
             var parse_result = try ini_parser.parseIniFile(allocator, file_path);
-            defer parse_result.deinit();
+            defer parse_result.deinit(allocator);
 
             // Process entries and populate origin tracker
             for (parse_result.entries.items) |entry| {
