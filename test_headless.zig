@@ -93,10 +93,8 @@ pub fn main() !void {
 
     // Count halfiles
     var halfiles = ini_result.listHalfiles();
-    defer {
-        for (halfiles.items) |f| allocator.free(f);
-        halfiles.deinit(allocator);
-    }
+    defer halfiles.deinit(allocator);
+    // Note: halfiles.items are slices owned by ini_result, don't free them
     std.debug.print("  Found {} HALFILE entries\n", .{halfiles.items.len});
 
     // Test 5: Test origin tracking
