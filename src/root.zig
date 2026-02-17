@@ -150,7 +150,7 @@ pub fn main() !void {
     defer std.process.argsFree(allocator, args);
 
     // Parse arguments into config
-    const config = try parseArgs(allocator, args[1..]);
+    var config = try parseArgs(allocator, args[1..]);
     defer config.deinit();
 
     // Open log file if specified

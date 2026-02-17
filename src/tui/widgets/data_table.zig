@@ -95,7 +95,7 @@ pub const PinDirection = enum {
 };
 
 /// Get text style for origin type
-fn originStyle(origin: Origin) vxfw.Text.Style {
+fn originStyle(origin: Origin) vaxis.Style {
     return switch (origin) {
         .hal_file => .{ .fg = .{ .index = 4 } }, // Blue
         .ini_file => .{ .fg = .{ .index = 2 } }, // Green
@@ -465,6 +465,20 @@ pub const DataTable = struct {
             }
         }
 
+        // Get origin from StateStore based on item type
+        const origin = if (item_type == .pin) self.store.getPinOrigin(name)
+            else if (item_type == .signal) self.store.getSignalOrigin(name)
+            else if (item_type == .param) self.store.getParamOrigin(name)
+            else null;
+
+        const origin_value = origin orelse ItemOrigin{
+            .origin = .none,
+            .file_path = null,
+            .line = null,
+            .ini_section = null,
+            .ini_variable = null,
+        };
+
         return TableItem{
             .name = name,
             .name_owner = null, // Caller handles ownership
@@ -472,25 +486,7 @@ pub const DataTable = struct {
             .hal_type = hal_type,
             .direction = direction,
             .is_writable = is_writable,
-            .origin = blk: {
-                // Get origin from StateStore based on item type
-                if (item_type == .pin) break :blk self.store.getPinOrigin(name);
-                if (item_type == .signal) break :blk self.store.getSignalOrigin(name);
-                if (item_type == .param) break :blk self.store.getParamOrigin(name);
-                break :blk .{
-                    .origin = .none,
-                    .file_path = null,
-                    .line = null,
-                    .ini_section = null,
-                    .ini_variable = null,
-                };
-            } orelse .{
-                .origin = .none,
-                .file_path = null,
-                .line = null,
-                .ini_section = null,
-                .ini_variable = null,
-            },
+            .origin = origin_value,
         };
     }
 
