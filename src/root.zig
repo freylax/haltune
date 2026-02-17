@@ -1,13 +1,13 @@
 // Import TUI application
 const tui_app = @import("tui/app.zig");
 const std = @import("std");
-const log_module = @import("log.zig");
+const log_module = @import("log_module.zig");
 
 /// std.log configuration - redirects logs to file or disables them
 pub const std_options = struct {
     /// Log function that writes to file or discards output
     pub fn log(
-        comptime level: std.log.Level,
+        comptime level: std.log_module.Level,
         comptime scope: @TypeOf(.enum_literal),
         comptime format: []const u8,
         args: anytype,
@@ -170,15 +170,15 @@ pub fn main() !void {
 
     // Initialize logging
     if (config.log_file_path) |path| {
-        log.init(path) catch |err| {
+        log_module.init(path) catch |err| {
             std.debug.print("ERROR: Failed to open log file '{s}': {}\n", .{ path, err });
             std.process.exit(1);
         };
     } else {
         // Disable logging to avoid interfering with TUI
-        log.init(null) catch {};
+        log_module.init(null) catch {};
     }
-    defer log.deinit();
+    defer log_module.deinit();
 
     // Run the TUI application with config
     // This initializes HAL, starts the refresh thread, and runs the Vaxis TUI
