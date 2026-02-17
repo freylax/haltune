@@ -361,7 +361,7 @@ fn parseHalfileDirective(
     }
     value = std.mem.trim(u8, value, &std.ascii.whitespace);
 
-    const lower_key = toLower(allocator, key);
+    const lower_key = try toLower(allocator, key);
     defer allocator.free(lower_key);
 
     if (std.mem.eql(u8, lower_key, "postgui_halfile")) {
