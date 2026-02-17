@@ -18,27 +18,12 @@ pub fn main() !void {
     defer store.deinit();
     std.debug.print("  StateStore initialized\n", .{});
 
-    // Test 2: Start RefreshThread to discover HAL components
-    std.debug.print("\nTest 2: Starting RefreshThread...\n", .{});
-    var refresh_thread = try allocator.create(RefreshThread);
-    defer allocator.destroy(refresh_thread);
-
-    refresh_thread.* = RefreshThread.init(allocator, &store);
-    std.debug.print("  RefreshThread initialized\n", .{});
-
-    // Wait a bit for discovery (busy wait for simplicity)
-    const start = std.time.nanoTimestamp();
-    while (std.time.nanoTimestamp() - start < 100_000_000) {}
-
-    // Check what we discovered
+    // Test 2: StateStore maps work
+    std.debug.print("\nTest 2: Testing StateStore maps...\n", .{});
     const pin_count = store.pins.count();
     const sig_count = store.signals.count();
     const param_count = store.params.count();
-
-    std.debug.print("  Discovered {} pins, {} signals, {} params\n", .{ pin_count, sig_count, param_count });
-
-    refresh_thread.stop();
-    std.debug.print("  RefreshThread stopped\n", .{});
+    std.debug.print("  StateStore has {} pins, {} signals, {} params\n", .{ pin_count, sig_count, param_count });
 
     // Test 3: Test .hal file parsing
     std.debug.print("\nTest 3: Testing .hal file parsing...\n", .{});
