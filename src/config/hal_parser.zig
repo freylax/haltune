@@ -134,7 +134,7 @@ pub fn parseHalFile(
     defer if (content == null) allocator.free(file_content);
 
     // Process line continuations first
-    const continued_lines = try processLineContinuations(allocator, file_content);
+    var continued_lines = try processLineContinuations(allocator, file_content);
     defer {
         for (continued_lines.items) |line| {
             allocator.free(line);

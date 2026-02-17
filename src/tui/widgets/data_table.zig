@@ -141,7 +141,13 @@ pub const TableItem = struct {
     is_writable: bool,
 
     /// Origin information (where this value came from)
-    origin: ItemOrigin = .{},
+    origin: ItemOrigin = .{
+        .origin = .none,
+        .file_path = null,
+        .line = null,
+        .ini_section = null,
+        .ini_variable = null,
+    },
 };
 
 /// Data table widget
@@ -447,7 +453,13 @@ pub const DataTable = struct {
                         .hal_type = .bit,
                         .direction = .none,
                         .is_writable = false,
-                        .origin = .{},
+                        .origin = .{
+                            .origin = .none,
+                            .file_path = null,
+                            .line = null,
+                            .ini_section = null,
+                            .ini_variable = null,
+                        },
                     };
                 }
             }
@@ -465,8 +477,20 @@ pub const DataTable = struct {
                 if (item_type == .pin) break :blk self.store.getPinOrigin(name);
                 if (item_type == .signal) break :blk self.store.getSignalOrigin(name);
                 if (item_type == .param) break :blk self.store.getParamOrigin(name);
-                break :blk null;
-            } orelse .{},
+                break :blk .{
+                    .origin = .none,
+                    .file_path = null,
+                    .line = null,
+                    .ini_section = null,
+                    .ini_variable = null,
+                };
+            } orelse .{
+                .origin = .none,
+                .file_path = null,
+                .line = null,
+                .ini_section = null,
+                .ini_variable = null,
+            },
         };
     }
 
