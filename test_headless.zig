@@ -121,10 +121,7 @@ pub fn main() !void {
     const test_origin = try ItemOrigin.fromHalFile(allocator, "/test/path.hal", 42);
     defer test_origin.deinit(allocator);
 
-    std.debug.print("  Created test origin: ", .{});
-    const stdout_file = std.io.getStdOut().file;
-    try test_origin.format(stdout_file.writer());
-    std.debug.print("\n", .{});
+    std.debug.print("  Created test origin with path: {s}\n", .{test_origin.file_path orelse "null"});
 
     std.debug.print("\n=== All Tests Complete ===\n", .{});
 }
