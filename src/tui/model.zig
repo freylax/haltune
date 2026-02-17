@@ -199,7 +199,7 @@ pub const Model = struct {
         for (self.config.ini_files.items) |file_path| {
             std.log.info("Parsing .ini file: {s}", .{file_path});
             var parse_result = try ini_parser.parseIniFile(allocator, file_path);
-            defer parse_result.deinit(allocator);
+            defer parse_result.deinit();
 
             // Process entries and populate origin tracker
             for (parse_result.entries.items) |entry| {
