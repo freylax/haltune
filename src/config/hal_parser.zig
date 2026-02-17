@@ -192,14 +192,14 @@ fn processLineContinuations(
         } else {
             // End of continuation - add full line
             try buffer.appendSlice(allocator, line);
-            try lines.append(allocator, try buffer.toOwnedSlice());
+            try lines.append(allocator, try buffer.toOwnedSlice(allocator));
             buffer.items.len = 0; // Clear buffer
         }
     }
 
     // Handle last line if it doesn't end with newline
     if (buffer.items.len > 0) {
-        try lines.append(allocator, try buffer.toOwnedSlice());
+        try lines.append(allocator, try buffer.toOwnedSlice(allocator));
     }
 
     return lines;

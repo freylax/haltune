@@ -93,7 +93,7 @@ pub const StateStore = struct {
             .signals = std.StringHashMap(HalValue).init(allocator),
             .params = std.StringHashMap(HalValue).init(allocator),
             .pin_links = std.StringHashMap([]const u8).init(allocator),
-            .origin_tracker = try OriginTracker.init(allocator),
+            .origin_tracker = OriginTracker.init(allocator),
         };
     }
 
