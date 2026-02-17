@@ -171,11 +171,11 @@ pub const Model = struct {
         // Parse .hal files
         for (self.config.hal_files.items) |file_path| {
             std.log.info("Parsing .hal file: {s}", .{file_path});
-            var commands = hal_parser.parseHalFile(allocator, file_path, null);
-            defer commands.deinit();
+            var parse_result = try hal_parser.parseHalFile(allocator, file_path, null);
+            defer parse_result.deinit();
 
             // Process commands and populate origin tracker
-            for (commands.commands.items) |cmd| {
+            for (parse_result.commands.items) |cmd| {
                 switch (cmd) {
                     .setp => |setp_cmd| {
                         try self.store.origin_tracker.setParamOrigin(
@@ -200,11 +200,11 @@ pub const Model = struct {
         // Parse .ini files
         for (self.config.ini_files.items) |file_path| {
             std.log.info("Parsing .ini file: {s}", .{file_path});
-            var entries = ini_parser.parseIniFile(allocator, file_path);
-            defer entries.deinit();
+            var parse_result = try ini_parser.parseIniFile(allocator, file_path);
+            defer parse_result.deinit();
 
             // Process entries and populate origin tracker
-            for (entries.entries.items) |entry| {
+            for (parse_result.entries.items) |entry| {
                 switch (entry) {
                     .key_value => |kv| {
                         // Check if this is a HAL parameter reference

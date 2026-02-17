@@ -193,7 +193,7 @@ fn processLineContinuations(
             // End of continuation - add full line
             try buffer.appendSlice(allocator, line);
             try lines.append(allocator, try buffer.toOwnedSlice());
-            buffer.clearRetainingCapacity();
+            buffer.items.len = 0; // Clear buffer
         }
     }
 
