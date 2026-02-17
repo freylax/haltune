@@ -26,11 +26,9 @@ pub fn main() !void {
     refresh_thread.* = RefreshThread.init(allocator, &store);
     std.debug.print("  RefreshThread initialized\n", .{});
 
-    // Wait a bit for discovery
-    const ns = 100_000_000; // 100ms
-    const secs = ns / 1_000_000_000;
-    const rem = @rem(ns, 1_000_000_000);
-    std.os.nanosleep(secs, rem);
+    // Wait a bit for discovery (busy wait for simplicity)
+    const start = std.time.nanoTimestamp();
+    while (std.time.nanoTimestamp() - start < 100_000_000) {}
 
     // Check what we discovered
     const pin_count = store.pins.count();
