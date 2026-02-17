@@ -1,7 +1,20 @@
 // Import TUI application
 const tui_app = @import("tui/app.zig");
 const std = @import("std");
-const log = @import("log.zig");
+const log_module = @import("log.zig");
+
+/// std.log configuration - redirects logs to file or disables them
+pub const std_options = struct {
+    /// Log function that writes to file or discards output
+    pub fn log(
+        comptime level: std.log.Level,
+        comptime scope: @TypeOf(.enum_literal),
+        comptime format: []const u8,
+        args: anytype,
+    ) void {
+        log_module.logWrite(level, scope, format, args);
+    }
+};
 
 /// Command-line configuration for haltune
 pub const Config = struct {
