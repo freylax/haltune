@@ -227,7 +227,7 @@ fn parseIniLine(
     }
 
     // Check for include directive
-    const lower_line = toLower(allocator, line);
+    const lower_line = try toLower(allocator, line);
     defer allocator.free(lower_line);
 
     if (std.mem.startsWith(u8, lower_line, "#include") or
@@ -385,7 +385,7 @@ fn parseHalfileDirective(
 fn toLower(allocator: std.mem.Allocator, str: []const u8) ![]const u8 {
     var result = try std.ArrayList(u8).initCapacity(allocator, str.len);
     for (str) |c| {
-        try result.append(std.ascii.toLower(c));
+        try result.append(allocator, std.ascii.toLower(c));
     }
-    return result.toOwnedSlice();
+    return result.toOwnedSlice(allocator);
 }
