@@ -54,7 +54,10 @@ pub fn main() !void {
     ;
 
     const test_hal_path = "/tmp/test_haltune.hal";
-    try std.fs.cwd().writeFile(.{ .sub_path = test_hal_path }, test_hal_content);
+    try std.fs.cwd().writeFile(.{
+        .sub_path = test_hal_path,
+        .data = test_hal_content,
+    });
 
     var parse_result = try hal_parser.parseHalFile(allocator, test_hal_path, null);
     defer parse_result.deinit(allocator);
@@ -93,7 +96,10 @@ pub fn main() !void {
     ;
 
     const test_ini_path = "/tmp/test_haltune.ini";
-    try std.fs.cwd().writeFile(.{ .sub_path = test_ini_path }, test_ini_content);
+    try std.fs.cwd().writeFile(.{
+        .sub_path = test_ini_path,
+        .data = test_ini_content,
+    });
 
     var ini_result = try ini_parser.parseIniFile(allocator, test_ini_path);
     defer ini_result.deinit();
