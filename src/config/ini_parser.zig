@@ -65,6 +65,9 @@ pub const IniParseResult = struct {
     /// Original file path (for origin tracking)
     file_path: []const u8,
 
+    /// Allocator used for entries
+    allocator: std.mem.Allocator,
+
     /// Current section (for tracking section context)
     current_section: []const u8 = "",
 
