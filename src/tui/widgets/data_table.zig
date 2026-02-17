@@ -1156,7 +1156,7 @@ pub const DataTable = struct {
                     col += grapheme_width;
                 }
                 // Add padding before cursor
-                const origin_padding = if (col < width) 1 else 0;
+                const origin_padding: usize = if (col < width) 1 else 0;
                 if (origin_padding > 0) {
                     surface.writeCell(col, row, .{ .char = .{ .grapheme = " ", .width = 1 }, .style = .{} });
                     col += 1;

@@ -19,11 +19,15 @@ pub const Config = struct {
     /// Log file path for debug output (null = stderr)
     log_file_path: ?[]const u8 = null,
 
+    /// Allocator used for hal_files and ini_files
+    allocator: std.mem.Allocator,
+
     /// Initialize Config with allocator
-    pub fn init(_: std.mem.Allocator) Config {
+    pub fn init(allocator: std.mem.Allocator) Config {
         return .{
             .hal_files = std.ArrayList([]const u8){},
             .ini_files = std.ArrayList([]const u8){},
+            .allocator = allocator,
         };
     }
 
