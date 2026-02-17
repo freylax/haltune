@@ -455,7 +455,7 @@ fn parseHalValue(allocator: std.mem.Allocator, str: []const u8) !HalValue {
     const trimmed = std.mem.trim(u8, str, &std.ascii.whitespace);
 
     // Try boolean first (case-insensitive)
-    const lower = toLower(allocator, trimmed);
+    const lower = try toLower(allocator, trimmed);
     defer allocator.free(lower);
 
     if (std.mem.eql(u8, lower, "true") or
