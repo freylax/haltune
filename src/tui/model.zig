@@ -591,6 +591,12 @@ pub const Model = struct {
                     return;
                 }
 
+                // 'q' to quit
+                if (key.matches('q', .{})) {
+                    ctx.quit = true;
+                    return;
+                }
+
                 // 'n' to open signal creation dialog
                 if (key.matches('n', .{}) and !self.signal_dialog.visible and !self.save_dialog_visible) {
                     self.openSignalDialog() catch |err| {
