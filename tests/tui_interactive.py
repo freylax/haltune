@@ -55,9 +55,25 @@ class HalRunInstance:
         self.hal_file = "/tmp/test_interactive_halrun.hal"
         self.process = None
         self.hal_file_content = hal_file_content
+        self.python_comp_process = None
 
     def start(self):
-        """Start halrun in interactive mode."""
+        """Start halrun and the Python test component."""
+        # Write the Python component file
+        with open("/tmp/haltune_test_comp.py", "w") as f:
+            f.write(PYTHON_COMP_CODE)
+
+        # Start the Python component
+        self.python_comp_process = subprocess.Popen(
+            ["python3", "/tmp/haltune_test_comp.py"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True
+        )
+
+        # Give it time to start
+        time.sleep(1.0)
+
         # Write the HAL file
         with open(self.hal_file, "w") as f:
             f.write(self.hal_file_content)
@@ -71,7 +87,7 @@ class HalRunInstance:
             start_new_session=True
         )
 
-        # Give halrun time to start and create components
+        # Give halrun time to start
         time.sleep(1.5)
 
         if self.process.poll() is not None:
@@ -84,7 +100,19 @@ class HalRunInstance:
         return True
 
     def stop(self):
-        """Stop the halrun process."""
+        """Stop the halrun and Python component processes."""
+        # Stop Python component first
+        if self.python_comp_process:
+            try:
+                self.python_comp_process.terminate()
+                self.python_comp_process.wait(timeout=2)
+            except:
+                try:
+                    os.killpg(os.getpgid(self.python_comp_process.pid), signal.SIGTERM)
+                except:
+                    pass
+            self.python_comp_process = None
+
         if self.process:
             try:
                 self.process.stdin.write(b"exit\n")
@@ -116,11 +144,51 @@ class HalRunInstance:
 def create_hal_script():
     """Create the HAL script (same as automated tests)."""
     return """# Interactive TUI test HAL file
-# This loads the threads component which has pins of all types
-
-# Load threads component (creates thread.0 with time and timed-out pins)
-loadrt threads
+# The test component is started separately via Python
 """
+
+
+PYTHON_COMP_CODE = '''#!/usr/bin/env python3
+import hal
+import time
+
+h = hal.component('haltune-test-comp')
+
+# Create different pin types (IN, OUT, IO)
+h.newpin('bit-in', hal.HAL_BIT, hal.HAL_IN)
+h.newpin('bit-out', hal.HAL_BIT, hal.HAL_OUT)
+h.newpin('bit-io', hal.HAL_BIT, hal.HAL_IO)
+
+h.newpin('float-in', hal.HAL_FLOAT, hal.HAL_IN)
+h.newpin('float-out', hal.HAL_FLOAT, hal.HAL_OUT)
+h.newpin('float-io', hal.HAL_FLOAT, hal.HAL_IO)
+
+h.newpin('u32-in', hal.HAL_U32, hal.HAL_IN)
+h.newpin('u32-out', hal.HAL_U32, hal.HAL_OUT)
+
+h.newpin('s32-in', hal.HAL_S32, hal.HAL_IN)
+h.newpin('s32-out', hal.HAL_S32, hal.HAL_OUT)
+
+# Create some parameters
+h.newparam('float-param', hal.HAL_FLOAT, hal.HAL_RW)
+h.newparam('u32-param', hal.HAL_U32, hal.HAL_RW)
+h.newparam('s32-param', hal.HAL_S32, hal.HAL_RW)
+
+# Set initial values
+h['float-param'] = 3.14159
+h['u32-param'] = 42
+h['s32-param'] = -10
+
+h.ready()
+
+try:
+    while True:
+        time.sleep(1)
+except:
+    pass
+finally:
+    h.exit()
+'''
 
 
 def show_instructions():

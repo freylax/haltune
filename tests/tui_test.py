@@ -34,9 +34,68 @@ class HalRunInstance:
         self.hal_file = "/tmp/test_halrun.hal"
         self.process = None
         self.hal_file_content = hal_file_content
+        self.python_comp_process = None
 
     def start(self):
         """Start halrun with the test HAL file."""
+        # First, create and start the Python test component
+        python_comp_code = '''#!/usr/bin/env python3
+import hal
+import time
+
+h = hal.component('haltune-test-comp')
+
+# Create different pin types (IN, OUT, IO)
+h.newpin('bit-in', hal.HAL_BIT, hal.HAL_IN)
+h.newpin('bit-out', hal.HAL_BIT, hal.HAL_OUT)
+h.newpin('bit-io', hal.HAL_BIT, hal.HAL_IO)
+
+h.newpin('float-in', hal.HAL_FLOAT, hal.HAL_IN)
+h.newpin('float-out', hal.HAL_FLOAT, hal.HAL_OUT)
+h.newpin('float-io', hal.HAL_FLOAT, hal.HAL_IO)
+
+h.newpin('u32-in', hal.HAL_U32, hal.HAL_IN)
+h.newpin('u32-out', hal.HAL_U32, hal.HAL_OUT)
+
+h.newpin('s32-in', hal.HAL_S32, hal.HAL_IN)
+h.newpin('s32-out', hal.HAL_S32, hal.HAL_OUT)
+
+# Create some parameters
+h.newparam('float-param', hal.HAL_FLOAT, hal.HAL_RW)
+h.newparam('u32-param', hal.HAL_U32, hal.HAL_RW)
+h.newparam('s32-param', hal.HAL_S32, hal.HAL_RW)
+
+# Set initial values
+h['float-param'] = 3.14159
+h['u32-param'] = 42
+h['s32-param'] = -10
+
+h.ready()
+
+try:
+    while True:
+        time.sleep(1)
+except:
+    pass
+finally:
+    h.exit()
+'''
+
+        # Write the Python component file
+        with open("/tmp/haltune_test_comp.py", "w") as f:
+            f.write(python_comp_code)
+
+        # Start the Python component
+        self.python_comp_process = subprocess.Popen(
+            ["python3", "/tmp/haltune_test_comp.py"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True
+        )
+
+        # Give it time to start
+        time.sleep(1.0)
+
         # Write the HAL file
         with open(self.hal_file, "w") as f:
             f.write(self.hal_file_content)
@@ -62,6 +121,18 @@ class HalRunInstance:
 
     def stop(self):
         """Stop the halrun process."""
+        # Stop Python component first
+        if self.python_comp_process:
+            try:
+                self.python_comp_process.terminate()
+                self.python_comp_process.wait(timeout=2)
+            except:
+                try:
+                    os.killpg(os.getpgid(self.python_comp_process.pid), signal.SIGTERM)
+                except ProcessLookupError:
+                    pass
+            self.python_comp_process = None
+
         if self.process:
             # Send "exit" to halrun's stdin to shut it down gracefully
             try:
@@ -213,9 +284,7 @@ def test_tui_with_log_file():
 def create_halrun_hal_script():
     """Create a HAL script that creates components with all pin types."""
     return """# HAL script to create test components with all pin types
-
-# Load threads component (creates thread.0 with time and timed-out pins)
-loadrt threads
+# Note: Actual component is started separately via Python
 """
 
 def test_tui_with_halrun():
@@ -285,9 +354,7 @@ def test_tui_with_halrun():
 def create_comprehensive_halrun_script():
     """Create a comprehensive HAL script with pins of all types."""
     return """# Comprehensive HAL test script with all pin types
-
-# Load threads component (creates thread.0 with time and timed-out pins)
-loadrt threads
+# Note: Actual component is started separately via Python
 """
 
 def test_tui_comprehensive():

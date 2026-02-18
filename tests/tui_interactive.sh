@@ -5,6 +5,7 @@
 
 HALTUNE_BIN="${HALTUNE_BIN:-./zig-out/bin/haltune}"
 HAL_FILE="${1:-/tmp/test_interactive.hal}"
+PYTHON_COMP="/tmp/haltune_test_comp.py"
 
 # Colors for output
 RED='\033[0;31m'
@@ -32,24 +33,71 @@ echo ""
 # Stop any existing HAL session
 echo -e "${YELLOW}Stopping any existing HAL session...${NC}"
 halrun -U 2>/dev/null || true
+pkill -f "python3.*$PYTHON_COMP" 2>/dev/null || true
 sleep 0.5
 
-# Create the HAL file (same as automated test)
-cat > "$HAL_FILE" << 'EOF'
-# Interactive TUI test HAL file
-# This loads the threads component which has pins of all types
+# Create the Python test component
+cat > "$PYTHON_COMP" << 'EOF'
+#!/usr/bin/env python3
+import hal
+import time
 
-# Load threads component (creates thread.0 with time and timed-out pins)
-loadrt threads
+h = hal.component('haltune-test-comp')
+
+# Create different pin types (IN, OUT, IO)
+h.newpin('bit-in', hal.HAL_BIT, hal.HAL_IN)
+h.newpin('bit-out', hal.HAL_BIT, hal.HAL_OUT)
+h.newpin('bit-io', hal.HAL_BIT, hal.HAL_IO)
+
+h.newpin('float-in', hal.HAL_FLOAT, hal.HAL_IN)
+h.newpin('float-out', hal.HAL_FLOAT, hal.HAL_OUT)
+h.newpin('float-io', hal.HAL_FLOAT, hal.HAL_IO)
+
+h.newpin('u32-in', hal.HAL_U32, hal.HAL_IN)
+h.newpin('u32-out', hal.HAL_U32, hal.HAL_OUT)
+
+h.newpin('s32-in', hal.HAL_S32, hal.HAL_IN)
+h.newpin('s32-out', hal.HAL_S32, hal.HAL_OUT)
+
+# Create some parameters
+h.newparam('float-param', hal.HAL_FLOAT, hal.HAL_RW)
+h.newparam('u32-param', hal.HAL_U32, hal.HAL_RW)
+h.newparam('s32-param', hal.HAL_S32, hal.HAL_RW)
+
+# Set initial values
+h['float-param'] = 3.14159
+h['u32-param'] = 42
+h['s32-param'] = -10
+
+h.ready()
+
+try:
+    while True:
+        time.sleep(1)
+except:
+    pass
+finally:
+    h.exit()
 EOF
 
-echo "HAL file contents:"
-echo "----------------------------------------------"
-cat "$HAL_FILE"
-echo "----------------------------------------------"
+chmod +x "$PYTHON_COMP"
+
+# Create the HAL file (empty, component is started separately)
+cat > "$HAL_FILE" << 'EOF'
+# Interactive TUI test HAL file
+# The test component is started separately via Python
+EOF
+
+echo "Python HAL component created at: $PYTHON_COMP"
 echo ""
 
-# Start halrun in background using a wrapper that keeps it alive
+# Start the Python HAL component
+echo -e "${YELLOW}Starting Python HAL component...${NC}"
+python3 "$PYTHON_COMP" &
+PYTHON_COMP_PID=$!
+sleep 1.0
+
+# Start halrun in background
 echo -e "${YELLOW}Starting halrun in background...${NC}"
 
 # Create a wrapper script to keep halrun alive
@@ -77,6 +125,12 @@ if halcmd list comp >/dev/null 2>&1; then
     echo ""
     echo "Available HAL components:"
     halcmd list comp
+    echo ""
+    echo "Available pins:"
+    halcmd list pin
+    echo ""
+    echo "Available parameters:"
+    halcmd list param
 else
     echo -e "${YELLOW}Warning: HAL may not be running properly${NC}"
 fi
@@ -96,22 +150,32 @@ echo "  Backspace - Collapse parent component"
 echo "  Escape    - Cancel edit mode"
 echo ""
 echo -e "${YELLOW}Press Ctrl+Q in haltune to exit${NC}"
-echo "This will also shut down halrun"
+echo "This will also shut down halrun and the Python component"
 echo "=============================================="
 echo ""
 
-# Set trap to ensure halrun is cleaned up
+# Set trap to ensure everything is cleaned up
 cleanup() {
     echo ""
-    echo -e "${YELLOW}Shutting down halrun...${NC}"
+    echo -e "${YELLOW}Shutting down...${NC}"
+
+    # Stop halrun wrapper
     if [ -f /tmp/halrun_interactive_wrapper.pid ]; then
         PID=$(cat /tmp/halrun_interactive_wrapper.pid)
         kill $PID 2>/dev/null || true
         rm -f /tmp/halrun_interactive_wrapper.pid
     fi
     pkill -f "halrun.*$HAL_FILE" 2>/dev/null || true
+
+    # Stop Python component
+    kill $PYTHON_COMP_PID 2>/dev/null || true
+    pkill -f "python3.*$PYTHON_COMP" 2>/dev/null || true
+
+    # Stop HAL
     halrun -U 2>/dev/null || true
+
     rm -f /tmp/halrun_interactive_wrapper.sh
+
     echo -e "${GREEN}Done${NC}"
 }
 
