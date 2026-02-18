@@ -86,7 +86,8 @@ def test_tui_basic_load():
         print(f"  FAIL: {e}")
         return False
     finally:
-        child.send("q")
+        # Send Ctrl+Q to quit
+        child.send("\x11")  # Ctrl+Q
         try:
             child.expect(pexpect.EOF, timeout=2)
         except:
@@ -120,7 +121,8 @@ def test_tui_with_hal_file():
         print(f"  FAIL: {e}")
         return False
     finally:
-        child.send("q")
+        # Send Ctrl+Q to quit
+        child.send("\x11")  # Ctrl+Q
         try:
             child.expect(pexpect.EOF, timeout=2)
         except:
