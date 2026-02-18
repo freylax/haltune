@@ -585,14 +585,8 @@ pub const Model = struct {
                     }
                 }
 
-                // Ctrl+C to quit
-                if (key.matches('c', .{ .ctrl = true })) {
-                    ctx.quit = true;
-                    return;
-                }
-
-                // 'q' to quit
-                if (key.matches('q', .{})) {
+                // Ctrl+Q to quit
+                if (key.matches('q', .{ .ctrl = true })) {
                     ctx.quit = true;
                     return;
                 }
