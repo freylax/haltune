@@ -3,8 +3,6 @@
 # Sets up halrun with the same configuration as automated tests
 # then drops you into a shell for interactive experimentation
 
-set -e
-
 HALTUNE_BIN="${HALTUNE_BIN:-./zig-out/bin/haltune}"
 HAL_FILE="/tmp/tui_dev.hal"
 
@@ -27,6 +25,11 @@ if [ ! -f "$HALTUNE_BIN" ]; then
     exit 1
 fi
 
+# Stop any existing HAL session
+echo -e "${YELLOW}Stopping any existing HAL session...${NC}"
+halrun -U 2>/dev/null || true
+sleep 0.5
+
 # Create HAL file
 cat > "$HAL_FILE" << 'EOF'
 # TUI development HAL file
@@ -37,32 +40,53 @@ echo -e "${GREEN}HAL configuration:${NC}"
 cat "$HAL_FILE"
 echo ""
 
-# Start halrun
+# Start halrun in background using a wrapper that keeps it alive
 echo -e "${YELLOW}Starting halrun...${NC}"
-halrun -I -f "$HAL_FILE" &
-HALRUN_PID=$!
+
+# Use a simple loop to keep halrun alive when run in background
+cat > /tmp/halrun_wrapper.sh << 'WRAPPER_EOF'
+#!/bin/bash
+# Keep halrun alive by piping commands to it
+HAL_FILE="$1"
+
+# Start halrun and feed it a "wait" command to keep it alive
+(
+  while true; do
+    echo "wait"
+    sleep 10
+  done
+) | halrun -f "$HAL_FILE" 2>/dev/null &
+echo $! > /tmp/halrun_wrapper.pid
+WRAPPER_EOF
+
+chmod +x /tmp/halrun_wrapper.sh
+/tmp/halrun_wrapper.sh "$HAL_FILE"
 sleep 1.5
 
-if ! kill -0 $HALRUN_PID 2>/dev/null; then
-    echo -e "${RED}ERROR: halrun failed to start${NC}"
-    exit 1
+# Check if HAL is available
+if halcmd list comp >/dev/null 2>&1; then
+    echo -e "${GREEN}HAL is running${NC}"
+    echo ""
+    echo "Available components:"
+    halcmd list comp
+else
+    echo -e "${YELLOW}Warning: HAL may not be running properly${NC}"
 fi
-
-echo -e "${GREEN}halrun started (PID: $HALRUN_PID)${NC}"
-echo ""
-
-# Show components
-echo "Available components:"
-halcmd list comp
 echo ""
 
 # Set up cleanup
 cleanup() {
     echo ""
     echo -e "${YELLOW}Cleaning up...${NC}"
-    echo exit | halcmd 2>/dev/null || true
-    kill $HALRUN_PID 2>/dev/null || true
-    wait $HALRUN_PID 2>/dev/null || true
+    if [ -f /tmp/halrun_wrapper.pid ]; then
+        PID=$(cat /tmp/halrun_wrapper.pid)
+        kill $PID 2>/dev/null || true
+        rm -f /tmp/halrun_wrapper.pid
+    fi
+    # Kill any halrun processes
+    pkill -f "halrun.*$HAL_FILE" 2>/dev/null || true
+    halrun -U 2>/dev/null || true
+    rm -f /tmp/halrun_wrapper.sh
     echo -e "${GREEN}Done${NC}"
 }
 
@@ -70,7 +94,6 @@ trap cleanup EXIT INT TERM
 
 # Export for use in shell
 export HALTUNE_BIN
-export HALRUN_PID
 export HAL_FILE
 
 echo -e "${BLUE}==============================================${NC}"

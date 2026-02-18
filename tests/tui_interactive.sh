@@ -3,8 +3,6 @@
 # Sets up the same HAL environment as the automated tests
 # but runs haltune interactively for manual exploration
 
-set -e
-
 HALTUNE_BIN="${HALTUNE_BIN:-./zig-out/bin/haltune}"
 HAL_FILE="${1:-/tmp/test_interactive.hal}"
 
@@ -12,6 +10,7 @@ HAL_FILE="${1:-/tmp/test_interactive.hal}"
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 echo "=============================================="
@@ -30,6 +29,11 @@ echo -e "${GREEN}Using haltune:${NC} $HALTUNE_BIN"
 echo -e "${GREEN}HAL file:${NC} $HAL_FILE"
 echo ""
 
+# Stop any existing HAL session
+echo -e "${YELLOW}Stopping any existing HAL session...${NC}"
+halrun -U 2>/dev/null || true
+sleep 0.5
+
 # Create the HAL file (same as automated test)
 cat > "$HAL_FILE" << 'EOF'
 # Interactive TUI test HAL file
@@ -45,24 +49,37 @@ cat "$HAL_FILE"
 echo "----------------------------------------------"
 echo ""
 
-# Start halrun in background with -I (interactive mode)
+# Start halrun in background using a wrapper that keeps it alive
 echo -e "${YELLOW}Starting halrun in background...${NC}"
-halrun -I -f "$HAL_FILE" &
-HALRUN_PID=$!
+
+# Create a wrapper script to keep halrun alive
+cat > /tmp/halrun_interactive_wrapper.sh << 'WRAPPER_EOF'
+#!/bin/bash
+HAL_FILE="$1"
+
+# Feed halrun with wait commands to keep it alive
+(
+  while true; do
+    echo "wait"
+    sleep 10
+  done
+) | halrun -f "$HAL_FILE" 2>/dev/null &
+echo $! > /tmp/halrun_interactive_wrapper.pid
+WRAPPER_EOF
+
+chmod +x /tmp/halrun_interactive_wrapper.sh
+/tmp/halrun_interactive_wrapper.sh "$HAL_FILE"
 sleep 1.5
 
-# Check if halrun is still running
-if ! kill -0 $HALRUN_PID 2>/dev/null; then
-    echo -e "${RED}ERROR: halrun failed to start${NC}"
-    exit 1
+# Check if HAL is available
+if halcmd list comp >/dev/null 2>&1; then
+    echo -e "${GREEN}HAL is running${NC}"
+    echo ""
+    echo "Available HAL components:"
+    halcmd list comp
+else
+    echo -e "${YELLOW}Warning: HAL may not be running properly${NC}"
 fi
-
-echo -e "${GREEN}halrun started (PID: $HALRUN_PID)${NC}"
-echo ""
-
-# Show available components
-echo "Available HAL components:"
-halcmd list comp
 echo ""
 
 # Instructions
@@ -84,7 +101,21 @@ echo "=============================================="
 echo ""
 
 # Set trap to ensure halrun is cleaned up
-trap "echo ''; echo -e '${YELLOW}Shutting down halrun...${NC}'; echo exit | halcmd; kill $HALRUN_PID 2>/dev/null || true; wait $HALRUN_PID 2>/dev/null || true; echo -e '${GREEN}Done${NC}'" EXIT INT TERM
+cleanup() {
+    echo ""
+    echo -e "${YELLOW}Shutting down halrun...${NC}"
+    if [ -f /tmp/halrun_interactive_wrapper.pid ]; then
+        PID=$(cat /tmp/halrun_interactive_wrapper.pid)
+        kill $PID 2>/dev/null || true
+        rm -f /tmp/halrun_interactive_wrapper.pid
+    fi
+    pkill -f "halrun.*$HAL_FILE" 2>/dev/null || true
+    halrun -U 2>/dev/null || true
+    rm -f /tmp/halrun_interactive_wrapper.sh
+    echo -e "${GREEN}Done${NC}"
+}
+
+trap cleanup EXIT INT TERM
 
 # Start haltune
 "$HALTUNE_BIN"
