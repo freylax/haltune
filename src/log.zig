@@ -10,9 +10,6 @@ const std = @import("std");
 pub var log_file: ?std.fs.File = null;
 var log_mutex: std.Thread.Mutex = .{};
 
-/// Write buffer for log file writer (4KB)
-var write_buffer: [4096]u8 = undefined;
-
 /// Write to log file (thread-safe, internal)
 /// This function has the signature expected by std.options.log_fn
 pub fn logWrite(
@@ -28,12 +25,15 @@ pub fn logWrite(
     // Format: [timestamp] [LEVEL] scope: message
     const timestamp = std.time.timestamp();
     const level_txt = comptime message_level.asText();
+    const scope_txt = comptime @tagName(scope);
 
-    // File.writer() takes (file, buffer) on pib's Zig version
-    const writer = std.fs.File.writer(file, &write_buffer);
-    writer.print("[{d}] [{s}] {s}: " ++ format ++ "\n", .{
-        timestamp, level_txt, @tagName(scope),
-    } ++ args) catch {};
+    // Build formatted message using stack buffer
+    var buf: [4096]u8 = undefined;
+    const msg = std.fmt.bufPrint(&buf, "[{d}] [{s}] {s}: " ++ format ++ "\n", .{
+        timestamp, level_txt, scope_txt,
+    } ++ args) catch return;
+
+    file.writeAll(msg) catch {};
 }
 
 /// Initialize logging with the specified file path
