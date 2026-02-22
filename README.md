@@ -34,12 +34,16 @@ Requires an active LinuxCNC session with HAL running.
 
 ### Keyboard Controls
 
-- `Ctrl+C`: Quit application
-- `Ctrl+T`: Switch to table view
-- `Space`: Check/select item
-- `+/-`: Toggle visibility
+- `Ctrl+Q`: Quit application
+- `Ctrl+T`: Toggle tree/table view
+- `Enter`: Expand/collapse component or edit value
+- `Space`: Toggle visibility
+- `n`: Create new signal (tree view)
+- `s`: Save configuration (tree view)
 - `/`: Search
 - `Esc`: Clear selection
+- `+/-`: Expand/collapse all
+- `Up/Down/Page`: Navigate
 
 ## Testing
 
@@ -118,6 +122,20 @@ halrun -U
 ```
 
 The application will automatically try incrementing suffixes (`haltune1`, `haltune2`, etc.) if the primary name is in use.
+
+#### EINTR Crash (unexpected errno: 6)
+
+If haltune crashes with `unexpected errno: 6` when run non-interactively, it's due to missing PTY:
+
+```bash
+# WRONG - crashes with EINTR:
+timeout 5 ./zig-out/bin/haltune --test-mode
+
+# RIGHT - use script to create PTY:
+timeout 5 script -q -c "stty cols 80 rows 24 2>/dev/null; ./zig-out/bin/haltune --test-mode" /dev/null
+```
+
+This is a Zig 0.15.2 stdlib limitation with EINTR handling. haltune requires a proper TTY/PTY for terminal operations. Use `script` or pexpect for automated testing.
 
 #### No Pins/Signals Discovered
 

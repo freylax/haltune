@@ -6,6 +6,7 @@
 HALTUNE_BIN="${HALTUNE_BIN:-./zig-out/bin/haltune}"
 HAL_FILE="${1:-/tmp/test_interactive.hal}"
 PYTHON_COMP="/tmp/haltune_test_comp.py"
+FIFO="/tmp/halrun_stdin.$$"
 
 # Colors for output
 RED='\033[0;31m'
@@ -82,7 +83,7 @@ EOF
 
 chmod +x "$PYTHON_COMP"
 
-# Create the HAL file (empty, component is started separately)
+# Create the HAL file
 cat > "$HAL_FILE" << 'EOF'
 # Interactive TUI test HAL file
 # The test component is started separately via Python
@@ -91,33 +92,37 @@ EOF
 echo "Python HAL component created at: $PYTHON_COMP"
 echo ""
 
+# Create a FIFO to keep halrun's stdin open
+# halrun -I reads from stdin; we use a FIFO with write end never opened
+# This causes halrun to block on read() forever, keeping HAL alive
+rm -f "$FIFO"
+mkfifo "$FIFO"
+
+# Start halrun with FIFO as stdin
+echo -e "${YELLOW}Starting halrun...${NC}"
+halrun -I -f "$HAL_FILE" <"$FIFO" >/dev/null 2>&1 &
+HALRUN_PID=$!
+echo "  PID: $HALRUN_PID"
+
+# Give halrun time to initialize HAL
+sleep 0.5
+
 # Start the Python HAL component
 echo -e "${YELLOW}Starting Python HAL component...${NC}"
 python3 "$PYTHON_COMP" &
 PYTHON_COMP_PID=$!
-sleep 1.0
+echo "  PID: $PYTHON_COMP_PID"
 
-# Start halrun in background
-echo -e "${YELLOW}Starting halrun in background...${NC}"
-
-# Create a wrapper script to keep halrun alive
-cat > /tmp/halrun_interactive_wrapper.sh << 'WRAPPER_EOF'
-#!/bin/bash
-HAL_FILE="$1"
-
-# Feed halrun with wait commands to keep it alive
-(
-  while true; do
-    echo "wait"
-    sleep 10
-  done
-) | halrun -f "$HAL_FILE" 2>/dev/null &
-echo $! > /tmp/halrun_interactive_wrapper.pid
-WRAPPER_EOF
-
-chmod +x /tmp/halrun_interactive_wrapper.sh
-/tmp/halrun_interactive_wrapper.sh "$HAL_FILE"
-sleep 1.5
+# Wait for the component to be ready
+echo -e "${YELLOW}Waiting for component to initialize...${NC}"
+for i in {1..10}; do
+    if halcmd list comp 2>/dev/null | grep -q "haltune-test-comp"; then
+        echo "  Component ready!"
+        break
+    fi
+    echo "  Waiting... ($i/10)"
+    sleep 0.3
+done
 
 # Check if HAL is available
 if halcmd list comp >/dev/null 2>&1; then
@@ -159,22 +164,17 @@ cleanup() {
     echo ""
     echo -e "${YELLOW}Shutting down...${NC}"
 
-    # Stop halrun wrapper
-    if [ -f /tmp/halrun_interactive_wrapper.pid ]; then
-        PID=$(cat /tmp/halrun_interactive_wrapper.pid)
-        kill $PID 2>/dev/null || true
-        rm -f /tmp/halrun_interactive_wrapper.pid
-    fi
-    pkill -f "halrun.*$HAL_FILE" 2>/dev/null || true
-
-    # Stop Python component
+    # Stop Python component first
     kill $PYTHON_COMP_PID 2>/dev/null || true
     pkill -f "python3.*$PYTHON_COMP" 2>/dev/null || true
 
-    # Stop HAL
+    # Stop halrun
+    kill $HALRUN_PID 2>/dev/null || true
+    pkill -f "halrun.*$HAL_FILE" 2>/dev/null || true
     halrun -U 2>/dev/null || true
 
-    rm -f /tmp/halrun_interactive_wrapper.sh
+    # Clean up FIFO
+    rm -f "$FIFO" 2>/dev/null || true
 
     echo -e "${GREEN}Done${NC}"
 }

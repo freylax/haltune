@@ -1,11 +1,9 @@
 #!/bin/bash
 # Development shell wrapper for haltune TUI testing
-# Sets up halrun with the same configuration as automated tests
-# then drops you into a shell for interactive experimentation
+# Uses halrun with logic components instead of Python component
 
-HALTUNE_BIN="${HALTUNE_BIN:-/home/cnc/prog/haltune/zig-out/bin/haltune}"
-HAL_FILE="/tmp/tui_dev.hal"
-PYTHON_COMP="/tmp/haltune_test_comp.py"
+HALTUNE_BIN="${HALTUNE_BIN:-./zig-out/bin/haltune}"
+HAL_FILE="/tmp/tui_dev_hal.$$"
 FIFO="/tmp/halrun_stdin.$$"
 
 # Colors
@@ -32,134 +30,122 @@ fi
 # Stop any existing HAL session
 echo -e "${YELLOW}→ Cleaning up any existing HAL session...${NC}"
 halrun -U 2>/dev/null || true
-pkill -f "python3.*$PYTHON_COMP" 2>/dev/null || true
+pkill -f "halrun.*$HAL_FILE" 2>/dev/null || true
 sleep 0.5
 
-# Create the Python test component
-cat > "$PYTHON_COMP" << 'EOF'
-#!/usr/bin/env python3
-import hal
-import time
-
-h = hal.component('haltune-test-comp')
-
-# Create different pin types (IN, OUT, IO)
-h.newpin('bit-in', hal.HAL_BIT, hal.HAL_IN)
-h.newpin('bit-out', hal.HAL_BIT, hal.HAL_OUT)
-h.newpin('bit-io', hal.HAL_BIT, hal.HAL_IO)
-
-h.newpin('float-in', hal.HAL_FLOAT, hal.HAL_IN)
-h.newpin('float-out', hal.HAL_FLOAT, hal.HAL_OUT)
-h.newpin('float-io', hal.HAL_FLOAT, hal.HAL_IO)
-
-h.newpin('u32-in', hal.HAL_U32, hal.HAL_IN)
-h.newpin('u32-out', hal.HAL_U32, hal.HAL_OUT)
-
-h.newpin('s32-in', hal.HAL_S32, hal.HAL_IN)
-h.newpin('s32-out', hal.HAL_S32, hal.HAL_OUT)
-
-# Create some parameters
-h.newparam('float-param', hal.HAL_FLOAT, hal.HAL_RW)
-h.newparam('u32-param', hal.HAL_U32, hal.HAL_RW)
-h.newparam('s32-param', hal.HAL_S32, hal.HAL_RW)
-
-# Set initial values
-h['float-param'] = 3.14159
-h['u32-param'] = 42
-h['s32-param'] = -10
-
-h.ready()
-
-try:
-    while True:
-        time.sleep(1)
-except:
-    pass
-finally:
-    h.exit()
-EOF
-
-chmod +x "$PYTHON_COMP"
-
-# Create the HAL file
+# Create HAL file with built-in test components
+# Using logic components and threads component which are always available
 cat > "$HAL_FILE" << 'EOF'
-# TUI development HAL file
-# The test component is started separately via Python
+# TUI development HAL file with built-in components
+
+# Load the threads component (always available in HAL)
+loadusr threads
+
+# Create some test signals
+net test-signal1
+net test-signal2
+
+# Create a logic component with AND/OR/NOT gates
+# These create pins that can be viewed in haltune
+loadusr logic AND and1
+loadusr logic OR or1
+loadusr logic NOT not1
+
+# Create some mux components
+loadusr mux2 mux1
+loadusr mux2 mux2
+
+# Create a counter component
+loadusr count count1
+
+# Create a debounce component
+loadusr debounce debounce1
+
+# Create some test pins with connections
+net and-out and1.out
+net or-out or1.out
+net not-out not1.out
+
+# Set some initial values
+setp and1.in0 TRUE
+setp and1.in1 FALSE
+setp or1.in0 TRUE
+setp or1.in1 FALSE
+
+# Add a parameter to modify
+setp count1.enable TRUE
+setp count1.min 0
+setp count1.max 100
+
+# Show what we have
+echo "=== HAL Test Environment Loaded ==="
+echo "Components loaded:"
+echo "  - threads (base HAL component)"
+echo "  - logic gates (AND, OR, NOT)"
+echo "  - mux components"
+echo "  - counter"
+echo "  - debounce"
+echo ""
 EOF
 
-echo -e "${GREEN}✓ Python HAL component created${NC}"
+echo -e "${GREEN}✓ HAL file created with built-in components${NC}"
 echo ""
 
 # Create a FIFO to keep halrun's stdin open
-# halrun -I reads from stdin; we use a FIFO with write end never opened
-# This causes halrun to block on read() forever, keeping HAL alive
 rm -f "$FIFO"
 mkfifo "$FIFO"
 
 # Start halrun with FIFO as stdin
-echo -e "${YELLOW}→ Starting halrun (PID will be shown)...${NC}"
-halrun -I -f "$HAL_FILE" <"$FIFO" >/dev/null 2>&1 &
+echo -e "${YELLOW}→ Starting halrun with test components...${NC}"
+halrun -I -f "$HAL_FILE" <"$FIFO" 2>&1 &
 HALRUN_PID=$!
+
+# Give halrun time to initialize
+sleep 1.0
+
+# Check if halrun is still running
+if ! ps -p $HALRUN_PID >/dev/null 2>&1; then
+    echo -e "${RED}ERROR: halrun exited immediately${NC}"
+    rm -f "$FIFO"
+    exit 1
+fi
+
 echo -e "${GREEN}  halrun PID: $HALRUN_PID${NC}"
 
-# Give halrun time to initialize HAL
-sleep 0.5
-
-# Start the Python HAL component
-echo -e "${YELLOW}→ Starting Python HAL component...${NC}"
-python3 "$PYTHON_COMP" &
-PYTHON_COMP_PID=$!
-echo -e "${GREEN}  component PID: $PYTHON_COMP_PID${NC}"
-
-# Wait for the component to be ready
-echo -e "${YELLOW}→ Waiting for component initialization...${NC}"
-for i in {1..10}; do
-    if halcmd list comp 2>/dev/null | grep -q "haltune-test-comp"; then
-        echo -e "${GREEN}✓ Component ready!${NC}"
-        break
-    fi
-    echo -ne "  ${BOLD}...${NC} "
-    sleep 0.3
-done
-
-echo ""
-
-# Summary of what's available
-echo -e "${BOLD}HAL Environment Status:${NC}"
-echo "─────────────────────────────────────────────────────"
-
+# Verify HAL is running and has components
+echo -e "${YELLOW}→ Verifying HAL state...${NC}"
 if halcmd list comp >/dev/null 2>&1; then
     COMP_COUNT=$(halcmd list comp 2>/dev/null | wc -w)
     PIN_COUNT=$(halcmd list pin 2>/dev/null | wc -w)
     PARAM_COUNT=$(halcmd list param 2>/dev/null | wc -w)
-
-    echo -e "  ${GREEN}●${NC} HAL is ${BOLD}running${NC}"
-    echo -e "  ${CYAN}├─${NC} Components: ${BOLD}$COMP_COUNT${NC}"
-    echo -e "  ${CYAN}├─${NC} Pins: ${BOLD}$PIN_COUNT${NC}"
-    echo -e "  ${CYAN}└─${NC} Parameters: ${BOLD}$PARAM_COUNT${NC}"
-    echo ""
-    echo -e "${BOLD}Available items:${NC}"
-    halcmd list comp | fold -w 70 | sed 's/^/  /'
+    echo -e "${GREEN}✓ HAL is running${NC}"
 else
-    echo -e "  ${RED}●${NC} HAL may not be running properly"
+    echo -e "${RED}ERROR: HAL is not responding${NC}"
+    rm -f "$FIFO"
+    exit 1
 fi
 
-# Check if halrun is still running
-if ps -p $HALRUN_PID >/dev/null 2>&1; then
-    echo -e "  ${GREEN}●${NC} halrun: ${BOLD}running${NC} (PID: $HALRUN_PID)"
-else
-    echo -e "  ${RED}●${NC} halrun: ${BOLD}NOT running${NC}"
-fi
+echo ""
+echo -e "${BOLD}HAL Environment Status:${NC}"
+echo "─────────────────────────────────────────────────────"
+
+echo -e "  ${GREEN}●${NC} HAL is ${BOLD}running${NC}"
+echo -e "  ${CYAN}├─${NC} Components: ${BOLD}$COMP_COUNT${NC}"
+echo -e "  ${CYAN}├─${NC} Pins: ${BOLD}$PIN_COUNT${NC}"
+echo -e "  ${CYAN}└─${NC} Parameters: ${BOLD}$PARAM_COUNT${NC}"
+echo ""
+
+echo -e "${BOLD}Components:${NC}"
+halcmd list comp 2>/dev/null | head -20 | fold -w 70 | sed 's/^/  /'
+
+echo ""
+echo -e "  ${GREEN}●${NC} halrun: ${BOLD}running${NC} (PID: $HALRUN_PID)"
 echo ""
 
 # Set up cleanup
 cleanup() {
     echo ""
     echo -e "${YELLOW}→ Shutting down...${NC}"
-
-    # Stop Python component first
-    kill $PYTHON_COMP_PID 2>/dev/null || true
-    pkill -f "python3.*$PYTHON_COMP" 2>/dev/null || true
 
     # Stop halrun
     kill $HALRUN_PID 2>/dev/null || true
@@ -168,6 +154,7 @@ cleanup() {
 
     # Clean up FIFO
     rm -f "$FIFO" 2>/dev/null || true
+    rm -f "$HAL_FILE" 2>/dev/null || true
 
     echo -e "${GREEN}✓ Cleanup complete${NC}"
 }
@@ -177,9 +164,7 @@ trap cleanup EXIT INT TERM
 # Export for use in shell
 export HALTUNE_BIN
 export HAL_FILE
-export PYTHON_COMP
 export HALRUN_PID
-export PYTHON_COMP_PID
 export FIFO
 
 # Custom prompt function to show we're in dev shell
@@ -210,7 +195,5 @@ echo -e "║${NC}  ${YELLOW}Type 'exit' or Ctrl+D to leave the shell${NC}       
 echo -e "╚═══════════════════════════════════════════════════════════════════════════╝${NC}"
 echo ""
 
-# Start interactive shell with custom prompt
-# Use bash with --norc to skip .bashrc which would override our prompt
-export PS1='tui-dev-shell> '
-exec bash --norc --noprofile
+# Start interactive shell
+$SHELL

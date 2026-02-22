@@ -261,67 +261,51 @@ pub const Model = struct {
     /// Get list of checked item names
     /// Returns only fully-visible leaf items (pins, signals, params)
     /// Components with .partial or .full state are expanded to their visible children
+    /// Items are returned in tree order (the order they appear in the tree view)
     pub fn getCheckedItems(self: *const Model, allocator: std.mem.Allocator) ![][]const u8 {
         var items = std.ArrayList([]const u8).initCapacity(allocator, 0) catch unreachable;
 
-        std.log.debug("getCheckedItems: checked_items count = {}", .{self.tree_view.checked_items.count()});
+        std.log.debug("getCheckedItems: collecting in tree order", .{});
 
-        // Track which leaf nodes have been added (to avoid duplicates when both parent component and child are marked as full)
+        // Track which leaf nodes have been added (to avoid duplicates)
         var added_leaves = std.StringHashMap(void).init(allocator);
         defer added_leaves.deinit();
 
-        var iter = self.tree_view.checked_items.iterator();
-        while (iter.next()) |entry| {
-            const state = entry.value_ptr.*;
-            const full_name = entry.key_ptr.*;
+        // Iterate through tree in order (root components first, then their children)
+        for (self.tree_view.root.items) |component| {
+            const component_state = self.tree_view.checked_items.get(component.full_name) orelse VisibilityState.none;
 
-            std.log.debug("  checking: '{s}' state={}", .{ full_name, state });
-
-            // Skip partial states (component with some children visible)
-            if (state == VisibilityState.partial) continue;
-
-            // For full state, check if it's a leaf or component
-            if (state == VisibilityState.full) {
-                // Find the node to check its type
-                const node = self.findNodeByName(full_name);
-                if (node) |n| {
-                    std.log.debug("    node found: '{s}' expandable={}", .{ n.full_name, n.isExpandable() });
-                    if (n.isExpandable()) {
-                        // Component - add its visible children instead
-                        if (n.children) |*children| {
-                            for (children.items) |child| {
-                                const child_state = self.tree_view.checked_items.get(child.full_name) orelse VisibilityState.none;
-                                if (child_state == VisibilityState.full) {
-                                    std.log.debug("      adding child: '{s}'", .{child.full_name});
-                                    try items.append(self.allocator, child.full_name);
-                                    try added_leaves.put(child.full_name, {});
-                                }
-                            }
-                        }
-                    } else {
-                        // Leaf node - add directly, but only if not already added via parent component
-                        if (added_leaves.get(full_name) == null) {
-                            std.log.debug("      adding leaf: '{s}'", .{full_name});
-                            try items.append(self.allocator, full_name);
-                            try added_leaves.put(full_name, {});
-                        } else {
-                            std.log.debug("      skipping leaf (already added via parent): '{s}'", .{full_name});
+            if (component_state == VisibilityState.full and component.isExpandable()) {
+                // Component fully checked - add all its checked children
+                if (component.children) |*children| {
+                    for (children.items) |child| {
+                        const child_state = self.tree_view.checked_items.get(child.full_name) orelse VisibilityState.none;
+                        if (child_state == VisibilityState.full) {
+                            try items.append(self.allocator, child.full_name);
+                            try added_leaves.put(child.full_name, {});
                         }
                     }
-                } else {
-                    // Node not found - add as fallback (if not already added)
-                    if (added_leaves.get(full_name) == null) {
-                        std.log.debug("      node not found, adding fallback: '{s}'", .{full_name});
-                        try items.append(self.allocator, full_name);
-                        try added_leaves.put(full_name, {});
-                    } else {
-                        std.log.debug("      skipping fallback (already added): '{s}'", .{full_name});
+                }
+            } else if (component_state == VisibilityState.full and !component.isExpandable()) {
+                // This shouldn't happen (components should be expandable), but handle it
+                try items.append(self.allocator, component.full_name);
+                try added_leaves.put(component.full_name, {});
+            } else if (component_state == VisibilityState.partial) {
+                // Partial - check individual children
+                if (component.children) |*children| {
+                    for (children.items) |child| {
+                        const child_state = self.tree_view.checked_items.get(child.full_name) orelse VisibilityState.none;
+                        if (child_state == VisibilityState.full and added_leaves.get(child.full_name) == null) {
+                            try items.append(self.allocator, child.full_name);
+                            try added_leaves.put(child.full_name, {});
+                        }
                     }
                 }
             }
+            // If component is .none, skip it entirely
         }
 
-        std.log.debug("getCheckedItems: returning {} items", .{items.items.len});
+        std.log.debug("getCheckedItems: returning {} items in tree order", .{items.items.len});
         for (items.items, 0..) |item, i| {
             std.log.debug("  [{}] '{s}'", .{ i, item });
         }

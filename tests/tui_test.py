@@ -85,22 +85,11 @@ finally:
         with open("/tmp/haltune_test_comp.py", "w") as f:
             f.write(python_comp_code)
 
-        # Start the Python component
-        self.python_comp_process = subprocess.Popen(
-            ["python3", "/tmp/haltune_test_comp.py"],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            start_new_session=True
-        )
-
-        # Give it time to start
-        time.sleep(1.0)
-
         # Write the HAL file
         with open(self.hal_file, "w") as f:
             f.write(self.hal_file_content)
 
-        # Start halrun in interactive mode (-I) to keep it running
+        # Start halrun in interactive mode (-I) to keep it running FIRST
         self.process = subprocess.Popen(
             ["halrun", "-I", "-f", self.hal_file],
             stdin=subprocess.PIPE,  # Need stdin to send "exit" command
@@ -108,8 +97,33 @@ finally:
             stderr=subprocess.PIPE,
             start_new_session=True  # Create new process group
         )
-        # Give halrun time to start and create components
-        time.sleep(1.5)
+        # Give halrun time to initialize HAL
+        time.sleep(0.5)
+
+        # THEN start the Python component (after HAL is ready)
+        self.python_comp_process = subprocess.Popen(
+            ["python3", "/tmp/haltune_test_comp.py"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True
+        )
+
+        # Wait for component to appear
+        time.sleep(1.0)
+        for i in range(10):
+            try:
+                result = subprocess.run(
+                    ["halcmd", "list", "comp"],
+                    capture_output=True,
+                    text=True,
+                    timeout=2
+                )
+                if "haltune-test-comp" in result.stdout:
+                    break
+            except:
+                pass
+            time.sleep(0.3)
+
         poll_result = self.process.poll()
         if poll_result is not None:
             # Process exited, check stderr

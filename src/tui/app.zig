@@ -20,7 +20,7 @@ pub const Config = @import("../root.zig").Config;
 /// 6. Starts Vxfw application with two-panel layout
 ///
 /// User controls:
-/// - Ctrl+C: Quit application
+/// - Ctrl+Q: Quit application
 /// - --test-mode: Bypass terminal size check for automated testing
 /// - -f file.hal : Load .hal file for origin tracking
 /// - -i file.ini : Load .ini file for origin tracking

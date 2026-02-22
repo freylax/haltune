@@ -142,6 +142,20 @@ fn printHelp() void {
         \\  --test-mode, -t  Enable test mode (bypass terminal size check)
         \\  -h, --help       Show this help message
         \\
+        \\Key bindings (in TUI):
+        \\  Ctrl+Q         Quit application
+        \\  Ctrl+T         Toggle tree/table view
+        \\  Enter           Expand/collapse or edit value
+        \\  Space           Toggle visibility
+        \\  Esc             Clear search/filter
+        \\  /               Search
+        \\  n               Create new signal (tree view)
+        \\  s               Save configuration (tree view)
+        \\  t               Cycle type filter (table view)
+        \\  c               Component filter (table view)
+        \\  +/-             Expand/collapse all
+        \\  Up/Down/Page     Navigate
+        \\
         \\Examples:
         \\  haltune -f custom.hal
         \\  haltune -f core_stepper.hal -f custom.hal -i myconfig.ini

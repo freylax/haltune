@@ -55,11 +55,20 @@ pub const StateStore = struct {
     /// HashMap storing pin values indexed by name
     pins: std.StringHashMap(HalValue),
 
+    /// Ordered list of pin names (preserves HAL discovery order)
+    pin_names: std.ArrayList([]const u8),
+
     /// HashMap storing signal values indexed by name
     signals: std.StringHashMap(HalValue),
 
+    /// Ordered list of signal names (preserves HAL discovery order)
+    signal_names: std.ArrayList([]const u8),
+
     /// HashMap storing parameter values indexed by name
     params: std.StringHashMap(HalValue),
+
+    /// Ordered list of parameter names (preserves HAL discovery order)
+    param_names: std.ArrayList([]const u8),
 
     /// HashMap storing pin -> signal mappings (pin_name -> signal_name)
     pin_links: std.StringHashMap([]const u8),
@@ -90,8 +99,11 @@ pub const StateStore = struct {
         return .{
             .allocator = allocator,
             .pins = std.StringHashMap(HalValue).init(allocator),
+            .pin_names = std.ArrayList([]const u8).initCapacity(allocator, 0) catch unreachable,
             .signals = std.StringHashMap(HalValue).init(allocator),
+            .signal_names = std.ArrayList([]const u8).initCapacity(allocator, 0) catch unreachable,
             .params = std.StringHashMap(HalValue).init(allocator),
+            .param_names = std.ArrayList([]const u8).initCapacity(allocator, 0) catch unreachable,
             .pin_links = std.StringHashMap([]const u8).init(allocator),
             .origin_tracker = OriginTracker.init(allocator),
         };
@@ -122,7 +134,7 @@ pub const StateStore = struct {
     /// defer store.deinit();  // Always cleanup
     /// ```
     pub fn deinit(self: *StateStore) void {
-        // Free owned pin keys
+        // Free owned pin keys and clear ordered list
         {
             var iter = self.pins.iterator();
             while (iter.next()) |entry| {
@@ -130,8 +142,9 @@ pub const StateStore = struct {
             }
         }
         self.pins.deinit();
+        self.pin_names.deinit(self.allocator);
 
-        // Free owned signal keys
+        // Free owned signal keys and clear ordered list
         {
             var iter = self.signals.iterator();
             while (iter.next()) |entry| {
@@ -139,8 +152,9 @@ pub const StateStore = struct {
             }
         }
         self.signals.deinit();
+        self.signal_names.deinit(self.allocator);
 
-        // Free owned param keys
+        // Free owned param keys and clear ordered list
         {
             var iter = self.params.iterator();
             while (iter.next()) |entry| {
@@ -148,6 +162,7 @@ pub const StateStore = struct {
             }
         }
         self.params.deinit();
+        self.param_names.deinit(self.allocator);
 
         // Free pin link strings
         var link_iter = self.pin_links.iterator();
@@ -256,6 +271,8 @@ pub const StateStore = struct {
             // that will be freed when refreshPins returns
             const name_owned = try self.allocator.dupe(u8, name);
             try self.pins.put(name_owned, value);
+            // Also add to ordered list to preserve HAL discovery order
+            try self.pin_names.append(self.allocator, name_owned);
         }
     }
 
@@ -307,6 +324,8 @@ pub const StateStore = struct {
             // New key - dupe it so HashMap owns the memory
             const name_owned = try self.allocator.dupe(u8, name);
             try self.signals.put(name_owned, value);
+            // Also add to ordered list to preserve HAL discovery order
+            try self.signal_names.append(self.allocator, name_owned);
         }
     }
 
@@ -343,6 +362,8 @@ pub const StateStore = struct {
             // New key - dupe it so HashMap owns the memory
             const name_owned = try self.allocator.dupe(u8, name);
             try self.params.put(name_owned, value);
+            // Also add to ordered list to preserve HAL discovery order
+            try self.param_names.append(self.allocator, name_owned);
         }
     }
 
@@ -464,18 +485,13 @@ pub const StateStore = struct {
         self.rwlock.lockShared();
         defer self.rwlock.unlockShared();
 
-        // Snapshot keys while holding lock
-        var keys = std.ArrayList([]const u8).initCapacity(allocator, 8) catch unreachable;
-        defer keys.deinit(allocator);
-        var iter = self.pins.iterator();
-        while (iter.next()) |entry| {
-            // Duplicate the key string so caller owns the memory (HashMap may reallocate)
-            const key_copy = try allocator.dupe(u8, entry.key_ptr.*);
-            try keys.append(allocator, key_copy);
+        // Return keys in HAL discovery order (from pin_names)
+        const result = try allocator.alloc([]const u8, self.pin_names.items.len);
+        for (self.pin_names.items, 0..) |name, i| {
+            result[i] = try allocator.dupe(u8, name);
         }
 
-        // Return owned slice (caller must free both outer slice and inner strings)
-        return keys.toOwnedSlice(allocator);
+        return result;
     }
 
     /// List all signal names in the cache
@@ -508,18 +524,13 @@ pub const StateStore = struct {
         self.rwlock.lockShared();
         defer self.rwlock.unlockShared();
 
-        // Snapshot keys while holding lock
-        var keys = std.ArrayList([]const u8).initCapacity(allocator, 4) catch unreachable;
-        defer keys.deinit(allocator);
-        var iter = self.signals.iterator();
-        while (iter.next()) |entry| {
-            // Duplicate the key string so caller owns the memory (HashMap may reallocate)
-            const key_copy = try allocator.dupe(u8, entry.key_ptr.*);
-            try keys.append(allocator, key_copy);
+        // Return keys in HAL discovery order (from signal_names)
+        const result = try allocator.alloc([]const u8, self.signal_names.items.len);
+        for (self.signal_names.items, 0..) |name, i| {
+            result[i] = try allocator.dupe(u8, name);
         }
 
-        // Return owned slice (caller must free both outer slice and inner strings)
-        return keys.toOwnedSlice(allocator);
+        return result;
     }
 
     /// List all parameter names in the cache
@@ -552,18 +563,13 @@ pub const StateStore = struct {
         self.rwlock.lockShared();
         defer self.rwlock.unlockShared();
 
-        // Snapshot keys while holding lock
-        var keys = std.ArrayList([]const u8).initCapacity(allocator, 4) catch unreachable;
-        defer keys.deinit(allocator);
-        var iter = self.params.iterator();
-        while (iter.next()) |entry| {
-            // Duplicate the key string so caller owns the memory (HashMap may reallocate)
-            const key_copy = try allocator.dupe(u8, entry.key_ptr.*);
-            try keys.append(allocator, key_copy);
+        // Return keys in HAL discovery order (from param_names)
+        const result = try allocator.alloc([]const u8, self.param_names.items.len);
+        for (self.param_names.items, 0..) |name, i| {
+            result[i] = try allocator.dupe(u8, name);
         }
 
-        // Return owned slice (caller must free both outer slice and inner strings)
-        return keys.toOwnedSlice(allocator);
+        return result;
     }
 
     /// Get all pins linked to a signal
@@ -686,6 +692,13 @@ pub const StateStore = struct {
         if (self.pins.fetchRemove(name)) |entry| {
             // Free the owned key
             self.allocator.free(entry.key);
+            // Also remove from ordered list
+            for (self.pin_names.items, 0..) |item, i| {
+                if (std.mem.eql(u8, item, name)) {
+                    _ = self.pin_names.orderedRemove(i);
+                    break;
+                }
+            }
         }
     }
 
@@ -715,6 +728,13 @@ pub const StateStore = struct {
         if (self.signals.fetchRemove(name)) |entry| {
             // Free the owned key
             self.allocator.free(entry.key);
+            // Also remove from ordered list
+            for (self.signal_names.items, 0..) |item, i| {
+                if (std.mem.eql(u8, item, name)) {
+                    _ = self.signal_names.orderedRemove(i);
+                    break;
+                }
+            }
         }
     }
 
@@ -744,6 +764,13 @@ pub const StateStore = struct {
         if (self.params.fetchRemove(name)) |entry| {
             // Free the owned key
             self.allocator.free(entry.key);
+            // Also remove from ordered list
+            for (self.param_names.items, 0..) |item, i| {
+                if (std.mem.eql(u8, item, name)) {
+                    _ = self.param_names.orderedRemove(i);
+                    break;
+                }
+            }
         }
     }
 

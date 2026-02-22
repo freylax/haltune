@@ -1026,18 +1026,6 @@ pub const DataTable = struct {
             row += 1;
         }
 
-        // Write Origin column header
-        if (self.filter_type == .all) {
-            const filter_style = vaxis.Style{ .bold = true, .fg = .{ .index = 3 } }; // Yellow
-            var col: u16 = 0;
-            for ("Origin:") |c| {
-                if (col >= width) break;
-                surface.writeCell(col, row, .{ .char = .{ .grapheme = &[_]u8{c}, .width = 1 }, .style = filter_style });
-                col += 1;
-            }
-            row += 1;
-        }
-
         // Data rows - render directly to surface for per-character styling
         for (self.items.items, 0..) |item, idx| {
             if (row >= height) break;
@@ -1138,29 +1126,6 @@ pub const DataTable = struct {
                 });
                 col += grapheme_width;
                 char_idx += 1;
-            }
-
-            // Add origin column
-            if (self.filter_type == .all) {
-                const origin_str = formatOrigin(ctx.arena, item.origin) catch "";
-                const origin_style = originStyle(item.origin.origin);
-                var origin_iter = ctx.graphemeIterator(origin_str);
-                while (origin_iter.next()) |char| {
-                    if (col >= width) break;
-                    const grapheme = char.bytes(origin_str);
-                    const grapheme_width: u8 = @intCast(ctx.stringWidth(grapheme));
-                    surface.writeCell(col, row, .{
-                        .char = .{ .grapheme = grapheme, .width = grapheme_width },
-                        .style = origin_style,
-                    });
-                    col += grapheme_width;
-                }
-                // Add padding before cursor
-                const origin_padding: usize = if (col < width) 1 else 0;
-                if (origin_padding > 0) {
-                    surface.writeCell(col, row, .{ .char = .{ .grapheme = " ", .width = 1 }, .style = .{} });
-                    col += 1;
-                }
             }
 
             // Show cursor marker when editing
