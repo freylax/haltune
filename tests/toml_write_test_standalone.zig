@@ -39,12 +39,8 @@ test "Write TOML configuration file" {
     config.plugins.enabled.?[0] = try std.testing.allocator.dupe(u8, "velocity_control");
     config.plugins.enabled.?[1] = try std.testing.allocator.dupe(u8, "trapvel_control");
 
-    var buffer = std.ArrayList(u8).initCapacity(std.testing.allocator, 1024) catch unreachable;
-    defer buffer.deinit(std.testing.allocator);
-
-    try toml_write.writeTomlConfig(buffer.writer(std.testing.allocator), &config);
-
-    const output = buffer.items;
+    const output = try toml_write.writeTomlConfigAlloc(std.testing.allocator, &config);
+    defer std.testing.allocator.free(output);
 
     try std.testing.expect(std.mem.indexOf(u8, output, "[files]") != null);
     try std.testing.expect(std.mem.indexOf(u8, output, "[logging]") != null);
@@ -74,12 +70,8 @@ test "Write empty TOML configuration" {
         },
     };
 
-    var buffer = std.ArrayList(u8).initCapacity(std.testing.allocator, 256) catch unreachable;
-    defer buffer.deinit(std.testing.allocator);
-
-    try toml_write.writeTomlConfig(buffer.writer(std.testing.allocator), &config);
-
-    const output = buffer.items;
+    const output = try toml_write.writeTomlConfigAlloc(std.testing.allocator, &config);
+    defer std.testing.allocator.free(output);
 
     try std.testing.expect(std.mem.indexOf(u8, output, "[files]") != null);
     try std.testing.expect(std.mem.indexOf(u8, output, "[logging]") != null);
@@ -118,12 +110,15 @@ test "Write and read round-trip" {
     original.files.hal_files.?[0] = try std.testing.allocator.dupe(u8, "test.hal");
     original.plugins.enabled.?[0] = try std.testing.allocator.dupe(u8, "test_plugin");
 
-    var buffer = std.ArrayList(u8).initCapacity(std.testing.allocator, 256) catch unreachable;
-    defer buffer.deinit(std.testing.allocator);
+    // Write to a temp file
+    const test_file = "test_roundtrip.toml";
+    try toml_write.writeTomlConfigFile(std.testing.allocator, test_file, &original);
+    defer {
+        std.fs.cwd().deleteFile(test_file) catch {};
+    }
 
-    try toml_write.writeTomlConfig(buffer.writer(std.testing.allocator), &original);
-
-    var parsed = try toml_config_mod.parseTomlConfig(std.testing.allocator, buffer.items);
+    // Parse it back
+    var parsed = try toml_config_mod.parseTomlConfig(std.testing.allocator, test_file);
     defer toml_config_mod.deinit(&parsed, std.testing.allocator);
 
     try std.testing.expect(parsed.files.hal_files != null);

@@ -2090,6 +2090,196 @@
       "description": "Modified:     root_module.addImport(\"glob\", glob.module(\"glob\"));",
       "timestamp": 1771884471,
       "severity": null
+    },
+    {
+      "id": "edit-1771886108-110",
+      "type": "edit_capture",
+      "file_path": "/home/robert/prog/zig/haltune/tests/toml_write_test_standalone.zig",
+      "range": {
+        "start": {
+          "line": 0,
+          "character": 0
+        },
+        "end": {
+          "line": 0,
+          "character": 0
+        }
+      },
+      "actor": "claude-code",
+      "description": "Modified: test \"Write and read round-trip\" {",
+      "timestamp": 1771886108,
+      "severity": null
+    },
+    {
+      "id": "edit-1771886394-111",
+      "type": "edit_capture",
+      "file_path": "/home/robert/prog/zig/haltune/src/config/toml_write.zig",
+      "range": {
+        "start": {
+          "line": 0,
+          "character": 0
+        },
+        "end": {
+          "line": 0,
+          "character": 0
+        }
+      },
+      "actor": "claude-code",
+      "description": "Modified: /// Returns:",
+      "timestamp": 1771886394,
+      "severity": null
+    },
+    {
+      "id": "edit-1771886507-112",
+      "type": "edit_capture",
+      "file_path": "/home/robert/prog/zig/haltune/src/config/toml_write.zig",
+      "range": {
+        "start": {
+          "line": 0,
+          "character": 0
+        },
+        "end": {
+          "line": 0,
+          "character": 0
+        }
+      },
+      "actor": "claude-code",
+      "description": "Modified: /// Returns:",
+      "timestamp": 1771886507,
+      "severity": null
+    },
+    {
+      "id": "edit-1771886544-113",
+      "type": "edit_capture",
+      "file_path": "/home/robert/prog/zig/haltune/tests/toml_write_test_standalone.zig",
+      "range": {
+        "start": {
+          "line": 0,
+          "character": 0
+        },
+        "end": {
+          "line": 0,
+          "character": 0
+        }
+      },
+      "actor": "claude-code",
+      "description": "Modified:     // Write to a temp file",
+      "timestamp": 1771886544,
+      "severity": null
+    },
+    {
+      "id": "edit-1771886962-114",
+      "type": "edit_capture",
+      "file_path": "/home/robert/prog/zig/haltune/src/config/toml_write.zig",
+      "range": {
+        "start": {
+          "line": 0,
+          "character": 0
+        },
+        "end": {
+          "line": 0,
+          "character": 0
+        }
+      },
+      "actor": "claude-code",
+      "description": "Modified: // TOML configuration file writer for haltune",
+      "timestamp": 1771886962,
+      "severity": null
+    },
+    {
+      "id": "edit-1771887050-115",
+      "type": "edit_capture",
+      "file_path": "/home/robert/prog/zig/haltune/tests/toml_write_test_standalone.zig",
+      "range": {
+        "start": {
+          "line": 0,
+          "character": 0
+        },
+        "end": {
+          "line": 0,
+          "character": 0
+        }
+      },
+      "actor": "claude-code",
+      "description": "Modified: test \"Write TOML configuration file\" {",
+      "timestamp": 1771887050,
+      "severity": null
+    },
+    {
+      "id": "edit-1771887092-116",
+      "type": "edit_capture",
+      "file_path": "/home/robert/prog/zig/haltune/tests/toml_write_test_standalone.zig",
+      "range": {
+        "start": {
+          "line": 0,
+          "character": 0
+        },
+        "end": {
+          "line": 0,
+          "character": 0
+        }
+      },
+      "actor": "claude-code",
+      "description": "Modified: test \"Write empty TOML configuration\" {",
+      "timestamp": 1771887092,
+      "severity": null
+    },
+    {
+      "id": "edit-1771887282-117",
+      "type": "edit_capture",
+      "file_path": "/home/robert/prog/zig/haltune/src/config/toml_write.zig",
+      "range": {
+        "start": {
+          "line": 0,
+          "character": 0
+        },
+        "end": {
+          "line": 0,
+          "character": 0
+        }
+      },
+      "actor": "claude-code",
+      "description": "Modified: ///   - Allocated string containing TOML format (caller must free)",
+      "timestamp": 1771887282,
+      "severity": null
+    },
+    {
+      "id": "edit-1771887400-118",
+      "type": "edit_capture",
+      "file_path": "/home/robert/prog/zig/haltune/src/config/toml_write.zig",
+      "range": {
+        "start": {
+          "line": 0,
+          "character": 0
+        },
+        "end": {
+          "line": 0,
+          "character": 0
+        }
+      },
+      "actor": "claude-code",
+      "description": "Modified: ///   - Allocated string containing TOML format (caller must free)",
+      "timestamp": 1771887400,
+      "severity": null
+    },
+    {
+      "id": "edit-1771887510-119",
+      "type": "edit_capture",
+      "file_path": "/home/robert/prog/zig/haltune/src/config/toml_write.zig",
+      "range": {
+        "start": {
+          "line": 0,
+          "character": 0
+        },
+        "end": {
+          "line": 0,
+          "character": 0
+        }
+      },
+      "actor": "claude-code",
+      "description": "Modified:         try buffer.appendSlice(allocator, \"]\\n\");",
+      "timestamp": 1771887510,
+      "severity": null
     }
   ]
 }

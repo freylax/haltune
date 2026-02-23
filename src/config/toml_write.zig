@@ -12,58 +12,64 @@ pub const TomlConfig = @import("toml_config").TomlConfig;
 /// Write a TomlConfig to TOML format
 ///
 /// Parameters:
-///   - writer: Any writer that implements std.io.Writer interface
+///   - allocator: Memory allocator for building the output string
 ///   - config: The TomlConfig to serialize
 ///
 /// Returns:
-///   - error.WriteError if writing fails
+///   - Allocated string containing TOML format (caller must free)
 ///   - error.OutOfMemory if allocation fails
-pub fn writeTomlConfig(writer: anytype, config: *const TomlConfig) !void {
+pub fn writeTomlConfigAlloc(allocator: std.mem.Allocator, config: *const TomlConfig) ![]u8 {
+    var buffer = try std.ArrayList(u8).initCapacity(allocator, 512);
+    errdefer buffer.deinit(allocator);
+
     // Write [files] section
-    try writer.writeAll("[files]\n");
+    try buffer.appendSlice(allocator, "[files]\n");
 
     if (config.files.hal_files) |files| {
-        try writer.writeAll("hal_files = [");
+        try buffer.appendSlice(allocator, "hal_files = [");
         for (files, 0..) |file, i| {
-            if (i > 0) try writer.writeAll(", ");
-            try writer.print("\"{s}\"", .{file});
+            if (i > 0) try buffer.appendSlice(allocator, ", ");
+            try buffer.print(allocator, "\"{s}\"", .{file});
         }
-        try writer.writeAll("]\n");
+        try buffer.appendSlice(allocator, "]\n");
     }
 
     if (config.files.ini_files) |files| {
-        try writer.writeAll("ini_files = [");
+        try buffer.appendSlice(allocator, "ini_files = [");
         for (files, 0..) |file, i| {
-            if (i > 0) try writer.writeAll(", ");
-            try writer.print("\"{s}\"", .{file});
+            if (i > 0) try buffer.appendSlice(allocator, ", ");
+            try buffer.print(allocator, "\"{s}\"", .{file});
         }
-        try writer.writeAll("]\n");
+        try buffer.appendSlice(allocator, "]\n");
     }
 
-    try writer.writeAll("\n");
+    try buffer.appendSlice(allocator, "\n");
 
     // Write [logging] section
-    try writer.writeAll("[logging]\n");
+    try buffer.appendSlice(allocator, "[logging]\n");
     if (config.logging.file) |file| {
-        try writer.print("file = \"{s}\"\n", .{file});
+        try buffer.print(allocator, "file = \"{s}\"\n", .{file});
     }
-    try writer.writeAll("\n");
+    try buffer.appendSlice(allocator, "\n");
 
     // Write [plugins] section
-    try writer.writeAll("[plugins]\n");
+    try buffer.appendSlice(allocator, "[plugins]\n");
     if (config.plugins.enabled) |plugins| {
-        try writer.writeAll("enabled = [");
+        try buffer.appendSlice(allocator, "enabled = [");
         for (plugins, 0..) |plugin, i| {
-            if (i > 0) try writer.writeAll(", ");
-            try writer.print("\"{s}\"", .{plugin});
+            if (i > 0) try buffer.appendSlice(allocator, ", ");
+            try buffer.print(allocator, "\"{s}\"", .{plugin});
         }
-        try writer.writeAll("]\n");
+        try buffer.appendSlice(allocator, "]\n");
     }
+
+    return buffer.toOwnedSlice(allocator);
 }
 
 /// Write a TomlConfig to a file
 ///
 /// Parameters:
+///   - allocator: Memory allocator
 ///   - file_path: Path to output file
 ///   - config: The TomlConfig to serialize
 ///
@@ -71,13 +77,15 @@ pub fn writeTomlConfig(writer: anytype, config: *const TomlConfig) !void {
 ///   - error.FileNotFound if directory doesn't exist
 ///   - error.OutOfMemory if allocation fails
 pub fn writeTomlConfigFile(
+    allocator: std.mem.Allocator,
     file_path: []const u8,
     config: *const TomlConfig,
 ) !void {
+    const content = try writeTomlConfigAlloc(allocator, config);
+    defer allocator.free(content);
+
     const file = try std.fs.cwd().createFile(file_path, .{});
     defer file.close();
 
-    const buffered = std.io.bufferedWriter(file.writer());
-    try writeTomlConfig(buffered.writer(), config);
-    try buffered.flush();
+    try file.writeAll(content);
 }
