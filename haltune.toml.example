@@ -1,0 +1,17 @@
+# haltune configuration file
+# Place this file as haltune.toml or .haltune.toml in your working directory
+
+[files]
+# HAL files to load for origin tracking
+hal_files = ["custom.hal", "core_stepper.hal"]
+
+# INI files to load for origin tracking
+ini_files = ["myconfig.ini"]
+
+[logging]
+# Log file path (comment out to log to stderr)
+file = "debug.log"
+
+[plugins]
+# Enabled plugins (reserved for future use)
+enabled = []

@@ -125,16 +125,15 @@ pub fn mapHalError(rc: std.c.Int) HalError {
 /// try checkHalAvailable();
 /// const comp_id = try halInit("mycomponent");
 /// ```
-pub fn checkHalAvailable() !void {
+pub fn checkHalAvailable(comptime ChalInit: anytype, ChalExit: anytype) !void {
     // The most reliable way to check if HAL is available is to try
     // initializing a test component. This works with both:
     // - Full LinuxCNC (creates /dev/shm/hal_shm)
     // - halrun (interactive HAL, may use different mechanisms)
-    const c = @import("c.zig").c;
 
     // Try to initialize a temporary test component
     const test_comp_name = "haltune_check\x00";
-    const test_comp_id = c.hal_init(test_comp_name);
+    const test_comp_id = ChalInit(test_comp_name);
 
     // If hal_init returns negative, HAL is not available
     if (test_comp_id < 0) {
@@ -142,5 +141,5 @@ pub fn checkHalAvailable() !void {
     }
 
     // Success! Clean up the test component immediately
-    _ = c.hal_exit(test_comp_id);
+    _ = ChalExit(test_comp_id);
 }

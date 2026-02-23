@@ -1,190 +1,144 @@
-// Unit tests for HAL pin operations
+// Pin type tests
 //
-// These tests verify pin creation, reading, writing, and type safety.
-//
-// Run tests with: zig build test
-//
-// Note: These tests require LinuxCNC HAL library to be installed.
+// Test-driven development for HAL Pin type with cached data pointers
 
 const std = @import("std");
 const testing = std.testing;
-const c = @import("ffi/c.zig").c;
-const safe = @import("ffi/safe.zig");
-const hal_pin_dir_t = @import("ffi/types.zig").hal_pin_dir_t;
 
-// Helper function to initialize HAL for testing (does NOT call hal_ready)
-fn initTestComponent() !c_int {
-    const comp_id = try safe.halInit("pin-test-component");
-    // Note: Do NOT call hal_ready here - pins must be created before hal_ready
-    // The caller is responsible for calling halReady after creating pins
-    return comp_id;
+const Pin = @import("ffi/pin.zig").Pin;
+const PinType = @import("ffi/pin.zig").PinType;
+const PinDir = @import("ffi/pin.zig").PinDir;
+const Component = @import("ffi/component.zig").Component;
+
+test "Pin: direct memory access for bit pin" {
+    var comp = try Component.init(testing.allocator, "test-bit-access");
+    defer comp.exit();
+    try comp.ready();
+
+    const pin = try comp.newPin("bit-pin", .bit, .out);
+
+    // Set value directly via memory
+    try pin.setBit(true);
+
+    // Read value directly via memory
+    const value = pin.getBit();
+    try testing.expectEqual(true, value);
 }
 
-test "pinFloatNew creates float pin and returns pointer" {
-    const comp_id = try initTestComponent();
-    defer safe.halExit(comp_id);
+test "Pin: direct memory access for float pin" {
+    var comp = try Component.init(testing.allocator, "test-float-access");
+    defer comp.exit();
+    try comp.ready();
 
-    // Create float pin (before hal_ready!)
-    const pin = try safe.pinFloatNew(comp_id, "test-float-pin", hal_pin_dir_t.HAL_OUT);
+    const pin = try comp.newPin("float-pin", .float, .out);
 
-    // Now call hal_ready
-    _ = try safe.halReady(comp_id);
+    // Set value directly via memory
+    try pin.setFloat(3.14159);
 
-    // Verify pin is not null
-    try testing.expect(pin != null);
-
-    // Write value
-    pin.* = 3.14159;
-
-    // Read back
-    const value = pin.*;
-    try testing.expectEqual(3.14159, value);
+    // Read value directly via memory
+    const value = pin.getFloat();
+    try testing.expectApproxEqAbs(3.14159, value, 0.0001);
 }
 
-test "pinBitNew creates bit pin and returns pointer" {
-    const comp_id = try initTestComponent();
-    defer safe.halExit(comp_id);
+test "Pin: direct memory access for s32 pin" {
+    var comp = try Component.init(testing.allocator, "test-s32-access");
+    defer comp.exit();
+    try comp.ready();
 
-    // Create bit pin
-    const pin = try safe.pinBitNew(comp_id, "test-bit-pin", hal_pin_dir_t.HAL_OUT);
+    const pin = try comp.newPin("s32-pin", .s32, .out);
 
-    // Now call hal_ready
-    _ = try safe.halReady(comp_id);
+    // Set value directly via memory
+    try pin.setS32(@as(i32, -42));
 
-    // Verify pin is not null
-    try testing.expect(pin != null);
-
-    // Write true
-    pin.* = 1;
-    try testing.expectEqual(@as(u8, 1), pin.*);
-
-    // Write false
-    pin.* = 0;
-    try testing.expectEqual(@as(u8, 0), pin.*);
+    // Read value directly via memory
+    const value = pin.getS32();
+    try testing.expectEqual(@as(i32, -42), value);
 }
 
-test "pinS32New creates s32 pin and returns pointer" {
-    const comp_id = try initTestComponent();
-    defer safe.halExit(comp_id);
+test "Pin: direct memory access for u32 pin" {
+    var comp = try Component.init(testing.allocator, "test-u32-access");
+    defer comp.exit();
+    try comp.ready();
 
-    // Create s32 pin
-    const pin = try safe.pinS32New(comp_id, "test-s32-pin", hal_pin_dir_t.HAL_OUT);
+    const pin = try comp.newPin("u32-pin", .u32, .out);
 
-    // Now call hal_ready
-    _ = try safe.halReady(comp_id);
+    // Set value directly via memory
+    try pin.setU32(@as(u32, 42));
 
-    // Verify pin is not null
-    try testing.expect(pin != null);
-
-    // Write value
-    pin.* = -12345;
-
-    // Read back
-    try testing.expectEqual(@as(i32, -12345), pin.*);
+    // Read value directly via memory
+    const value = pin.getU32();
+    try testing.expectEqual(@as(u32, 42), value);
 }
 
-test "pinU32New creates u32 pin and returns pointer" {
-    const comp_id = try initTestComponent();
-    defer safe.halExit(comp_id);
+test "Pin: type mismatch on set" {
+    var comp = try Component.init(testing.allocator, "test-type-mismatch");
+    defer comp.exit();
+    try comp.ready();
 
-    // Create u32 pin
-    const pin = try safe.pinU32New(comp_id, "test-u32-pin", hal_pin_dir_t.HAL_OUT);
+    const pin = try comp.newPin("bit-pin", .bit, .out);
 
-    // Now call hal_ready
-    _ = try safe.halReady(comp_id);
-
-    // Verify pin is not null
-    try testing.expect(pin != null);
-
-    // Write value
-    pin.* = 54321;
-
-    // Read back
-    try testing.expectEqual(@as(u32, 54321), pin.*);
+    // Try to set wrong type
+    const result = pin.setFloat(3.14);
+    try testing.expectError(error.TypeMismatch, result);
 }
 
-test "pin direction - HAL_IN" {
-    const comp_id = try initTestComponent();
-    defer safe.halExit(comp_id);
+test "Pin: link to signal" {
+    var comp = try Component.init(testing.allocator, "test-pin-link");
+    defer comp.exit();
+    try comp.ready();
 
-    // Create input pin (before hal_ready!)
-    const pin = try safe.pinFloatNew(comp_id, "test-input-pin", hal_pin_dir_t.HAL_IN);
+    const pin = try comp.newPin("linkable-pin", .bit, .out);
 
-    // Now call hal_ready
-    _ = try safe.halReady(comp_id);
+    // Create a signal using C API directly
+    const c = @import("ffi/c.zig").c;
+    _ = c.hal_signal_new("test-signal\x00", c.HAL_BIT);
 
-    // Verify pin was created
-    try testing.expect(pin != null);
+    // Link pin to signal
+    try pin.link("test-signal");
 
-    // Should be able to write to it (component sets input pins)
-    pin.* = 1.23;
+    // Verify link (by checking we can still read/write through pin)
+    try pin.setBit(true);
+    const value = pin.getBit();
+    try testing.expectEqual(true, value);
 }
 
-test "pin direction - HAL_IO" {
-    const comp_id = try initTestComponent();
-    defer safe.halExit(comp_id);
+test "Pin: unlink from signal" {
+    var comp = try Component.init(testing.allocator, "test-pin-unlink");
+    defer comp.exit();
+    try comp.ready();
 
-    // Create IO pin (before hal_ready!)
-    const pin = try safe.pinFloatNew(comp_id, "test-io-pin", hal_pin_dir_t.HAL_IO);
+    const pin = try comp.newPin("unlinkable-pin", .bit, .out);
 
-    // Now call hal_ready
-    _ = try safe.halReady(comp_id);
+    // Create and link to a signal
+    const c = @import("ffi/c.zig").c;
+    _ = c.hal_signal_new("test-signal2\x00", c.HAL_BIT);
+    try pin.link("test-signal2");
 
-    // Verify pin was created
-    try testing.expect(pin != null);
+    // Unlink
+    try pin.unlink();
 
-    // Should be able to write to it
-    pin.* = 4.56;
+    // Pin should still work with its dummy value
+    try pin.setBit(true);
+    const value = pin.getBit();
+    try testing.expectEqual(true, value);
 }
 
-test "multiple pins same component" {
-    const comp_id = try initTestComponent();
-    defer safe.halExit(comp_id);
+test "Pin: cached pointer allows fast access" {
+    var comp = try Component.init(testing.allocator, "test-cached-ptr");
+    defer comp.exit();
+    try comp.ready();
 
-    // Create multiple pins of different types (before hal_ready!)
-    const float_pin = try safe.pinFloatNew(comp_id, "multi-float", hal_pin_dir_t.HAL_OUT);
-    const bit_pin = try safe.pinBitNew(comp_id, "multi-bit", hal_pin_dir_t.HAL_OUT);
-    const s32_pin = try safe.pinS32New(comp_id, "multi-s32", hal_pin_dir_t.HAL_OUT);
-    const u32_pin = try safe.pinU32New(comp_id, "multi-u32", hal_pin_dir_t.HAL_OUT);
+    const pin = try comp.newPin("cached-pin", .float, .out);
 
-    // Now call hal_ready after all pins are created
-    _ = try safe.halReady(comp_id);
+    // Verify data_ptr is not null/none
+    // Verify data_ptr is set (no .none variant in our PinDataPtr union)
+    _ = pin.data_ptr;
 
-    // Write values to all pins
-    float_pin.* = 1.0;
-    bit_pin.* = 1;
-    s32_pin.* = 100;
-    u32_pin.* = 200;
-
-    // Read back and verify
-    try testing.expectEqual(1.0, float_pin.*);
-    try testing.expectEqual(@as(u8, 1), bit_pin.*);
-    try testing.expectEqual(@as(i32, 100), s32_pin.*);
-    try testing.expectEqual(@as(u32, 200), u32_pin.*);
-}
-
-test "concurrent pin writes - basic sanity check" {
-    const comp_id = try initTestComponent();
-    defer safe.halExit(comp_id);
-
-    // Create multiple pins (before hal_ready!)
-    const pin1 = try safe.pinFloatNew(comp_id, "concurrent-1", hal_pin_dir_t.HAL_OUT);
-    const pin2 = try safe.pinFloatNew(comp_id, "concurrent-2", hal_pin_dir_t.HAL_OUT);
-    const pin3 = try safe.pinFloatNew(comp_id, "concurrent-3", hal_pin_dir_t.HAL_OUT);
-
-    // Now call hal_ready after all pins are created
-    _ = try safe.halReady(comp_id);
-
-    // Write to all pins rapidly
+    // Do many rapid accesses to verify caching works
     var i: usize = 0;
-    while (i < 100) : (i += 1) {
-        pin1.* = @as(f64, @floatFromInt(i));
-        pin2.* = @as(f64, @floatFromInt(i)) * 2.0;
-        pin3.* = @as(f64, @floatFromInt(i)) * 3.0;
+    while (i < 1000) : (i += 1) {
+        try pin.setFloat(@as(f64, @floatFromInt(i)));
+        const val = pin.getFloat();
+        try testing.expectApproxEqAbs(@as(f64, @floatFromInt(i)), val, 0.001);
     }
-
-    // Verify final values
-    try testing.expectEqual(@as(f64, 99), pin1.*);
-    try testing.expectEqual(@as(f64, 198), pin2.*);
-    try testing.expectEqual(@as(f64, 297), pin3.*);
 }

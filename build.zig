@@ -14,11 +14,12 @@ pub fn build(b: *std.Build) void {
 
     const optimize = b.standardOptimizeOption(.{});
 
-    // LinuxCNC include path - system option for dev vs production environments
-    const linuxcnc_include = b.option([]const u8, "linuxcnc-include", "Path to LinuxCNC headers (default: /usr/include/linuxcnc)") orelse "/usr/include/linuxcnc";
-
     // Option to skip HAL library linking for development on machines without LinuxCNC
     const skip_hal_link = b.option(bool, "skip-hal-link", "Skip linking against libhal (for development on machines without LinuxCNC)") orelse false;
+
+    // LinuxCNC include path - system option for dev vs production environments
+    const linuxcnc_include = b.option([]const u8, "linuxcnc-include", "Path to LinuxCNC headers (default: /usr/include/linuxcnc)") orelse
+        if (skip_hal_link) "include" else "/usr/include/linuxcnc";
 
     // Create FFI modules for imports
     const ffi_c = b.createModule(.{
@@ -55,6 +56,34 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
+    // Pin module (depends on errors.zig)
+    const ffi_pin = b.createModule(.{
+        .root_source_file = b.path("src/ffi/pin.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    ffi_pin.addIncludePath(.{ .cwd_relative = linuxcnc_include });
+    ffi_pin.addImport("errors", ffi_errors);
+
+    // Component module (depends on errors.zig and pin.zig)
+    const ffi_component = b.createModule(.{
+        .root_source_file = b.path("src/ffi/component.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    ffi_component.addIncludePath(.{ .cwd_relative = linuxcnc_include });
+    ffi_component.addImport("errors", ffi_errors);
+    ffi_component.addImport("pin", ffi_pin);
+
+    // Wiring module (depends on errors.zig)
+    const ffi_wiring = b.createModule(.{
+        .root_source_file = b.path("src/ffi/wiring.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    ffi_wiring.addIncludePath(.{ .cwd_relative = linuxcnc_include });
+    ffi_wiring.addImport("errors", ffi_errors);
+
     const ffi_safe = b.createModule(.{
         .root_source_file = b.path("src/ffi/safe.zig"),
         .target = target,
@@ -77,6 +106,80 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
+    // TOML dependency for configuration files
+    const toml = b.dependency("toml", .{
+        .target = target,
+        .optimize = optimize,
+    });
+
+    // TOML config module (for reading TOML configs)
+    const toml_config = b.createModule(.{
+        .root_source_file = b.path("src/config/toml_config.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    toml_config.addImport("toml", toml.module("toml"));
+
+    // TOML write module (for writing TOML configs)
+    const toml_write = b.createModule(.{
+        .root_source_file = b.path("src/config/toml_write.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    toml_write.addImport("toml", toml.module("toml"));
+    toml_write.addImport("toml_config", toml_config);
+
+    // Plugin interface module (NO FFI imports - clean separation)
+    const plugin_interface = b.createModule(.{
+        .root_source_file = b.path("src/plugin/interface.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    plugin_interface.addImport("vaxis", vaxis.module("vaxis"));
+
+    // Plugin registry module
+    const plugin_registry = b.createModule(.{
+        .root_source_file = b.path("src/plugin/registry.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    plugin_registry.addImport("plugin/interface", plugin_interface);
+
+    // Plugin manager module (minimal - no FFI imports)
+    const plugin_manager = b.createModule(.{
+        .root_source_file = b.path("src/plugin/manager.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    plugin_manager.addImport("plugin/interface", plugin_interface);
+    plugin_manager.addImport("plugin/registry", plugin_registry);
+
+    // Velocity control plugin
+    const velocity_control_plugin = b.createModule(.{
+        .root_source_file = b.path("src/plugins/velocity_control.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    velocity_control_plugin.addImport("vaxis", vaxis.module("vaxis"));
+
+    // TrapVel control plugin
+    const trapvel_control_plugin = b.createModule(.{
+        .root_source_file = b.path("src/plugins/trapvel_control.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    trapvel_control_plugin.addImport("vaxis", vaxis.module("vaxis"));
+
+    // Plugins registry (registers all plugins)
+    const plugins = b.createModule(.{
+        .root_source_file = b.path("src/plugins/plugins.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    plugins.addImport("plugin/registry", plugin_registry);
+    plugins.addImport("velocity_control", velocity_control_plugin);
+    plugins.addImport("trapvel_control", trapvel_control_plugin);
+
     // Create TUI module
     const tui_module = b.createModule(.{
         .root_source_file = b.path("src/tui/app.zig"),
@@ -96,6 +199,22 @@ pub fn build(b: *std.Build) void {
     // Add Glob to TUI module
     tui_module.addImport("glob", glob.module("glob"));
 
+    // Add TOML to TUI module
+    tui_module.addImport("toml", toml.module("toml"));
+    tui_module.addImport("toml_config", toml_config);
+    tui_module.addImport("toml_write", toml_write);
+
+    // Add plugin modules to TUI
+    tui_module.addImport("plugin/interface", plugin_interface);
+    tui_module.addImport("plugin/registry", plugin_registry);
+    tui_module.addImport("plugin/manager", plugin_manager);
+    tui_module.addImport("plugins", plugins);
+
+    // Create root module
+
+    // Add Glob to TUI module
+    tui_module.addImport("glob", glob.module("glob"));
+
     // Create root module
     const root_module = b.createModule(.{
         .root_source_file = b.path("src/root.zig"),
@@ -108,8 +227,21 @@ pub fn build(b: *std.Build) void {
     root_module.addImport("ffi/errors.zig", ffi_errors);
     root_module.addImport("ffi/types.zig", ffi_types);
     root_module.addImport("ffi/safe.zig", ffi_safe);
+    root_module.addImport("ffi/pin.zig", ffi_pin);
+    root_module.addImport("ffi/component.zig", ffi_component);
+    root_module.addImport("ffi/wiring.zig", ffi_wiring);
+    root_module.addImport("ffi", ffi_component); // Add convenience import
     root_module.addImport("vaxis", vaxis.module("vaxis"));
     root_module.addImport("glob", glob.module("glob"));
+    root_module.addImport("toml", toml.module("toml"));
+    root_module.addImport("toml_config", toml_config);
+    root_module.addImport("toml_write", toml_write);
+
+    // Add plugin modules to root
+    root_module.addImport("plugin/interface", plugin_interface);
+    root_module.addImport("plugin/registry", plugin_registry);
+    root_module.addImport("plugin/manager", plugin_manager);
+    root_module.addImport("plugins", plugins);
 
     // Add LinuxCNC HAL include path for @cImport
     root_module.addIncludePath(.{ .cwd_relative = linuxcnc_include });
@@ -136,6 +268,13 @@ pub fn build(b: *std.Build) void {
 
         // Note: Runtime library path must be set via LD_LIBRARY_PATH=/usr/lib
         // or configure /etc/ld.so.conf.d/ to find liblinuxcnchal.so at runtime
+    } else {
+        // Even when skipping HAL link, we still need libc for std.heap.c_allocator
+        exe.linkSystemLibrary("c");
+        // Add HAL stub C file for linking without LinuxCNC
+        exe.addCSourceFile(.{
+            .file = b.path("src/ffi/hal_stubs.c"),
+        });
     }
 
     // Install the executable
@@ -164,16 +303,25 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
+    // Add include path to test module (for @cImport in imported modules)
+    test_module.addIncludePath(.{ .cwd_relative = linuxcnc_include });
+
     // Add FFI modules as imports so tests can access them
     test_module.addImport("ffi/c.zig", ffi_c);
-    test_module.addImport("ffi/errors.zig", ffi_errors);
+    test_module.addImport("errors", ffi_errors);
     test_module.addImport("ffi/types.zig", ffi_types);
     test_module.addImport("ffi/safe.zig", ffi_safe);
+    test_module.addImport("ffi/pin.zig", ffi_pin);
+    test_module.addImport("ffi/component.zig", ffi_component);
+    test_module.addImport("ffi/wiring.zig", ffi_wiring);
 
     // Create test executable
     const test_exe = b.addTest(.{
         .root_module = test_module,
     });
+
+    // Add include path for C headers
+    test_exe.addIncludePath(.{ .cwd_relative = linuxcnc_include });
 
     // Link test against LinuxCNC HAL library
     if (!skip_hal_link) {
@@ -188,6 +336,9 @@ pub fn build(b: *std.Build) void {
         test_exe.linker_allow_shlib_undefined = true;
 
         // Note: Runtime library path must be set via LD_LIBRARY_PATH=/usr/lib
+    } else {
+        // Even when skipping HAL link, we still need libc
+        test_exe.linkSystemLibrary("c");
     }
 
     // Create test step
@@ -301,4 +452,29 @@ pub fn build(b: *std.Build) void {
         tree_debug_exe.linkSystemLibrary("rt");
         tree_debug_exe.linker_allow_shlib_undefined = true;
     }
+
+    // ===== TOML Write Test =====
+
+    // Create toml write test module (no FFI dependencies needed)
+    const toml_write_module = b.createModule(.{
+        .root_source_file = b.path("tests/toml_write_test_standalone.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+
+    // Add TOML dependency
+    toml_write_module.addImport("toml", toml.module("toml"));
+    toml_write_module.addImport("toml_write", toml_write);
+    toml_write_module.addImport("toml_config", toml_config);
+
+    // Create toml write test executable
+    const toml_write_exe = b.addTest(.{
+        .root_module = toml_write_module,
+    });
+
+    // Create toml write test run step
+    const run_toml_write = b.addRunArtifact(toml_write_exe);
+
+    const toml_write_step = b.step("toml-write-test", "Run TOML write test");
+    toml_write_step.dependOn(&run_toml_write.step);
 }

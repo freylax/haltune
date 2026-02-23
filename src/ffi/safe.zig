@@ -416,6 +416,7 @@ pub fn setPinBitByName(name: [*:0]const u8, value: bool) !void {
     const data = data_ptr orelse return HalError.NotFound;
     if (hal_type != c.HAL_BIT) return HalError.TypeMismatch;
 
+    // Write 1 or 0 to the bit field (C bool is typically just int)
     data.*.b = value;
 }
 

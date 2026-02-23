@@ -2,6 +2,7 @@
 const tui_app = @import("tui/app.zig");
 const std = @import("std");
 const logging = @import("log.zig");
+const toml_config = @import("config/toml_config.zig");
 
 /// std.log configuration - redirects logs to file or disables them
 pub const std_options = std.Options{
@@ -22,6 +23,12 @@ pub const Config = struct {
 
     /// Log file path for debug output (null = stderr)
     log_file_path: ?[]const u8 = null,
+
+    /// Path to configuration file (if loaded from TOML)
+    config_file_path: ?[]const u8 = null,
+
+    /// Enabled plugins from config
+    enabled_plugins: ?[][]const u8 = null,
 
     /// Allocator used for hal_files and ini_files
     allocator: std.mem.Allocator,
@@ -50,12 +57,75 @@ pub const Config = struct {
         if (self.log_file_path) |p| {
             self.allocator.free(p);
         }
+
+        if (self.config_file_path) |p| {
+            self.allocator.free(p);
+        }
+
+        // Free enabled plugins list
+        if (self.enabled_plugins) |plugins| {
+            for (plugins) |p| {
+                self.allocator.free(p);
+            }
+            self.allocator.free(plugins);
+        }
+    }
+
+    /// Merge TOML configuration into this config
+    /// TOML values don't override command-line values
+    pub fn mergeToml(self: *Config, toml: toml_config.TomlConfig) !void {
+        // Merge hal_files
+        if (toml.files.hal_files) |files| {
+            for (files) |f| {
+                // Check if already in list (from command line)
+                const already_exists = for (self.hal_files.items) |existing| {
+                    if (std.mem.eql(u8, existing, f)) break true;
+                } else false;
+
+                if (!already_exists) {
+                    try self.hal_files.append(self.allocator, try self.allocator.dupe(u8, f));
+                }
+            }
+        }
+
+        // Merge ini_files
+        if (toml.files.ini_files) |files| {
+            for (files) |f| {
+                // Check if already in list (from command line)
+                const already_exists = for (self.ini_files.items) |existing| {
+                    if (std.mem.eql(u8, existing, f)) break true;
+                } else false;
+
+                if (!already_exists) {
+                    try self.ini_files.append(self.allocator, try self.allocator.dupe(u8, f));
+                }
+            }
+        }
+
+        // Log file path only if not already set by command line
+        if (self.log_file_path == null and toml.logging.file != null) {
+            if (toml.logging.file) |f| {
+                self.log_file_path = try self.allocator.dupe(u8, f);
+            }
+        }
+
+        // Merge enabled plugins
+        if (self.enabled_plugins == null and toml.plugins.enabled != null) {
+            if (toml.plugins.enabled) |plugins| {
+                const copied = try self.allocator.alloc([]const u8, plugins.len);
+                for (plugins, 0..) |p, i| {
+                    copied[i] = try self.allocator.dupe(u8, p);
+                }
+                self.enabled_plugins = copied;
+            }
+        }
     }
 };
 
 /// Parse command-line arguments
 ///
 /// Supported arguments:
+///   -c <file.toml> : Load configuration from TOML file
 ///   -f <file.hal>  : Add .hal file for origin tracking
 ///   -i <file.ini>  : Add .ini file for origin tracking
 ///   --log-file <path> : Write debug logs to file instead of stderr
@@ -63,6 +133,10 @@ pub const Config = struct {
 ///   -h, --help     : Show help message
 pub fn parseArgs(allocator: std.mem.Allocator, args: []const []const u8) !Config {
     var config = Config.init(allocator);
+
+    // Track if we should look for default config file
+    var try_default_config = true;
+    var explicit_config: ?[]const u8 = null;
 
     var i: usize = 0;
     while (i < args.len) : (i += 1) {
@@ -73,6 +147,20 @@ pub fn parseArgs(allocator: std.mem.Allocator, args: []const []const u8) !Config
         } else if (std.mem.eql(u8, arg, "-h") or std.mem.eql(u8, arg, "--help")) {
             printHelp();
             std.process.exit(0);
+        } else if (std.mem.eql(u8, arg, "-c") or std.mem.eql(u8, arg, "--config")) {
+            // Next arg is the config file path
+            i += 1;
+            if (i >= args.len) {
+                std.debug.print("ERROR: -c/--config requires a file path argument\n\n", .{});
+                printHelp();
+                std.process.exit(1);
+            }
+            explicit_config = args[i];
+            try_default_config = false;
+        } else if (std.mem.startsWith(u8, arg, "--config=")) {
+            // Handle --config=path format
+            explicit_config = arg[9..];
+            try_default_config = false;
         } else if (std.mem.eql(u8, arg, "--log-file")) {
             // Next arg is the log file path
             i += 1;
@@ -122,6 +210,29 @@ pub fn parseArgs(allocator: std.mem.Allocator, args: []const []const u8) !Config
         }
     }
 
+    // Load TOML config if specified
+    if (explicit_config) |path| {
+        std.log.info("Loading configuration from: {s}", .{path});
+        var toml_cfg = try toml_config.loadConfig(allocator, path);
+        defer toml_config.deinit(&toml_cfg, allocator);
+        config.config_file_path = try allocator.dupe(u8, path);
+        try config.mergeToml(toml_cfg);
+    } else if (try_default_config) {
+        // Try to load default config file
+        if (toml_config.loadConfig(allocator, null)) |toml_cfg| {
+            var cfg = toml_cfg;
+            defer toml_config.deinit(&cfg, allocator);
+            std.log.info("Loaded configuration from haltune.toml", .{});
+            config.config_file_path = try allocator.dupe(u8, "haltune.toml");
+            try config.mergeToml(cfg);
+        } else |err| {
+            if (err != error.FileNotFound) {
+                std.log.warn("Failed to load config file: {}", .{err});
+            }
+            // FileNotFound is expected - no config file
+        }
+    }
+
     return config;
 }
 
@@ -134,13 +245,22 @@ fn printHelp() void {
         \\  haltune [options]
         \\
         \\Options:
-        \\  -f <file.hal>   Load .hal file for origin tracking
-        \\                   Can be specified multiple times
-        \\  -i <file.ini>   Load .ini file for origin tracking
-        \\                   Can be specified multiple times
-        \\  --log-file <path>  Write debug logs to file instead of stderr
-        \\  --test-mode, -t  Enable test mode (bypass terminal size check)
-        \\  -h, --help       Show this help message
+        \\  -c, --config <file.toml>  Load configuration from TOML file
+        \\                           (default: looks for haltune.toml)
+        \\  -f <file.hal>             Load .hal file for origin tracking
+        \\                           Can be specified multiple times
+        \\  -i <file.ini>             Load .ini file for origin tracking
+        \\                           Can be specified multiple times
+        \\  --log-file <path>         Write debug logs to file instead of stderr
+        \\  --test-mode, -t           Enable test mode (bypass terminal check)
+        \\  -h, --help                Show this help message
+        \\
+        \\Configuration file (haltune.toml):
+        \\  [files]
+        \\    hal_files = ["custom.hal", "core_stepper.hal"]
+        \\    ini_files = ["myconfig.ini"]
+        \\  [logging]
+        \\    file = "debug.log"
         \\
         \\Key bindings (in TUI):
         \\  Ctrl+Q         Quit application
@@ -157,6 +277,8 @@ fn printHelp() void {
         \\  Up/Down/Page     Navigate
         \\
         \\Examples:
+        \\  haltune
+        \\  haltune -c myconfig.toml
         \\  haltune -f custom.hal
         \\  haltune -f core_stepper.hal -f custom.hal -i myconfig.ini
         \\  haltune --log-file debug.log -f test.hal

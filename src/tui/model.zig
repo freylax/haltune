@@ -14,6 +14,12 @@ const ItemType = @import("widgets/data_table.zig").ItemType;
 const SignalDialog = @import("widgets/signal_dialog.zig").SignalDialog;
 const safe = @import("../ffi/safe.zig");
 
+// Import C HAL functions directly for checkHalAvailable
+const hal_c = @cImport({
+    @cDefine("ULAPI", "");
+    @cInclude("hal.h");
+});
+
 /// Configuration for haltune from root.zig
 const Config = @import("../root.zig").Config;
 
@@ -106,7 +112,7 @@ pub const Model = struct {
     ) !Model {
         // Check if HAL is available before attempting to initialize
         // This prevents EINTR crashes when LinuxCNC is not running
-        try @import("../ffi/errors.zig").checkHalAvailable();
+        try @import("../ffi/errors.zig").checkHalAvailable(hal_c.hal_init, hal_c.hal_exit);
 
         // Initialize HAL component
         // halInit will try "haltune", "haltune1", "haltune2", etc. if there are conflicts

@@ -10,6 +10,10 @@
             .url = "git+https://github.com/xcaeser/glob.zig.git#3a03cc87147c9c74cb16594bdc881541c0175a7f",
             .hash = "glob-0.1.0-AymqdJQ4AABqoaLWCtZyfQh4_bEh7c8bhffcZNp7HWsL",
         },
+        .toml = .{
+            .url = "git+https://github.com/sam701/zig-toml.git#475b03c630c802f8b6bd3e239d8fc2279b4fadb8",
+            .hash = "toml-0.3.0-bV14BfV7AQD8DkuQI7skP8ekQTaBYKTO0MY_35Cw_EXo",
+        },
     },
     .paths = .{""},
     .fingerprint = 0xca9ed5c135c317e2,

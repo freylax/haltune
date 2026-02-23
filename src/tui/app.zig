@@ -5,6 +5,8 @@ const StateStore = @import("../state/cache.zig").StateStore;
 const SubscriptionManager = @import("../state/pubsub.zig").SubscriptionManager;
 const RefreshThread = @import("../state/refresh.zig").RefreshThread;
 const HalError = @import("../ffi/errors.zig").HalError;
+const plugin_registry = @import("../plugin/registry.zig");
+const plugins_mod = @import("../plugins/plugins.zig");
 
 /// Configuration for haltune from root.zig
 pub const Config = @import("../root.zig").Config;
@@ -41,6 +43,15 @@ pub fn main(config: Config) !void {
     // MUST use page_allocator since it's accessed by refresh thread
     var pubsub = SubscriptionManager.init(thread_safe_allocator);
     defer pubsub.deinit();
+
+    // Initialize plugin registry
+    try plugin_registry.initGlobalRegistry(allocator);
+    defer plugin_registry.deinitGlobalRegistry();
+
+    // Register all available plugins
+    try plugins_mod.registerAllPlugins(allocator);
+    const registry = plugin_registry.getGlobalRegistry();
+    std.log.info("Registered {d} plugins", .{if (registry) |r| r.count() else 0});
 
     // Parse configuration files if provided
     // This builds origin tracking data before initializing Model
