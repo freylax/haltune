@@ -5,7 +5,8 @@ const StateStore = @import("../state/cache.zig").StateStore;
 const SubscriptionManager = @import("../state/pubsub.zig").SubscriptionManager;
 const RefreshThread = @import("../state/refresh.zig").RefreshThread;
 const HalError = @import("../ffi/errors.zig").HalError;
-const plugin_registry = @import("../plugin/registry.zig");
+const plugin_registry_mod = @import("../plugin/registry.zig");
+const plugin_manager_mod = @import("../plugin/manager.zig");
 const plugins_mod = @import("../plugins/plugins.zig");
 
 /// Configuration for haltune from root.zig
@@ -45,13 +46,18 @@ pub fn main(config: Config) !void {
     defer pubsub.deinit();
 
     // Initialize plugin registry
-    try plugin_registry.initGlobalRegistry(allocator);
-    defer plugin_registry.deinitGlobalRegistry();
+    try plugin_registry_mod.initGlobalRegistry(allocator);
+    defer plugin_registry_mod.deinitGlobalRegistry();
 
     // Register all available plugins
     try plugins_mod.registerAllPlugins(allocator);
-    const registry = plugin_registry.getGlobalRegistry();
+    const registry = plugin_registry_mod.getGlobalRegistry();
     std.log.info("Registered {d} plugins", .{if (registry) |r| r.count() else 0});
+
+    // Initialize plugin manager
+    var plugin_manager = if (registry) |r| plugin_manager_mod.PluginManager.init(allocator, r) else return error.PluginRegistryNotAvailable;
+    plugin_manager_mod.setGlobalPluginManager(&plugin_manager);
+    defer plugin_manager.deinit();
 
     // Parse configuration files if provided
     // This builds origin tracking data before initializing Model

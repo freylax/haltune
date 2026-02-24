@@ -61,6 +61,12 @@ pub const PluginRegistry = struct {
     pub fn count(self: *const PluginRegistry) usize {
         return self.plugins.items.len;
     }
+
+    /// Get a plugin by index
+    pub fn getPluginByIndex(self: *const PluginRegistry, idx: usize) ?*const interface.Plugin {
+        if (idx >= self.plugins.items.len) return null;
+        return self.plugins.items[idx];
+    }
 };
 
 /// Global plugin registry instance

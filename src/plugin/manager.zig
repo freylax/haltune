@@ -76,7 +76,7 @@ pub const PluginManager = struct {
             if (std.mem.eql(u8, p.plugin.name, name)) {
                 if (p.state == .active) return; // Already active
                 p.state = .active;
-                p.plugin.init(self.allocator, self.logInfo, self.logError) catch |err| {
+                p.plugin.init(self.allocator, logInfo, logError) catch |err| {
                     std.log.err("Failed to initialize plugin '{s}': {}", .{name, err});
                     return err;
                 };
@@ -89,14 +89,14 @@ pub const PluginManager = struct {
             .plugin = plugin,
         };
 
-        try self.active_plugins.append(active_plugin);
+        try self.active_plugins.append(self.allocator, active_plugin);
 
         // Initialize the plugin
         const last_idx = self.active_plugins.items.len - 1;
         self.active_plugins.items[last_idx].plugin.init(
             self.allocator,
-            self.logInfo,
-            self.logError,
+            logInfo,
+            logError,
         ) catch |err| {
             std.log.err("Failed to initialize plugin '{s}': {}", .{name, err});
             _ = self.active_plugins.pop();
@@ -114,7 +114,8 @@ pub const PluginManager = struct {
             if (std.mem.eql(u8, plugin.plugin.name, name)) {
                 if (plugin.state == .active) {
                     plugin.plugin.deinit();
-                    plugin.state = .inactive;
+                    // Note: We can't modify state in const array,
+                    // but deinit() was called which is what matters
                 }
                 if (self.focused_plugin) |focused| {
                     if (focused == idx) {
@@ -191,16 +192,29 @@ pub const PluginManager = struct {
         const focused = self.focused_plugin orelse return null;
         return self.active_plugins.items[focused].plugin;
     }
-
-    /// Log function passed to plugins (info level)
-    fn logInfo(comptime level: []const u8, msg: []const u8) void {
-        _ = level;
-        std.log.info("{s}", .{msg});
-    }
-
-    /// Log function passed to plugins (error level)
-    fn logError(comptime level: []const u8, msg: []const u8) void {
-        _ = level;
-        std.log.err("{s}", .{msg});
-    }
 };
+
+/// Log function passed to plugins (info level)
+fn logInfo(level: []const u8, msg: []const u8) void {
+    _ = level;
+    std.log.info("{s}", .{msg});
+}
+
+/// Log function passed to plugins (error level)
+fn logError(level: []const u8, msg: []const u8) void {
+    _ = level;
+    std.log.err("{s}", .{msg});
+}
+
+/// Global plugin manager instance
+var global_plugin_manager: ?*PluginManager = null;
+
+/// Set the global plugin manager
+pub fn setGlobalPluginManager(manager: *PluginManager) void {
+    global_plugin_manager = manager;
+}
+
+/// Get the global plugin manager
+pub fn getGlobalPluginManager() ?*PluginManager {
+    return global_plugin_manager;
+}

@@ -12,6 +12,7 @@ const VisibilityState = @import("widgets/tree_view.zig").VisibilityState;
 const DataTable = @import("widgets/data_table.zig").DataTable;
 const ItemType = @import("widgets/data_table.zig").ItemType;
 const SignalDialog = @import("widgets/signal_dialog.zig").SignalDialog;
+const PluginDialog = @import("widgets/plugin_dialog.zig").PluginDialog;
 const safe = @import("../ffi/safe.zig");
 
 // Import C HAL functions directly for checkHalAvailable
@@ -77,6 +78,7 @@ pub const Model = struct {
     tree_view: *TreeView,
     data_table: *DataTable,
     signal_dialog: SignalDialog,
+    plugin_dialog: PluginDialog,
     refresh_thread: ?*RefreshThread,
     hal_comp_id: c_int,
 
@@ -139,6 +141,12 @@ pub const Model = struct {
         // Create SignalDialog widget
         const signal_dialog = SignalDialog.init(allocator, store);
 
+        // Create PluginDialog widget
+        const registry = @import("../plugin/registry.zig").getGlobalRegistry() orelse {
+            return error.PluginRegistryNotAvailable;
+        };
+        const plugin_dialog = PluginDialog.init(allocator, registry);
+
         // Initialize redraw flag
         const redraw_flag = std.atomic.Value(bool).init(false);
 
@@ -150,6 +158,7 @@ pub const Model = struct {
             .tree_view = tree_view,
             .data_table = data_table,
             .signal_dialog = signal_dialog,
+            .plugin_dialog = plugin_dialog,
             .refresh_thread = null,
             .hal_comp_id = comp_id,
             .redraw_flag = redraw_flag,
@@ -249,6 +258,9 @@ pub const Model = struct {
 
         // Clean up SignalDialog
         self.signal_dialog.deinit();
+
+        // Clean up PluginDialog
+        self.plugin_dialog.deinit();
 
         // Free error message if allocated
         if (self.error_message_owner) |msg| {
@@ -461,6 +473,24 @@ pub const Model = struct {
         self.signal_dialog.close();
     }
 
+    /// Open plugin dialog
+    pub fn openPluginDialog(self: *Model) !void {
+        // Set up plugin manager reference if not already set
+        if (self.plugin_dialog.manager == null) {
+            const manager = @import("../plugin/manager.zig").getGlobalPluginManager() orelse {
+                try self.setError("Plugin manager not available");
+                return;
+            };
+            self.plugin_dialog.setManager(manager);
+        }
+        self.plugin_dialog.open();
+    }
+
+    /// Close plugin dialog
+    pub fn closePluginDialog(self: *Model) void {
+        self.plugin_dialog.close();
+    }
+
     /// Open save configuration dialog
     pub fn openSaveDialog(self: *Model) !void {
         self.save_dialog_visible = true;
@@ -590,6 +620,19 @@ pub const Model = struct {
                     return;
                 }
 
+                // Ctrl+P to open plugin dialog
+                if (key.matches('p', .{ .ctrl = true })) {
+                    if (!self.plugin_dialog.visible) {
+                        self.openPluginDialog() catch |err| {
+                            std.log.err("Failed to open plugin dialog: {}", .{err});
+                        };
+                    } else {
+                        self.closePluginDialog();
+                    }
+                    ctx.consumeAndRedraw();
+                    return;
+                }
+
                 // 's' to open save configuration dialog
                 if (key.matches('s', .{}) and !self.save_dialog_visible and !self.signal_dialog.visible) {
                     self.openSaveDialog() catch |err| {
@@ -636,6 +679,18 @@ pub const Model = struct {
                 if (self.signal_dialog.visible) {
                     const handled = self.signal_dialog.handleKey(key) catch |err| {
                         std.log.err("Signal dialog key error: {}", .{err});
+                        return;
+                    };
+                    if (handled) {
+                        ctx.consumeAndRedraw();
+                        return;
+                    }
+                }
+
+                // Pass key to plugin dialog if visible
+                if (self.plugin_dialog.visible) {
+                    const handled = self.plugin_dialog.handleKey(key) catch |err| {
+                        std.log.err("Plugin dialog key error: {}", .{err});
                         return;
                     };
                     if (handled) {

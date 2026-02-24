@@ -7,6 +7,8 @@ const TreeView = @import("widgets/tree_view.zig").TreeView;
 const DataTable = @import("widgets/data_table.zig").DataTable;
 const ItemType = @import("widgets/data_table.zig").ItemType;
 const TreeNode = @import("widgets/tree_view.zig").Node;
+const SignalDialog = @import("widgets/signal_dialog.zig").SignalDialog;
+const PluginDialog = @import("widgets/plugin_dialog.zig").PluginDialog;
 
 /// Draw function for conditional single-panel layout
 /// Renders either tree view or table view at full width based on current_view
@@ -18,6 +20,28 @@ pub fn drawTwoPanelLayout(
 
     // Get maximum available size
     const max = ctx.max.size();
+
+    // Draw plugin dialog if visible
+    if (self.plugin_dialog.visible) {
+        const dialog_surface = try self.plugin_dialog.draw(ctx, max.width);
+        var children = try ctx.arena.alloc(vxfw.SubSurface, 1);
+        children[0] = .{
+            .origin = .{ .row = 0, .col = 0 },
+            .surface = dialog_surface,
+        };
+        return .{
+            .size = max,
+            .widget = self.widget(),
+            .buffer = &.{},
+            .children = children,
+        };
+    }
+
+    // Draw signal dialog if visible
+    if (self.signal_dialog.visible) {
+        // Signal dialog draws inline to the main surface
+        // Just continue to normal rendering
+    }
 
     // TODO: Draw save dialog if visible
     // Draw centered modal box with filename input
@@ -137,8 +161,8 @@ fn createHelpText(ctx: vxfw.DrawContext, view_mode: ViewMode, model: *const Mode
 
     // Build key hints for right side
     const key_hints = switch (view_mode) {
-        .tree_only => "Ctrl+T=Table | Space=Check +/-=Vis /=Search n=NewSignal s=Save Esc=Clear Ctrl+Q=Quit",
-        .table_only => "Ctrl+T=Tree | Space=Check /=Search t=Type c=Comp Esc=Clear Ctrl+Q=Quit",
+        .tree_only => "Ctrl+T=Table | Space=Check +/-=Vis /=Search n=NewSignal s=Save Ctrl+P=Plugins Esc=Clear Ctrl+Q=Quit",
+        .table_only => "Ctrl+T=Tree | Space=Check /=Search t=Type c=Comp Ctrl+P=Plugins Esc=Clear Ctrl+Q=Quit",
     };
 
     // Get max width
