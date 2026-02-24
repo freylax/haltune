@@ -23,7 +23,9 @@ pub fn drawTwoPanelLayout(
 
     // Draw plugin dialog if visible
     if (self.plugin_dialog.visible) {
+        std.log.err("Drawing plugin dialog: visible=true, max.width={d}", .{max.width});
         const dialog_surface = try self.plugin_dialog.draw(ctx, max.width);
+        std.log.err("Dialog surface created: width={d}, height={d}", .{dialog_surface.size.width, dialog_surface.size.height});
         var children = try ctx.arena.alloc(vxfw.SubSurface, 1);
         children[0] = .{
             .origin = .{ .row = 0, .col = 0 },

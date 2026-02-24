@@ -475,6 +475,7 @@ pub const Model = struct {
 
     /// Open plugin dialog
     pub fn openPluginDialog(self: *Model) !void {
+        std.log.err("openPluginDialog called", .{});
         // Set up plugin manager reference if not already set
         if (self.plugin_dialog.manager == null) {
             const manager = @import("../plugin/manager.zig").getGlobalPluginManager() orelse {
@@ -484,6 +485,7 @@ pub const Model = struct {
             self.plugin_dialog.setManager(manager);
         }
         self.plugin_dialog.open();
+        std.log.err("openPluginDialog done: visible={}", .{self.plugin_dialog.visible});
     }
 
     /// Close plugin dialog
