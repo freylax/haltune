@@ -462,16 +462,14 @@ pub const TreeView = struct {
                 if (!glob.match(self.search_pattern, signal_name)) continue;
             }
 
-            const display_name = try extractItemName(self.allocator, signal_name);
-            defer self.allocator.free(display_name);
-
-            // For signals, show full name (without component prefix) since they're all under "Signals"
-            const full_name_copy = try self.allocator.dupe(u8, signal_name);
+            // For signals, show the full signal name (not stripped of prefix)
+            // since they're all grouped under "Signals" pseudo-component
+            const display_name = try self.allocator.dupe(u8, signal_name);
             const signal_node = try Node.init(
                 self.allocator,
                 display_name,
                 .signal,
-                full_name_copy,
+                display_name, // full_name same as display_name for signals
                 signals_node,
             );
             if (signals_node.children) |*children| {

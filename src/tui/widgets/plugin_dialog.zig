@@ -223,28 +223,67 @@ pub const PluginDialog = struct {
 
         const plugin_count = self.registry.count();
 
-        // Draw simple ASCII border and title
-        const title = "Available Plugins (Ctrl+O to close, q=quit)";
+        // Draw border box
+        // Top border
+        for (0..width) |i| {
+            surface.writeCell(@intCast(i), 0, .{
+                .char = .{ .grapheme = "-", .width = 1 },
+                .style = .{ .dim = true },
+            });
+        }
+        // Bottom border
+        for (0..width) |i| {
+            surface.writeCell(@intCast(i), height - 1, .{
+                .char = .{ .grapheme = "-", .width = 1 },
+                .style = .{ .dim = true },
+            });
+        }
+        // Left border
+        for (1..height - 1) |i| {
+            surface.writeCell(0, @intCast(i), .{
+                .char = .{ .grapheme = "|", .width = 1 },
+                .style = .{ .dim = true },
+            });
+        }
+        // Right border
+        for (1..height - 1) |i| {
+            surface.writeCell(width - 1, @intCast(i), .{
+                .char = .{ .grapheme = "|", .width = 1 },
+                .style = .{ .dim = true },
+            });
+        }
 
-        // Title row
+        // Title
+        const title = "Available Plugins";
+        const title_start = @as(usize, @intCast((width - title.len) / 2));
         for (title, 0..) |c, i| {
-            if (i < width) surface.writeCell(@intCast(i), 0, .{
+            if (title_start + i < width) surface.writeCell(@intCast(title_start + i), 1, .{
                 .char = .{ .grapheme = &[1]u8{c}, .width = 1 },
                 .style = .{ .bold = true },
             });
         }
 
-        // Separator
-        for (0..width) |i| {
-            surface.writeCell(@intCast(i), 1, .{
-                .char = .{ .grapheme = "-", .width = 1 },
-                .style = .{},
-            });
-        }
+        // Draw plugin list (start at row 3, below title)
+        const start_row: u16 = 3;
+        const available_height = if (height > start_row + 2) height - start_row - 1 else 1;
+        const content_height_usable = if (available_height > 0) available_height else 1;
+        self.content_height = @as(usize, @intCast(content_height_usable));
 
-        // Draw plugin list
-        const end_idx = @min(self.scroll_offset + self.content_height, plugin_count);
-        for (self.scroll_offset..end_idx) |i| {
+        if (plugin_count == 0) {
+            // Show "no plugins" message centered
+            const msg = "No plugins registered";
+            const msg_start = if (width > msg.len) (width - msg.len) / 2 else 0;
+            for (msg, 0..) |c, i| {
+                if (msg_start + i < width and msg_start + i < width - 1) {
+                    surface.writeCell(@intCast(msg_start + i), start_row, .{
+                        .char = .{ .grapheme = &[1]u8{c}, .width = 1 },
+                        .style = .{ .dim = true },
+                    });
+                }
+            }
+        } else {
+            const end_idx = @min(self.scroll_offset + self.content_height, plugin_count);
+            for (self.scroll_offset..end_idx) |i| {
             const plugin = self.registry.getPluginByIndex(i) orelse continue;
             const is_active = self.isPluginActive(plugin.name);
             const is_selected = (i == self.selected_idx);
@@ -298,12 +337,12 @@ pub const PluginDialog = struct {
             }
         }
 
-        // Bottom help
-        if (height > 5) {
-            const help_row = @min(height - 2, 3 + @as(u16, @intCast(end_idx - self.scroll_offset)));
-            const help = "Enter: Toggle | +/-: Navigate";
-            for (help, 0..) |c, i| {
-                if (i < width) surface.writeCell(@intCast(i), help_row, .{
+        // Bottom help text
+        const help = "Enter:Toggle q/Q:Quit";
+        const help_start = if (width > help.len) (width - help.len) / 2 else 1;
+        for (help, 0..) |c, i| {
+            if (help_start + i < width - 1) {
+                surface.writeCell(@intCast(help_start + i), height - 2, .{
                     .char = .{ .grapheme = &[1]u8{c}, .width = 1 },
                     .style = .{ .dim = true },
                 });

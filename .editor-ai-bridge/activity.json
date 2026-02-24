@@ -3439,6 +3439,177 @@
       "description": "Modified:     // Draw signal dialog if visible",
       "timestamp": 1771942571,
       "severity": null
+    },
+    {
+      "id": "edit-1771947343-181",
+      "type": "edit_capture",
+      "file_path": "/home/robert/prog/zig/haltune/src/tui/model.zig",
+      "range": {
+        "start": {
+          "line": 0,
+          "character": 0
+        },
+        "end": {
+          "line": 0,
+          "character": 0
+        }
+      },
+      "actor": "claude-code",
+      "description": "Modified:                 // Ctrl+O to open plugin dialog",
+      "timestamp": 1771947343,
+      "severity": null
+    },
+    {
+      "id": "edit-1771947383-182",
+      "type": "edit_capture",
+      "file_path": "/home/robert/prog/zig/haltune/src/tui/widgets/plugin_dialog.zig",
+      "range": {
+        "start": {
+          "line": 0,
+          "character": 0
+        },
+        "end": {
+          "line": 0,
+          "character": 0
+        }
+      },
+      "actor": "claude-code",
+      "description": "Modified:         // Ctrl+O to close (toggle)",
+      "timestamp": 1771947383,
+      "severity": null
+    },
+    {
+      "id": "edit-1771947472-183",
+      "type": "edit_capture",
+      "file_path": "/home/robert/prog/zig/haltune/src/tui/widgets/plugin_dialog.zig",
+      "range": {
+        "start": {
+          "line": 0,
+          "character": 0
+        },
+        "end": {
+          "line": 0,
+          "character": 0
+        }
+      },
+      "actor": "claude-code",
+      "description": "Modified:         // Draw simple ASCII border and title",
+      "timestamp": 1771947472,
+      "severity": null
+    },
+    {
+      "id": "edit-1771947509-184",
+      "type": "edit_capture",
+      "file_path": "/home/robert/prog/zig/haltune/src/tui/layout.zig",
+      "range": {
+        "start": {
+          "line": 0,
+          "character": 0
+        },
+        "end": {
+          "line": 0,
+          "character": 0
+        }
+      },
+      "actor": "claude-code",
+      "description": "Modified:     // Build key hints for right side",
+      "timestamp": 1771947509,
+      "severity": null
+    },
+    {
+      "id": "edit-1771947876-185",
+      "type": "edit_capture",
+      "file_path": "/home/robert/prog/zig/haltune/src/tui/widgets/tree_view.zig",
+      "range": {
+        "start": {
+          "line": 0,
+          "character": 0
+        },
+        "end": {
+          "line": 0,
+          "character": 0
+        }
+      },
+      "actor": "claude-code",
+      "description": "Modified: /// Build tree from HAL data in StateStore",
+      "timestamp": 1771947876,
+      "severity": null
+    },
+    {
+      "id": "edit-1771951715-186",
+      "type": "edit_capture",
+      "file_path": "/home/robert/prog/zig/haltune/src/tui/widgets/tree_view.zig",
+      "range": {
+        "start": {
+          "line": 0,
+          "character": 0
+        },
+        "end": {
+          "line": 0,
+          "character": 0
+        }
+      },
+      "actor": "claude-code",
+      "description": "Modified:         // Add all signals as children of the Signals pseudo-component",
+      "timestamp": 1771951715,
+      "severity": null
+    },
+    {
+      "id": "edit-1771952039-187",
+      "type": "edit_capture",
+      "file_path": "/home/robert/prog/zig/haltune/src/tui/widgets/plugin_dialog.zig",
+      "range": {
+        "start": {
+          "line": 0,
+          "character": 0
+        },
+        "end": {
+          "line": 0,
+          "character": 0
+        }
+      },
+      "actor": "claude-code",
+      "description": "Modified:         const plugin_count = self.registry.count();",
+      "timestamp": 1771952039,
+      "severity": null
+    },
+    {
+      "id": "edit-1771952079-188",
+      "type": "edit_capture",
+      "file_path": "/home/robert/prog/zig/haltune/src/tui/widgets/plugin_dialog.zig",
+      "range": {
+        "start": {
+          "line": 0,
+          "character": 0
+        },
+        "end": {
+          "line": 0,
+          "character": 0
+        }
+      },
+      "actor": "claude-code",
+      "description": "Modified:         // Draw plugin list (start at row 3, below title)",
+      "timestamp": 1771952079,
+      "severity": null
+    },
+    {
+      "id": "edit-1771952116-189",
+      "type": "edit_capture",
+      "file_path": "/home/robert/prog/zig/haltune/src/tui/widgets/plugin_dialog.zig",
+      "range": {
+        "start": {
+          "line": 0,
+          "character": 0
+        },
+        "end": {
+          "line": 0,
+          "character": 0
+        }
+      },
+      "actor": "claude-code",
+      "description": "Modified:             }",
+      "timestamp": 1771952116,
+      "severity": null
     }
   ]
 }
