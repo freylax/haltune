@@ -622,10 +622,12 @@ pub const Model = struct {
 
                 // Ctrl+O to open plugin dialog
                 if (key.matches('o', .{ .ctrl = true })) {
+                    std.log.err("Ctrl+O pressed: plugin_dialog.visible={}", .{self.plugin_dialog.visible});
                     if (!self.plugin_dialog.visible) {
                         self.openPluginDialog() catch |err| {
                             std.log.err("Failed to open plugin dialog: {}", .{err});
                         };
+                        std.log.err("After open: plugin_dialog.visible={}", .{self.plugin_dialog.visible});
                     } else {
                         self.closePluginDialog();
                     }
