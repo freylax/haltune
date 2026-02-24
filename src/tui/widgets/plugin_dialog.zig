@@ -103,8 +103,8 @@ pub const PluginDialog = struct {
             return true;
         }
 
-        // Ctrl+P to close (toggle)
-        if (key.matches('p', .{ .ctrl = true })) {
+        // Ctrl+O to close (toggle)
+        if (key.matches('o', .{ .ctrl = true })) {
             self.close();
             return true;
         }
@@ -224,7 +224,7 @@ pub const PluginDialog = struct {
         const plugin_count = self.registry.count();
 
         // Draw simple ASCII border and title
-        const title = "Available Plugins (Ctrl+P to close, q=quit)";
+        const title = "Available Plugins (Ctrl+O to close, q=quit)";
 
         // Title row
         for (title, 0..) |c, i| {

@@ -253,6 +253,8 @@ pub const TreeView = struct {
     }
 
     /// Build tree from HAL data in StateStore
+    /// New structure: Components first (with pins/params as children),
+    /// then a "Signals" pseudo-component containing all signals
     pub fn buildTree(self: *TreeView) !void {
         // Clean up existing tree before rebuilding
         for (self.root.items) |node| {
@@ -298,141 +300,192 @@ pub const TreeView = struct {
             self.allocator.free(params);
         }
 
-        // HashMap to group items by component
-        // Note: ComponentGroup now owns its name copy, so we don't need to free HashMap keys
-        var component_map = std.StringHashMap(ComponentGroup).init(self.allocator);
+        // Track unique component names to avoid duplicates
+        var component_set = std.StringHashMap(void).init(self.allocator);
         defer {
-            var iter = component_map.iterator();
+            var iter = component_set.iterator();
             while (iter.next()) |entry| {
-                entry.value_ptr.*.deinit();
+                self.allocator.free(entry.key_ptr.*);
             }
-            component_map.deinit();
+            component_set.deinit();
         }
 
-        // Group pins by component (filter by search pattern if set)
-        for (pins) |pin_name| {
-            // Skip if search pattern is set and doesn't match
-            if (self.search_pattern.len > 0) {
-                if (!glob.match(self.search_pattern, pin_name)) continue;
+        // Track processed components to avoid adding duplicates
+        var processed_components = std.StringHashMap(void).init(self.allocator);
+        defer {
+            var iter = processed_components.iterator();
+            while (iter.next()) |entry| {
+                self.allocator.free(entry.key_ptr.*);
             }
+            processed_components.deinit();
+        }
 
+        // First pass: collect all unique component names from pins
+        for (pins) |pin_name| {
             const component_name = try extractComponentName(self.allocator, pin_name);
             defer self.allocator.free(component_name);
 
-            const gop = try component_map.getOrPut(component_name);
-            if (!gop.found_existing) {
-                gop.value_ptr.* = try ComponentGroup.init(self.allocator, component_name);
-            }
-
-            // Duplicate pin name so ComponentGroup owns it (pins array will be freed)
-            const pin_copy = try gop.value_ptr.allocator.dupe(u8, pin_name);
-            try gop.value_ptr.pins.append(gop.value_ptr.allocator, pin_copy);
+            const comp_copy = try self.allocator.dupe(u8, component_name);
+            try component_set.put(comp_copy, {});
         }
 
-        // Group signals by component (filter by search pattern if set)
+        // Also collect component names from params
+        for (params) |param_name| {
+            const component_name = try extractComponentName(self.allocator, param_name);
+            defer self.allocator.free(component_name);
+
+            const gop = try component_set.getOrPut(component_name);
+            if (!gop.found_existing) {
+                const comp_copy = try self.allocator.dupe(u8, component_name);
+                gop.key_ptr.* = comp_copy;
+            }
+        }
+
+        // Second pass: build component nodes with pins and params
+        // Iterate over unique component names in sorted order
+        var component_names = try std.ArrayList([]const u8).initCapacity(self.allocator, component_set.count());
+        defer {
+            for (component_names.items) |n| self.allocator.free(n);
+            component_names.deinit(self.allocator);
+        }
+
+        {
+            var iter = component_set.iterator();
+            while (iter.next()) |entry| {
+                try component_names.append(self.allocator, try self.allocator.dupe(u8, entry.key_ptr.*));
+            }
+        }
+
+        // Sort component names alphabetically
+        std.sort.insertion([]const u8, component_names.items, {}, struct {
+            fn compare(_: void, a: []const u8, b: []const u8) bool {
+                return std.mem.order(u8, a, b) == .lt;
+            }
+        }.compare);
+
+        // Build component nodes
+        for (component_names.items) |comp_name| {
+            const comp_name_copy = try self.allocator.dupe(u8, comp_name);
+            const component_node = try Node.init(
+                self.allocator,
+                comp_name_copy,
+                .component,
+                comp_name_copy,
+                null,
+            );
+
+            var has_children = false;
+
+            // Add pins for this component
+            for (pins) |pin_name| {
+                // Skip if search pattern is set and doesn't match
+                if (self.search_pattern.len > 0) {
+                    if (!glob.match(self.search_pattern, pin_name)) continue;
+                }
+
+                const pin_comp = try extractComponentName(self.allocator, pin_name);
+                defer self.allocator.free(pin_comp);
+
+                if (std.mem.eql(u8, pin_comp, comp_name)) {
+                    const display_name = try extractItemName(self.allocator, pin_name);
+                    const full_name_copy = try self.allocator.dupe(u8, pin_name);
+                    const pin_node = try Node.init(
+                        self.allocator,
+                        display_name,
+                        .pin,
+                        full_name_copy,
+                        component_node,
+                    );
+                    if (component_node.children) |*children| {
+                        try children.append(self.allocator, pin_node);
+                    }
+                    has_children = true;
+                }
+            }
+
+            // Add params for this component
+            for (params) |param_name| {
+                // Skip if search pattern is set and doesn't match
+                if (self.search_pattern.len > 0) {
+                    if (!glob.match(self.search_pattern, param_name)) continue;
+                }
+
+                const param_comp = try extractComponentName(self.allocator, param_name);
+                defer self.allocator.free(param_comp);
+
+                if (std.mem.eql(u8, param_comp, comp_name)) {
+                    const display_name = try extractItemName(self.allocator, param_name);
+                    const full_name_copy = try self.allocator.dupe(u8, param_name);
+                    const param_node = try Node.init(
+                        self.allocator,
+                        display_name,
+                        .param,
+                        full_name_copy,
+                        component_node,
+                    );
+                    if (component_node.children) |*children| {
+                        try children.append(self.allocator, param_node);
+                    }
+                    has_children = true;
+                }
+            }
+
+            // Only add component if it has children (pins or params)
+            if (has_children) {
+                try self.root.append(self.allocator, component_node);
+
+                // Mark as processed to avoid duplicates
+                const processed_copy = try self.allocator.dupe(u8, comp_name);
+                try processed_components.put(processed_copy, {});
+            } else {
+                // Free unused component node
+                self.freeNode(component_node);
+            }
+        }
+
+        // Build the "Signals" pseudo-component
+        const signals_comp_name = try self.allocator.dupe(u8, "Signals");
+        const signals_node = try Node.init(
+            self.allocator,
+            signals_comp_name,
+            .component,
+            signals_comp_name,
+            null,
+        );
+
+        var has_signals = false;
+
+        // Add all signals as children of the Signals pseudo-component
         for (signals) |signal_name| {
             // Skip if search pattern is set and doesn't match
             if (self.search_pattern.len > 0) {
                 if (!glob.match(self.search_pattern, signal_name)) continue;
             }
 
-            const component_name = try extractComponentName(self.allocator, signal_name);
-            defer self.allocator.free(component_name);
+            const display_name = try extractItemName(self.allocator, signal_name);
+            defer self.allocator.free(display_name);
 
-            const gop = try component_map.getOrPut(component_name);
-            if (!gop.found_existing) {
-                gop.value_ptr.* = try ComponentGroup.init(self.allocator, component_name);
-            }
-
-            // Duplicate signal name so ComponentGroup owns it
-            const signal_copy = try gop.value_ptr.allocator.dupe(u8, signal_name);
-            try gop.value_ptr.signals.append(gop.value_ptr.allocator, signal_copy);
-        }
-
-        // Group params by component (filter by search pattern if set)
-        for (params) |param_name| {
-            // Skip if search pattern is set and doesn't match
-            if (self.search_pattern.len > 0) {
-                if (!glob.match(self.search_pattern, param_name)) continue;
-            }
-
-            const component_name = try extractComponentName(self.allocator, param_name);
-            defer self.allocator.free(component_name);
-
-            const gop = try component_map.getOrPut(component_name);
-            if (!gop.found_existing) {
-                gop.value_ptr.* = try ComponentGroup.init(self.allocator, component_name);
-            }
-
-            // Duplicate param name so ComponentGroup owns it
-            const param_copy = try gop.value_ptr.allocator.dupe(u8, param_name);
-            try gop.value_ptr.params.append(gop.value_ptr.allocator, param_copy);
-        }
-
-        // Build tree structure from component groups
-        var iter = component_map.iterator();
-        while (iter.next()) |entry| {
-            // ComponentGroup owns its name, duplicate for Node
-            const comp_name = try self.allocator.dupe(u8, entry.value_ptr.name);
-            const component_node = try Node.init(
+            // For signals, show full name (without component prefix) since they're all under "Signals"
+            const full_name_copy = try self.allocator.dupe(u8, signal_name);
+            const signal_node = try Node.init(
                 self.allocator,
-                comp_name,
-                .component,
-                comp_name, // full_name same as name for components
-                null, // no parent
+                display_name,
+                .signal,
+                full_name_copy,
+                signals_node,
             );
-            try self.root.append(self.allocator, component_node);
-
-            // Add pins as children
-            for (entry.value_ptr.pins.items) |pin_name| {
-                // Display name without component prefix, full name for lookups
-                const display_name = try extractItemName(self.allocator, pin_name);
-                const full_name_copy = try self.allocator.dupe(u8, pin_name);
-                const pin_node = try Node.init(
-                    self.allocator,
-                    display_name,
-                    .pin,
-                    full_name_copy,
-                    component_node,
-                );
-                if (component_node.children) |*children| {
-                    try children.append(self.allocator, pin_node);
-                }
+            if (signals_node.children) |*children| {
+                try children.append(self.allocator, signal_node);
             }
+            has_signals = true;
+        }
 
-            // Add signals as children
-            for (entry.value_ptr.signals.items) |signal_name| {
-                // Display name without component prefix, full name for lookups
-                const display_name = try extractItemName(self.allocator, signal_name);
-                const full_name_copy = try self.allocator.dupe(u8, signal_name);
-                const signal_node = try Node.init(
-                    self.allocator,
-                    display_name,
-                    .signal,
-                    full_name_copy,
-                    component_node,
-                );
-                if (component_node.children) |*children| {
-                    try children.append(self.allocator, signal_node);
-                }
-            }
-
-            // Add params as children
-            for (entry.value_ptr.params.items) |param_name| {
-                // Display name without component prefix, full name for lookups
-                const display_name = try extractItemName(self.allocator, param_name);
-                const full_name_copy = try self.allocator.dupe(u8, param_name);
-                const param_node = try Node.init(
-                    self.allocator,
-                    display_name,
-                    .param,
-                    full_name_copy,
-                    component_node,
-                );
-                if (component_node.children) |*children| {
-                    try children.append(self.allocator, param_node);
-                }
-            }
+        // Only add Signals pseudo-component if there are signals
+        if (has_signals) {
+            try self.root.append(self.allocator, signals_node);
+        } else {
+            // Free unused Signals node
+            self.freeNode(signals_node);
         }
     }
 

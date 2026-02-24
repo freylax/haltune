@@ -620,8 +620,8 @@ pub const Model = struct {
                     return;
                 }
 
-                // Ctrl+P to open plugin dialog
-                if (key.matches('p', .{ .ctrl = true })) {
+                // Ctrl+O to open plugin dialog
+                if (key.matches('o', .{ .ctrl = true })) {
                     if (!self.plugin_dialog.visible) {
                         self.openPluginDialog() catch |err| {
                             std.log.err("Failed to open plugin dialog: {}", .{err});

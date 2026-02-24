@@ -161,8 +161,8 @@ fn createHelpText(ctx: vxfw.DrawContext, view_mode: ViewMode, model: *const Mode
 
     // Build key hints for right side
     const key_hints = switch (view_mode) {
-        .tree_only => "Ctrl+T=Table | Space=Check +/-=Vis /=Search n=NewSignal s=Save Ctrl+P=Plugins Esc=Clear Ctrl+Q=Quit",
-        .table_only => "Ctrl+T=Tree | Space=Check /=Search t=Type c=Comp Ctrl+P=Plugins Esc=Clear Ctrl+Q=Quit",
+        .tree_only => "Ctrl+T=Table | Space=Check +/-=Vis /=Search n=NewSignal s=Save Ctrl+O=Plugins Esc=Clear Ctrl+Q=Quit",
+        .table_only => "Ctrl+T=Tree | Space=Check /=Search t=Type c=Comp Ctrl+O=Plugins Esc=Clear Ctrl+Q=Quit",
     };
 
     // Get max width
