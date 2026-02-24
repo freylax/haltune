@@ -3629,6 +3629,25 @@
       "description": "Modified:             // Version (if available)",
       "timestamp": 1771952411,
       "severity": null
+    },
+    {
+      "id": "edit-1771956201-191",
+      "type": "edit_capture",
+      "file_path": "/home/robert/prog/zig/haltune/src/tui/widgets/plugin_dialog.zig",
+      "range": {
+        "start": {
+          "line": 0,
+          "character": 0
+        },
+        "end": {
+          "line": 0,
+          "character": 0
+        }
+      },
+      "actor": "claude-code",
+      "description": "Modified:             // Version (if available)",
+      "timestamp": 1771956201,
+      "severity": null
     }
   ]
 }

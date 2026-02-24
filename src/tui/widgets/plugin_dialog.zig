@@ -334,7 +334,7 @@ pub const PluginDialog = struct {
                         .style = if (is_selected) .{ .reverse = true } else .{ .dim = true },
                     });
                 }
-                }
+            }
             } // end for plugin loop
         } // end else block
 
