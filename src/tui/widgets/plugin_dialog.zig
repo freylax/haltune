@@ -205,10 +205,11 @@ pub const PluginDialog = struct {
     pub fn draw(self: *PluginDialog, ctx: vxfw.DrawContext, max_len: usize) !vxfw.Surface {
         const width = @min(max_len, 60);
         const max_height = ctx.max.height orelse 24;
-        const height = @min(20, max_height - 4);
+        // Ensure minimum height and avoid underflow
+        const height = @max(10, @min(20, max_height -| 4));
 
         // Store content height for scrolling
-        self.content_height = if (height > 4) height - 4 else 10;
+        self.content_height = if (height > 5) height - 5 else 5;
 
         // Create surface
         var surface = try vxfw.Surface.init(
