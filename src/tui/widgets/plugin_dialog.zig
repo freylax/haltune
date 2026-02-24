@@ -222,6 +222,7 @@ pub const PluginDialog = struct {
         @memset(surface.buffer, base_cell);
 
         const plugin_count = self.registry.count();
+        std.log.err("PluginDialog: plugin_count={d}, width={d}, height={d}", .{ plugin_count, width, height });
 
         // Draw border box
         // Top border
@@ -282,9 +283,13 @@ pub const PluginDialog = struct {
                 }
             }
         } else {
+            std.log.err("PluginDialog: drawing plugins, content_height={d}, scroll_offset={d}", .{ self.content_height, self.scroll_offset });
             const end_idx = @min(self.scroll_offset + self.content_height, plugin_count);
             for (self.scroll_offset..end_idx) |i| {
-            const plugin = self.registry.getPluginByIndex(i) orelse continue;
+            const plugin = self.registry.getPluginByIndex(i) orelse {
+                std.log.err("PluginDialog: failed to get plugin at index {d}", .{i});
+                continue;
+            };
             const is_active = self.isPluginActive(plugin.name);
             const is_selected = (i == self.selected_idx);
             const row = 3 + (i - self.scroll_offset);

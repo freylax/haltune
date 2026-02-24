@@ -3648,6 +3648,63 @@
       "description": "Modified:             // Version (if available)",
       "timestamp": 1771956201,
       "severity": null
+    },
+    {
+      "id": "edit-1771968251-192",
+      "type": "edit_capture",
+      "file_path": "/home/robert/prog/zig/haltune/src/tui/widgets/plugin_dialog.zig",
+      "range": {
+        "start": {
+          "line": 0,
+          "character": 0
+        },
+        "end": {
+          "line": 0,
+          "character": 0
+        }
+      },
+      "actor": "claude-code",
+      "description": "Modified:         const plugin_count = self.registry.count();",
+      "timestamp": 1771968251,
+      "severity": null
+    },
+    {
+      "id": "edit-1771968288-193",
+      "type": "edit_capture",
+      "file_path": "/home/robert/prog/zig/haltune/src/tui/widgets/plugin_dialog.zig",
+      "range": {
+        "start": {
+          "line": 0,
+          "character": 0
+        },
+        "end": {
+          "line": 0,
+          "character": 0
+        }
+      },
+      "actor": "claude-code",
+      "description": "Modified:         } else {",
+      "timestamp": 1771968288,
+      "severity": null
+    },
+    {
+      "id": "edit-1771968323-194",
+      "type": "edit_capture",
+      "file_path": "/home/robert/prog/zig/haltune/src/tui/widgets/plugin_dialog.zig",
+      "range": {
+        "start": {
+          "line": 0,
+          "character": 0
+        },
+        "end": {
+          "line": 0,
+          "character": 0
+        }
+      },
+      "actor": "claude-code",
+      "description": "Modified:             const end_idx = @min(self.scroll_offset + self.content_height, plugi",
+      "timestamp": 1771968323,
+      "severity": null
     }
   ]
 }
