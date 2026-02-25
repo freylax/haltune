@@ -175,7 +175,7 @@ pub const NativeBackend = struct {
                 c.HAL_BIT => if (pin.data_ptr_addr) |d| blk: {
                     const data_ptr_ptr: [*c][*c]c.hal_data_u = @ptrCast(@alignCast(d));
                     if (data_ptr_ptr.* == null) break :blk HalValue{ .bit = false };
-                    break :blk HalValue{ .bit = data_ptr_ptr.*.*.b != 0 };
+                    break :blk HalValue{ .bit = data_ptr_ptr.*.*.b };
                 } else HalValue{ .bit = false },
                 c.HAL_FLOAT => if (pin.data_ptr_addr) |d| blk: {
                     const data_ptr_ptr: [*c][*c]c.hal_data_u = @ptrCast(@alignCast(d));
