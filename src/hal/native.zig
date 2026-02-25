@@ -145,12 +145,12 @@ pub const NativeBackend = struct {
             pin_names.deinit(allocator);
         }
 
-        // Allocate result array
-        const pins = try allocator.alloc(PinInfo, pin_names.items.len);
-        errdefer allocator.free(pins);
+        // Use ArrayList to build result (only count valid pins)
+        var pin_list = try std.ArrayList(PinInfo).initCapacity(allocator, pin_names.items.len);
+        errdefer pin_list.deinit(allocator);
 
         // Get details for each pin using HAL API
-        for (pin_names.items, 0..) |pin_name, i| {
+        for (pin_names.items) |pin_name| {
             const name_z = try toCStr(allocator, pin_name);
             defer allocator.free(name_z);
 
@@ -202,15 +202,16 @@ pub const NativeBackend = struct {
                 else => HalValue{ .bit = false },
             };
 
-            pins[i] = PinInfo{
+            try pin_list.append(allocator, PinInfo{
                 .name = try allocator.dupe(u8, pin_name),
                 .type = pin_type,
                 .dir = pin_dir,
                 .value = pin_value,
-            };
+            });
         }
 
-        return pins;
+        return pin_list.toOwnedSlice(allocator);
+    }
     }
 
     fn listSignals(ptr: *anyopaque, allocator: std.mem.Allocator) ![]SignalInfo {
