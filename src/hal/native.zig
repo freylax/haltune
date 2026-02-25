@@ -24,6 +24,10 @@ const halpr_find_param_by_name = ffi_c_module.halpr_find_param_by_name;
 const hal_pin_t = ffi_c_module.hal_pin_t;
 const hal_param_t = ffi_c_module.hal_param_t;
 
+// HAL constants (defined at module level in c.zig)
+const HAL_RO = ffi_c_module.HAL_RO;
+const HAL_RW = ffi_c_module.HAL_RW;
+
 // Discovery helpers using halcmd
 const discovery = @import("ffi-safe-discovery");
 
@@ -309,9 +313,8 @@ pub const NativeBackend = struct {
 
             // Get param direction
             const param_dir: ParamDir = switch (param.dir) {
-                c.HAL_RD => .in,
-                c.HAL_WR => .out,
-                c.HAL_RW => .rw,
+                HAL_RO => .in,
+                HAL_RW => .rw,
                 else => .rw, // fallback
             };
 
