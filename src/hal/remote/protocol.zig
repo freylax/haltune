@@ -3,7 +3,7 @@
 // JSON message format for HAL bridge client/server communication.
 
 const std = @import("std");
-const backend = @import("backend");
+const backend = @import("../backend.zig");
 const PinType = backend.PinType;
 const HalValue = backend.HalValue;
 
@@ -77,7 +77,7 @@ pub const Request = union(MessageType) {
     set_pin: struct { name: []const u8, value: HalValue },
     get_param: struct { name: []const u8 },
     set_param: struct { name: []const u8, value: HalValue },
-    create_signal: struct { name: []const u8, type: PinType },
+    create_signal: struct { name: []const u8, pin_type: PinType },
     delete_signal: struct { name: []const u8 },
     link_pin: struct { pin_name: []const u8, sig_name: []const u8 },
     unlink_pin: struct { name: []const u8 },
@@ -120,7 +120,7 @@ pub const Request = union(MessageType) {
                 try writeHalValue(writer, data.value);
             },
             .create_signal => |data| {
-                try writer.print(",\"name\":\"{s}\",\"type\":\"{s}\"", .{ data.name, @tagName(data.type) });
+                try writer.print(",\"name\":\"{s}\",\"pin_type\":\"{s}\"", .{ data.name, @tagName(data.pin_type) });
             },
             .link_pin => |data| {
                 try writer.print(",\"pin_name\":\"{s}\",\"sig_name\":\"{s}\"", .{ data.pin_name, data.sig_name });
@@ -198,17 +198,131 @@ pub const Response = union(MessageType) {
         const msg_type = MessageType.fromString(type_str) orelse return error.InvalidMessageType;
 
         return switch (msg_type) {
-            .list_pins => Response{
-                .list_pins = .{ .pins = &.{} }, // TODO: parse array
+            .list_pins => blk: {
+                const pins_arr = obj.get("pins") orelse return error.InvalidHalValue;
+                if (pins_arr != .array) return error.InvalidHalValue;
+                var pin_infos = try std.ArrayList(PinInfoResponse).initCapacity(allocator, pins_arr.array.items.len);
+                errdefer pin_infos.deinit(allocator);
+
+                for (pins_arr.array.items) |pin_node| {
+                    if (pin_node != .object) return error.InvalidHalValue;
+
+                    const name = pin_node.object.get("name") orelse return error.InvalidHalValue;
+                    const pin_type_str = pin_node.object.get("type") orelse return error.InvalidHalValue;
+                    const dir_str = pin_node.object.get("dir") orelse return error.InvalidHalValue;
+                    const val = pin_node.object.get("value") orelse return error.InvalidHalValue;
+
+                    const pin_type = PinType.fromString(pin_type_str.string) orelse return error.InvalidHalType;
+                    const pin_dir = if (std.mem.eql(u8, dir_str.string, "in")) backend.PinDir.in
+                        else if (std.mem.eql(u8, dir_str.string, "out")) backend.PinDir.out
+                        else if (std.mem.eql(u8, dir_str.string, "io")) backend.PinDir.io
+                        else return error.InvalidHalDir;
+
+                    try pin_infos.append(allocator, .{
+                        .name = try allocator.dupe(u8, name.string),
+                        .type = pin_type,
+                        .dir = pin_dir,
+                        .value = try parseHalValue(&val),
+                    });
+                }
+
+                break :blk Response{ .list_pins = .{ .pins = try pin_infos.toOwnedSlice(allocator) } };
             },
-            .list_signals => Response{
-                .list_signals = .{ .signals = &.{} },
+            .list_signals => blk: {
+                const signals_arr = obj.get("signals") orelse return error.InvalidHalValue;
+                if (signals_arr != .array) return error.InvalidHalValue;
+                var signal_infos = try std.ArrayList(SignalInfoResponse).initCapacity(allocator, signals_arr.array.items.len);
+                errdefer signal_infos.deinit(allocator);
+
+                for (signals_arr.array.items) |sig_node| {
+                    if (sig_node != .object) return error.InvalidHalValue;
+
+                    const name = sig_node.object.get("name") orelse return error.InvalidHalValue;
+                    const sig_type_str = sig_node.object.get("type") orelse return error.InvalidHalValue;
+                    const val = sig_node.object.get("value") orelse return error.InvalidHalValue;
+                    const writers_arr = sig_node.object.get("writers") orelse return error.InvalidHalValue;
+                    const readers_arr = sig_node.object.get("readers") orelse return error.InvalidHalValue;
+
+                    const sig_type = PinType.fromString(sig_type_str.string) orelse return error.InvalidHalType;
+
+                    // Parse writers array
+                    var writers = try std.ArrayList([]const u8).initCapacity(allocator, writers_arr.array.items.len);
+                    errdefer writers.deinit(allocator);
+                    errdefer {
+                        for (writers.items) |w| allocator.free(w);
+                    }
+                    for (writers_arr.array.items) |w_node| {
+                        if (w_node != .string) return error.InvalidHalValue;
+                        try writers.append(allocator, try allocator.dupe(u8, w_node.string));
+                    }
+
+                    // Parse readers array
+                    var readers = try std.ArrayList([]const u8).initCapacity(allocator, readers_arr.array.items.len);
+                    errdefer readers.deinit(allocator);
+                    errdefer {
+                        for (readers.items) |r| allocator.free(r);
+                    }
+                    for (readers_arr.array.items) |r_node| {
+                        if (r_node != .string) return error.InvalidHalValue;
+                        try readers.append(allocator, try allocator.dupe(u8, r_node.string));
+                    }
+
+                    try signal_infos.append(allocator, .{
+                        .name = try allocator.dupe(u8, name.string),
+                        .type = sig_type,
+                        .value = try parseHalValue(&val),
+                        .writers = try writers.toOwnedSlice(allocator),
+                        .readers = try readers.toOwnedSlice(allocator),
+                    });
+                }
+
+                break :blk Response{ .list_signals = .{ .signals = try signal_infos.toOwnedSlice(allocator) } };
             },
-            .list_params => Response{
-                .list_params = .{ .params = &.{} },
+            .list_params => blk: {
+                const params_arr = obj.get("params") orelse return error.InvalidHalValue;
+                if (params_arr != .array) return error.InvalidHalValue;
+                var param_infos = try std.ArrayList(ParamInfoResponse).initCapacity(allocator, params_arr.array.items.len);
+                errdefer param_infos.deinit(allocator);
+
+                for (params_arr.array.items) |param_node| {
+                    if (param_node != .object) return error.InvalidHalValue;
+
+                    const name = param_node.object.get("name") orelse return error.InvalidHalValue;
+                    const param_type_str = param_node.object.get("type") orelse return error.InvalidHalValue;
+                    const dir_str = param_node.object.get("dir") orelse return error.InvalidHalValue;
+                    const val = param_node.object.get("value") orelse return error.InvalidHalValue;
+
+                    const param_type = PinType.fromString(param_type_str.string) orelse return error.InvalidHalType;
+                    const param_dir = if (std.mem.eql(u8, dir_str.string, "in")) backend.ParamDir.in
+                        else if (std.mem.eql(u8, dir_str.string, "out")) backend.ParamDir.out
+                        else if (std.mem.eql(u8, dir_str.string, "rw")) backend.ParamDir.rw
+                        else return error.InvalidHalDir;
+
+                    try param_infos.append(allocator, .{
+                        .name = try allocator.dupe(u8, name.string),
+                        .type = param_type,
+                        .dir = param_dir,
+                        .value = try parseHalValue(&val),
+                    });
+                }
+
+                break :blk Response{ .list_params = .{ .params = try param_infos.toOwnedSlice(allocator) } };
             },
-            .list_components => Response{
-                .list_components = .{ .components = &.{} },
+            .list_components => blk: {
+                const comps_arr = obj.get("components") orelse return error.InvalidHalValue;
+                if (comps_arr != .array) return error.InvalidHalValue;
+                var components = try std.ArrayList([]const u8).initCapacity(allocator, comps_arr.array.items.len);
+                errdefer components.deinit(allocator);
+                errdefer {
+                    for (components.items) |c| allocator.free(c);
+                }
+
+                for (comps_arr.array.items) |comp_node| {
+                    if (comp_node != .string) return error.InvalidHalValue;
+                    try components.append(allocator, try allocator.dupe(u8, comp_node.string));
+                }
+
+                break :blk Response{ .list_components = .{ .components = try components.toOwnedSlice(allocator) } };
             },
             .get_pin => blk: {
                 const val = obj.get("value") orelse return error.InvalidHalValue;

@@ -30,8 +30,26 @@ pub const Config = struct {
     /// Enabled plugins from config
     enabled_plugins: ?[][]const u8 = null,
 
+    /// Remote HAL configuration
+    remote: RemoteConfig,
+
     /// Allocator used for hal_files and ini_files
     allocator: std.mem.Allocator,
+
+    /// Remote HAL server configuration
+    pub const RemoteConfig = struct {
+        /// Whether to use remote HAL (false = use local HAL)
+        enabled: bool = false,
+
+        /// Remote HAL server host
+        host: ?[]const u8 = null,
+
+        /// Remote HAL server port
+        port: u16 = 8765,
+
+        /// Owned host string (for cleanup)
+        host_owner: ?[]const u8 = null,
+    };
 
     /// Initialize Config with allocator
     pub fn init(allocator: std.mem.Allocator) Config {
@@ -39,6 +57,7 @@ pub const Config = struct {
             .hal_files = std.ArrayList([]const u8){},
             .ini_files = std.ArrayList([]const u8){},
             .allocator = allocator,
+            .remote = .{},
         };
     }
 
@@ -68,6 +87,11 @@ pub const Config = struct {
                 self.allocator.free(p);
             }
             self.allocator.free(plugins);
+        }
+
+        // Free remote host
+        if (self.remote.host_owner) |h| {
+            self.allocator.free(h);
         }
     }
 
@@ -119,6 +143,21 @@ pub const Config = struct {
                 self.enabled_plugins = copied;
             }
         }
+
+        // Merge remote configuration
+        if (toml.remote.enabled) {
+            self.remote.enabled = toml.remote.enabled;
+        }
+        if (toml.remote.host) |h| {
+            // Free previous host if owned
+            if (self.remote.host_owner) |old| {
+                self.allocator.free(old);
+            }
+            self.remote.host_owner = try self.allocator.dupe(u8, h);
+            self.remote.host = self.remote.host_owner;
+        }
+        // port is already a u16 with default value, just assign it
+        self.remote.port = toml.remote.port;
     }
 };
 

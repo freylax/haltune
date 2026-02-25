@@ -139,13 +139,30 @@ fn handleRequest(
         .ping => return Response{ .ping = .{} },
 
         .list_pins => {
-            _ = hal_backend.listPins(allocator) catch |err| {
+            const pins = hal_backend.listPins(allocator) catch |err| {
                 return Response{ .error_response = .{
                     .message = try std.fmt.allocPrint(allocator, "list_pins error: {}", .{err}),
                 }};
             };
-            // TODO: implement proper conversion
-            return Response{ .list_pins = .{ .pins = &.{} } };
+            defer {
+                for (pins) |p| allocator.free(p.name);
+                allocator.free(pins);
+            }
+
+            // Convert to protocol response format
+            var pin_infos = try std.ArrayList(protocol.Response.PinInfoResponse).initCapacity(allocator, pins.len);
+            errdefer pin_infos.deinit(allocator);
+
+            for (pins) |pin| {
+                try pin_infos.append(allocator, .{
+                    .name = try allocator.dupe(u8, pin.name),
+                    .type = pin.type,
+                    .dir = pin.dir,
+                    .value = pin.value,
+                });
+            }
+
+            break :blk Response{ .list_pins = .{ .pins = try pin_infos.toOwnedSlice(allocator) } };
         },
 
         .get_pin => {
@@ -168,30 +185,72 @@ fn handleRequest(
         },
 
         .list_signals => {
-            _ = hal_backend.listSignals(allocator) catch |err| {
+            const signals = hal_backend.listSignals(allocator) catch |err| {
                 return Response{ .error_response = .{
                     .message = try std.fmt.allocPrint(allocator, "list_signals error: {}", .{err}),
                 }};
             };
-            return Response{ .list_signals = .{ .signals = &.{} } };
+            defer {
+                for (signals) |s| allocator.free(s.name);
+                allocator.free(s.writers);
+                allocator.free(s.readers);
+                allocator.free(signals);
+            }
+
+            var signal_infos = try std.ArrayList(protocol.Response.SignalInfoResponse).initCapacity(allocator, signals.len);
+            errdefer signal_infos.deinit(allocator);
+
+            for (signals) |sig| {
+                try signal_infos.append(allocator, .{
+                    .name = try allocator.dupe(u8, sig.name),
+                    .type = sig.type,
+                    .value = sig.value,
+                    .writers = sig.writers,
+                    .readers = sig.readers,
+                });
+            }
+
+            break :blk Response{ .list_signals = .{ .signals = try signal_infos.toOwnedSlice(allocator) } };
         },
 
         .list_params => {
-            _ = hal_backend.listParams(allocator) catch |err| {
+            const params = hal_backend.listParams(allocator) catch |err| {
                 return Response{ .error_response = .{
                     .message = try std.fmt.allocPrint(allocator, "list_params error: {}", .{err}),
                 }};
             };
-            return Response{ .list_params = .{ .params = &.{} } };
+            defer {
+                for (params) |p| allocator.free(p.name);
+                allocator.free(params);
+            }
+
+            var param_infos = try std.ArrayList(protocol.Response.ParamInfoResponse).initCapacity(allocator, params.len);
+            errdefer param_infos.deinit(allocator);
+
+            for (params) |param| {
+                try param_infos.append(allocator, .{
+                    .name = try allocator.dupe(u8, param.name),
+                    .type = param.type,
+                    .dir = param.dir,
+                    .value = param.value,
+                });
+            }
+
+            break :blk Response{ .list_params = .{ .params = try param_infos.toOwnedSlice(allocator) } };
         },
 
         .list_components => {
-            _ = hal_backend.listComponents(allocator) catch |err| {
+            const components = hal_backend.listComponents(allocator) catch |err| {
                 return Response{ .error_response = .{
                     .message = try std.fmt.allocPrint(allocator, "list_components error: {}", .{err}),
                 }};
             };
-            return Response{ .list_components = .{ .components = &.{} } };
+            defer {
+                for (components) |c| allocator.free(c);
+                allocator.free(components);
+            }
+
+            break :blk Response{ .list_components = .{ .components = components } };
         },
 
         .get_param => {
@@ -217,7 +276,7 @@ fn handleRequest(
             const name_node = obj.get("name") orelse return Response{ .error_response = .{ .message = "Missing name field" } };
             const name = name_node.string;
 
-            const type_node = obj.get("type") orelse return Response{ .error_response = .{ .message = "Missing type field" } };
+            const type_node = obj.get("pin_type") orelse return Response{ .error_response = .{ .message = "Missing pin_type field" } };
             const pin_type_str = type_node.string;
             const pin_type = PinType.fromString(pin_type_str) orelse return Response{ .error_response = .{ .message = "Invalid pin type" } };
 
@@ -277,7 +336,7 @@ fn parseHalValue(value_node: *const std.json.Value) !HalValue {
 }
 
 fn responseToJson(allocator: std.mem.Allocator, resp: Response) ![]const u8 {
-    var buffer = try std.ArrayList(u8).initCapacity(allocator, 256);
+    var buffer = try std.ArrayList(u8).initCapacity(allocator, 4096);
     defer buffer.deinit(allocator);
 
     const writer = buffer.writer(allocator);
@@ -297,20 +356,52 @@ fn responseToJson(allocator: std.mem.Allocator, resp: Response) ![]const u8 {
             try writer.print("set_pin\",\"success\":{}}}", .{r.success});
         },
         .list_pins => |*r| {
-            _ = r;
-            try writer.writeAll("list_pins\",\"pins\":[]}");
+            try writer.writeAll("list_pins\",\"pins\":[");
+            for (r.pins, 0..) |pin, i| {
+                if (i > 0) try writer.writeAll(",");
+                try writer.print("{{\"name\":\"{s}\",\"type\":\"{s}\",\"dir\":\"{s}\",\"value\":", .{ pin.name, @tagName(pin.type), pinDirToString(pin.dir) });
+                try writeHalValue(writer, pin.value);
+                try writer.writeAll("}}");
+            }
+            try writer.writeAll("]}");
         },
         .list_signals => |*r| {
-            _ = r;
-            try writer.writeAll("list_signals\",\"signals\":[]}");
+            try writer.writeAll("list_signals\",\"signals\":[");
+            for (r.signals, 0..) |sig, i| {
+                if (i > 0) try writer.writeAll(",");
+                try writer.print("{{\"name\":\"{s}\",\"type\":\"{s}\",\"value\":", .{ sig.name, @tagName(sig.type) });
+                try writeHalValue(writer, sig.value);
+                try writer.writeAll(",\"writers\":[");
+                for (sig.writers, 0..) |w, j| {
+                    if (j > 0) try writer.writeAll(",");
+                    try writer.print("\"{s}\"", .{w});
+                }
+                try writer.writeAll("],\"readers\":[");
+                for (sig.readers, 0..) |r, j| {
+                    if (j > 0) try writer.writeAll(",");
+                    try writer.print("\"{s}\"", .{r});
+                }
+                try writer.writeAll("]}");
+            }
+            try writer.writeAll("]}");
         },
         .list_params => |*r| {
-            _ = r;
-            try writer.writeAll("list_params\",\"params\":[]}");
+            try writer.writeAll("list_params\",\"params\":[");
+            for (r.params, 0..) |param, i| {
+                if (i > 0) try writer.writeAll(",");
+                try writer.print("{{\"name\":\"{s}\",\"type\":\"{s}\",\"dir\":\"{s}\",\"value\":", .{ param.name, @tagName(param.type), paramDirToString(param.dir) });
+                try writeHalValue(writer, param.value);
+                try writer.writeAll("}}");
+            }
+            try writer.writeAll("]}");
         },
         .list_components => |*r| {
-            _ = r;
-            try writer.writeAll("list_components\",\"components\":[]}");
+            try writer.writeAll("list_components\",\"components\":[");
+            for (r.components, 0..) |comp, i| {
+                if (i > 0) try writer.writeAll(",");
+                try writer.print("\"{s}\"", .{comp});
+            }
+            try writer.writeAll("]}");
         },
         .get_param => |*r| {
             try writer.writeAll("get_param\",\"value\":");
@@ -351,6 +442,22 @@ fn writeHalValue(writer: anytype, value: HalValue) !void {
         .u32 => |v| try writer.print("\"u32\":{}", .{v}),
     }
     try writer.writeAll("}");
+}
+
+fn pinDirToString(dir: backend.PinDir) []const u8 {
+    return switch (dir) {
+        .in => "in",
+        .out => "out",
+        .io => "io",
+    };
+}
+
+fn paramDirToString(dir: backend.ParamDir) []const u8 {
+    return switch (dir) {
+        .in => "in",
+        .out => "out",
+        .rw => "rw",
+    };
 }
 
 fn writeJsonEscaped(stream: std.net.Stream, s: []const u8) !void {

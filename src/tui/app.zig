@@ -134,6 +134,13 @@ pub fn main(config: Config) !void {
     refresh_thread.* = RefreshThread.init(thread_safe_allocator, &store);
     // Set redraw flag so refresh thread can trigger UI updates when StateStore is populated
     refresh_thread.setRedrawFlag(&model.redraw_flag);
+
+    // Set remote backend if available
+    if (model.remote_backend) |backend| {
+        refresh_thread.setRemoteBackend(backend);
+        std.log.info("Using remote HAL for refresh thread", .{});
+    }
+
     _ = try refresh_thread.start();
 
     // Give refresh thread time to populate StateStore before first draw

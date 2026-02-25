@@ -255,7 +255,9 @@ pub fn build(b: *std.Build) void {
     // Link against LinuxCNC HAL library (system library search path)
     // Skip if building on dev machine without LinuxCNC installed
     if (!skip_hal_link) {
-        exe.addLibraryPath(.{ .cwd_relative = "/usr/lib" }); // Search /usr/lib for liblinuxcnchal.so
+        // Add multiple library paths for cross-compilation support
+        exe.addLibraryPath(.{ .cwd_relative = "/usr/lib" });
+        exe.addLibraryPath(.{ .cwd_relative = "/home/robert/zig-sdk/aarch64-linux-gnu/lib" });
 
         // Link libc first to provide GLIBC symbols needed by liblinuxcnchal.so
         exe.linkSystemLibrary("c");
@@ -479,87 +481,86 @@ pub fn build(b: *std.Build) void {
     toml_write_step.dependOn(&run_toml_write.step);
 
     // ===== HAL Bridge Server =====
+    // Skip bridge server build when skip_hal_link is set (development without LinuxCNC)
 
-    // Create HAL backend module for bridge server
-    const hal_backend_module = b.createModule(.{
-        .root_source_file = b.path("src/hal/backend.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
-
-    const hal_native_module = b.createModule(.{
-        .root_source_file = b.path("src/hal/native.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
-    hal_native_module.addImport("backend", hal_backend_module);
-    hal_native_module.addImport("ffi-c", ffi_c);
-
-    const hal_protocol_module = b.createModule(.{
-        .root_source_file = b.path("src/hal/remote/protocol.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
-    hal_protocol_module.addImport("backend", hal_backend_module);
-
-    // Create bridge server module
-    const bridge_server_module = b.createModule(.{
-        .root_source_file = b.path("src/hal/bridge_server/main.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
-    bridge_server_module.addImport("backend", hal_backend_module);
-    bridge_server_module.addImport("native", hal_native_module);
-    bridge_server_module.addImport("protocol", hal_protocol_module);
-    bridge_server_module.addIncludePath(.{ .cwd_relative = linuxcnc_include });
-
-    // Create bridge server executable
-    const bridge_server_exe = b.addExecutable(.{
-        .name = "hal_bridge_server",
-        .root_module = bridge_server_module,
-    });
-
-    // Link bridge server against LinuxCNC HAL library
     if (!skip_hal_link) {
+        // Create HAL backend module for bridge server
+        const hal_backend_module = b.createModule(.{
+            .root_source_file = b.path("src/hal/backend.zig"),
+            .target = target,
+            .optimize = optimize,
+        });
+
+        const hal_native_module = b.createModule(.{
+            .root_source_file = b.path("src/hal/native.zig"),
+            .target = target,
+            .optimize = optimize,
+        });
+        hal_native_module.addImport("backend", hal_backend_module);
+        hal_native_module.addImport("ffi-c", ffi_c);
+
+        // Create protocol module for bridge server
+        // IMPORTANT: protocol imports backend as a MODULE to avoid circular deps
+        const hal_protocol_module = b.createModule(.{
+            .root_source_file = b.path("src/hal/remote/protocol.zig"),
+            .target = target,
+            .optimize = optimize,
+        });
+        hal_protocol_module.addImport("backend", hal_backend_module);
+
+        // Create bridge server module
+        const bridge_server_module = b.createModule(.{
+            .root_source_file = b.path("src/hal/bridge_server/main.zig"),
+            .target = target,
+            .optimize = optimize,
+        });
+        bridge_server_module.addImport("backend", hal_backend_module);
+        bridge_server_module.addImport("native", hal_native_module);
+        bridge_server_module.addImport("protocol", hal_protocol_module);
+        bridge_server_module.addIncludePath(.{ .cwd_relative = linuxcnc_include });
+
+        // Create bridge server executable
+        const bridge_server_exe = b.addExecutable(.{
+            .name = "hal_bridge_server",
+            .root_module = bridge_server_module,
+        });
+
+        // Link bridge server against LinuxCNC HAL library
         bridge_server_exe.addLibraryPath(.{ .cwd_relative = "/usr/lib" });
+        bridge_server_exe.addLibraryPath(.{ .cwd_relative = "/home/robert/zig-sdk/aarch64-linux-gnu/lib" });
         bridge_server_exe.linkSystemLibrary("c");
         bridge_server_exe.linkSystemLibrary("linuxcnchal");
         bridge_server_exe.linkSystemLibrary("rt");
         bridge_server_exe.linker_allow_shlib_undefined = true;
-    } else {
-        bridge_server_exe.linkSystemLibrary("c");
-        bridge_server_exe.addCSourceFile(.{
-            .file = b.path("src/ffi/hal_stubs.c"),
+
+        // Install bridge server
+        b.installArtifact(bridge_server_exe);
+
+        // Bridge server tests
+        const bridge_server_test_module = b.createModule(.{
+            .root_source_file = b.path("src/hal/bridge_server/test.zig"),
+            .target = target,
+            .optimize = optimize,
         });
+        bridge_server_test_module.addImport("backend", hal_backend_module);
+        bridge_server_test_module.addImport("protocol", hal_protocol_module);
+
+        const bridge_server_tests = b.addTest(.{
+            .root_module = bridge_server_test_module,
+            .name = "bridge-server-test",
+        });
+
+        const run_bridge_server_tests = b.addRunArtifact(bridge_server_tests);
+        run_bridge_server_tests.step.dependOn(b.getInstallStep());
+
+        const bridge_server_test_step = b.step("bridge-server-test", "Run HAL bridge server tests");
+        bridge_server_test_step.dependOn(&run_bridge_server_tests.step);
+
+        // Bridge server run step
+        const run_bridge_server = b.addRunArtifact(bridge_server_exe);
+        run_bridge_server.step.dependOn(b.getInstallStep());
+
+        const bridge_server_step = b.step("bridge-server", "Run HAL bridge server");
+        bridge_server_step.dependOn(&run_bridge_server.step);
     }
-
-    // Install bridge server
-    b.installArtifact(bridge_server_exe);
-
-    // Bridge server tests
-    const bridge_server_test_module = b.createModule(.{
-        .root_source_file = b.path("src/hal/bridge_server/test.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
-    bridge_server_test_module.addImport("backend", hal_backend_module);
-    bridge_server_test_module.addImport("protocol", hal_protocol_module);
-
-    const bridge_server_tests = b.addTest(.{
-        .root_module = bridge_server_test_module,
-        .name = "bridge-server-test",
-    });
-
-    const run_bridge_server_tests = b.addRunArtifact(bridge_server_tests);
-    run_bridge_server_tests.step.dependOn(b.getInstallStep());
-
-    const bridge_server_test_step = b.step("bridge-server-test", "Run HAL bridge server tests");
-    bridge_server_test_step.dependOn(&run_bridge_server_tests.step);
-
-    // Bridge server run step
-    const run_bridge_server = b.addRunArtifact(bridge_server_exe);
-    run_bridge_server.step.dependOn(b.getInstallStep());
-
-    const bridge_server_step = b.step("bridge-server", "Run HAL bridge server");
-    bridge_server_step.dependOn(&run_bridge_server.step);
 }

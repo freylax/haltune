@@ -5,6 +5,7 @@
 // - INI files to load for origin tracking
 // - Log file path
 // - Plugin configurations (for future use)
+// - Remote HAL server configuration
 //
 // Example haltune.toml:
 //   [files]
@@ -16,6 +17,11 @@
 //
 //   [plugins]
 //   enabled = ["plugin1", "plugin2"]
+//
+//   [remote]
+//   enabled = true
+//   host = "192.168.2.118"
+//   port = 8765
 
 const std = @import("std");
 const toml = @import("toml");
@@ -30,6 +36,9 @@ pub const TomlConfig = struct {
 
     /// Plugin configuration section (reserved for future use)
     plugins: Plugins,
+
+    /// Remote HAL server configuration
+    remote: Remote,
 
     /// File configuration
     pub const Files = struct {
@@ -62,6 +71,18 @@ pub const TomlConfig = struct {
             /// Setting value
             value: []const u8,
         };
+    };
+
+    /// Remote HAL server configuration
+    pub const Remote = struct {
+        /// Whether to use remote HAL (false = use local HAL)
+        enabled: bool = false,
+
+        /// Remote HAL server host
+        host: ?[]const u8 = null,
+
+        /// Remote HAL server port
+        port: u16 = 8765,
     };
 };
 
@@ -97,6 +118,12 @@ pub fn parseTomlConfig(
         plugins: struct {
             enabled: ?[]const []const u8 = null,
         } = .{},
+
+        remote: struct {
+            enabled: ?bool = null,
+            host: ?[]const u8 = null,
+            port: ?u16 = null,
+        } = .{},
     };
 
     var parser = toml.Parser(TomlRoot).init(allocator);
@@ -120,6 +147,11 @@ pub fn parseTomlConfig(
         .plugins = .{
             .enabled = if (parsed.plugins.enabled) |p| try copyStringSlice(allocator, p) else null,
             .settings = null,
+        },
+        .remote = .{
+            .enabled = parsed.remote.enabled orelse false,
+            .host = if (parsed.remote.host) |h| try allocator.dupe(u8, h) else null,
+            .port = parsed.remote.port orelse 8765,
         },
     };
 
@@ -216,6 +248,11 @@ pub fn deinit(self: *TomlConfig, allocator: std.mem.Allocator) void {
         allocator.free(settings);
     }
 
+    // Free remote host
+    if (self.remote.host) |h| {
+        allocator.free(h);
+    }
+
     self.* = undefined;
 }
 
@@ -241,6 +278,13 @@ pub fn generateDefaultConfig(allocator: std.mem.Allocator, writer: anytype) !voi
         \\[plugins]
         \\# Enabled plugins
         \\# enabled = ["plugin1", "plugin2"]
+        \\
+        \\[remote]
+        \\# Remote HAL server configuration
+        \\# Set enabled = true to connect to HAL bridge server instead of local HAL
+        \\# enabled = false
+        \\# host = "192.168.2.118"
+        \\# port = 8765
         \\
     );
 }

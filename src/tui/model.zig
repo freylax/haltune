@@ -49,6 +49,10 @@ const exportHal = @import("../hal/export.zig");
 const ffi = @import("../ffi/safe.zig");
 const HalError = @import("../ffi/errors.zig").HalError;
 
+// Remote backend imports
+const HalBackend = @import("../hal/backend.zig").HalBackend;
+const RemoteBackend = @import("../hal/remote/client.zig").RemoteBackend;
+
 /// Global redraw flag pointer for pubsub callbacks
 /// This is set by the Model during initialization and used by callbacks
 var GLOBAL_REDRAW_FLAG: ?*std.atomic.Value(bool) = null;
@@ -82,6 +86,9 @@ pub const Model = struct {
     refresh_thread: ?*RefreshThread,
     hal_comp_id: c_int,
 
+    /// Remote HAL backend (null when using local HAL)
+    remote_backend: ?*HalBackend,
+
     /// Redraw flag for pubsub callbacks
     /// Set to true when any subscribed value changes, triggering a redraw
     redraw_flag: std.atomic.Value(bool),
@@ -112,17 +119,29 @@ pub const Model = struct {
         pubsub: *SubscriptionManager,
         config: Config,
     ) !Model {
-        // Check if HAL is available before attempting to initialize
-        // This prevents EINTR crashes when LinuxCNC is not running
-        try @import("../ffi/errors.zig").checkHalAvailable(hal_c.hal_init, hal_c.hal_exit);
+        // Determine if we should use remote HAL
+        const use_remote = config.remote.enabled and config.remote.host != null;
 
-        // Initialize HAL component
-        // halInit will try "haltune", "haltune1", "haltune2", etc. if there are conflicts
-        const comp_id = try ffi.halInit("haltune");
-        errdefer ffi.halExit(comp_id);
+        // Initialize HAL component (native or remote)
+        const comp_id: c_int = if (use_remote) blk: {
+            // Remote HAL: create fake comp_id, actual connection handled by refresh thread
+            std.log.info("Using remote HAL server at {s}:{}",
+                .{ config.remote.host.?, config.remote.port });
+            break :blk -1; // No real component for remote HAL
+        } else blk: {
+            // Native HAL: Check if HAL is available before attempting to initialize
+            // This prevents EINTR crashes when LinuxCNC is not running
+            try @import("../ffi/errors.zig").checkHalAvailable(hal_c.hal_init, hal_c.hal_exit);
 
-        // Mark HAL component as ready
-        try ffi.halReady(comp_id);
+            // Initialize HAL component
+            // halInit will try "haltune", "haltune1", "haltune2", etc. if there are conflicts
+            const id = try ffi.halInit("haltune");
+            errdefer ffi.halExit(id);
+
+            // Mark HAL component as ready
+            try ffi.halReady(id);
+            break :blk id;
+        };
 
         // Create TreeView widget
         const tree_view = try allocator.create(TreeView);
@@ -150,6 +169,16 @@ pub const Model = struct {
         // Initialize redraw flag
         const redraw_flag = std.atomic.Value(bool).init(false);
 
+        // Create remote backend if configured
+        const remote_backend: ?*HalBackend = if (use_remote) blk: {
+            const host = config.remote.host.?;
+            const port = config.remote.port;
+            std.log.info("Creating remote HAL backend for {s}:{}", .{ host, port });
+            const backend = try allocator.create(HalBackend);
+            backend.* = try RemoteBackend.create(allocator, host, port);
+            break :blk backend;
+        } else null;
+
         // Create temporary Model instance to parse config files
         var temp_model = Model{
             .allocator = allocator,
@@ -161,6 +190,7 @@ pub const Model = struct {
             .plugin_dialog = plugin_dialog,
             .refresh_thread = null,
             .hal_comp_id = comp_id,
+            .remote_backend = remote_backend,
             .redraw_flag = redraw_flag,
             .error_message = null,
             .error_message_owner = null,
@@ -246,6 +276,13 @@ pub const Model = struct {
             refresh.stop();
             std.log.info("RefreshThread stopped", .{});
             self.allocator.destroy(refresh);
+        }
+
+        // Clean up remote backend if present
+        if (self.remote_backend) |backend| {
+            std.log.info("Cleaning up remote HAL backend", .{});
+            backend.deinit();
+            self.allocator.destroy(backend);
         }
 
         // Clean up TreeView

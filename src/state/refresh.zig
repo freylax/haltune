@@ -26,6 +26,9 @@ const hal_pin_t = @import("../ffi/types.zig").hal_pin_t;
 const hal_sig_t = @import("../ffi/types.zig").hal_sig_t;
 const hal_param_t = @import("../ffi/types.zig").hal_param_t;
 
+// Remote HAL backend support
+const HalBackend = @import("../hal/backend.zig").HalBackend;
+
 /// Refresh thread manages HAL polling and cache updates
 ///
 /// This struct maintains a background thread that periodically polls HAL
@@ -71,6 +74,9 @@ pub const RefreshThread = struct {
     /// Track if we've ever populated StateStore (for initial redraw trigger)
     populated: std.atomic.Value(bool) = std.atomic.Value(bool).init(false),
 
+    /// Optional remote HAL backend (null = use local HAL)
+    remote_backend: ?*const anyopaque = null,
+
     /// Initialize a new RefreshThread
     ///
     /// Creates a refresh thread instance with default 100ms interval.
@@ -111,6 +117,11 @@ pub const RefreshThread = struct {
     /// Set the redraw flag for UI updates
     pub fn setRedrawFlag(self: *RefreshThread, flag: *std.atomic.Value(bool)) void {
         self.redraw_flag = flag;
+    }
+
+    /// Set the remote HAL backend (null = use local HAL)
+    pub fn setRemoteBackend(self: *RefreshThread, backend: ?*const anyopaque) void {
+        self.remote_backend = backend;
     }
 
     /// Clean up RefreshThread resources
@@ -240,6 +251,195 @@ pub const RefreshThread = struct {
         self.interval_ns = interval_ms * std.time.ns_per_ms;
     }
 
+    /// Refresh pins from remote HAL backend
+    fn refreshPinsRemote(self: *RefreshThread, backend_ptr: *const anyopaque) !void {
+        const backend: *const HalBackend = @ptrCast(@alignCast(backend_ptr));
+
+        // Get list of pins from remote backend
+        const pin_infos = backend.listPins(self.allocator) catch |err| {
+            std.log.err("refreshPinsRemote: listPins failed: {}", .{err});
+            // For remote backend with empty implementation, return silently
+            return;
+        };
+        defer {
+            for (pin_infos) |pin| {
+                self.allocator.free(pin.name);
+            }
+            self.allocator.free(pin_infos);
+        }
+
+        // Track discovered names
+        var discovered_names = std.StringHashMap(void).init(self.allocator);
+        defer {
+            var iter = discovered_names.iterator();
+            while (iter.next()) |entry| {
+                self.allocator.free(entry.key_ptr.*);
+            }
+            discovered_names.deinit();
+        }
+
+        // Process each pin
+        for (pin_infos) |pin| {
+            const name_copy = try self.allocator.dupe(u8, pin.name);
+            discovered_names.put(name_copy, {}) catch |err| {
+                self.allocator.free(name_copy);
+                return err;
+            };
+
+            // Get current value and update store
+            const backend_value = backend.getPinValue(pin.name) catch |err| {
+                std.log.err("refreshPinsRemote: getPinValue({s}) failed: {}", .{ pin.name, err });
+                continue;
+            };
+
+            // Convert backend.HalValue to cache.HalValue
+            const value: HalValue = switch (backend_value) {
+                .bit => |v| HalValue{ .bit = v },
+                .float => |v| HalValue{ .float = v },
+                .s32 => |v| HalValue{ .s32 = v },
+                .u32 => |v| HalValue{ .u32 = v },
+            };
+
+            self.store.updatePin(pin.name, value) catch |err| {
+                std.log.err("refreshPinsRemote: updatePin({s}) failed: {}", .{ pin.name, err });
+            };
+        }
+
+        // Remove stale pins
+        const cached_names = try self.store.listPins(self.allocator);
+        defer {
+            for (cached_names) |n| self.allocator.free(n);
+            self.allocator.free(cached_names);
+        }
+
+        for (cached_names) |name| {
+            if (discovered_names.get(name) == null) {
+                self.store.removePin(name) catch {};
+            }
+        }
+    }
+
+    /// Refresh signals from remote HAL backend
+    fn refreshSignalsRemote(self: *RefreshThread, backend_ptr: *const anyopaque) !void {
+        const backend: *const HalBackend = @ptrCast(@alignCast(backend_ptr));
+
+        // Get list of signals from remote backend
+        const signal_infos = backend.listSignals(self.allocator) catch |err| {
+            std.log.err("refreshSignalsRemote: listSignals failed: {}", .{err});
+            return error.UnexpectedResponse;
+        };
+        defer {
+            for (signal_infos) |sig| {
+                self.allocator.free(sig.name);
+                self.allocator.free(sig.writers);
+                self.allocator.free(sig.readers);
+            }
+            self.allocator.free(signal_infos);
+        }
+
+        // Track discovered names
+        var discovered_names = std.StringHashMap(void).init(self.allocator);
+        defer {
+            var iter = discovered_names.iterator();
+            while (iter.next()) |entry| {
+                self.allocator.free(entry.key_ptr.*);
+            }
+            discovered_names.deinit();
+        }
+
+        // Process each signal - just track existence for now
+        for (signal_infos) |sig| {
+            const name_copy = try self.allocator.dupe(u8, sig.name);
+            discovered_names.put(name_copy, {}) catch |err| {
+                self.allocator.free(name_copy);
+                return err;
+            };
+
+            // TODO: Get signal values when backend supports it
+            _ = sig.value;
+        }
+
+        // Remove stale signals
+        const cached_names = try self.store.listSignals(self.allocator);
+        defer {
+            for (cached_names) |n| self.allocator.free(n);
+            self.allocator.free(cached_names);
+        }
+
+        for (cached_names) |name| {
+            if (discovered_names.get(name) == null) {
+                self.store.removeSignal(name) catch {};
+            }
+        }
+    }
+
+    /// Refresh params from remote HAL backend
+    fn refreshParamsRemote(self: *RefreshThread, backend_ptr: *const anyopaque) !void {
+        const backend: *const HalBackend = @ptrCast(@alignCast(backend_ptr));
+
+        // Get list of params from remote backend
+        const param_infos = backend.listParams(self.allocator) catch |err| {
+            std.log.err("refreshParamsRemote: listParams failed: {}", .{err});
+            return error.UnexpectedResponse;
+        };
+        defer {
+            for (param_infos) |param| {
+                self.allocator.free(param.name);
+            }
+            self.allocator.free(param_infos);
+        }
+
+        // Track discovered names
+        var discovered_names = std.StringHashMap(void).init(self.allocator);
+        defer {
+            var iter = discovered_names.iterator();
+            while (iter.next()) |entry| {
+                self.allocator.free(entry.key_ptr.*);
+            }
+            discovered_names.deinit();
+        }
+
+        // Process each param
+        for (param_infos) |param| {
+            const name_copy = try self.allocator.dupe(u8, param.name);
+            discovered_names.put(name_copy, {}) catch |err| {
+                self.allocator.free(name_copy);
+                return err;
+            };
+
+            // Get current value and update store
+            const backend_value = backend.getParamValue(param.name) catch |err| {
+                std.log.err("refreshParamsRemote: getParamValue({s}) failed: {}", .{ param.name, err });
+                continue;
+            };
+
+            // Convert backend.HalValue to cache.HalValue
+            const value: HalValue = switch (backend_value) {
+                .bit => |v| HalValue{ .bit = v },
+                .float => |v| HalValue{ .float = v },
+                .s32 => |v| HalValue{ .s32 = v },
+                .u32 => |v| HalValue{ .u32 = v },
+            };
+
+            self.store.updateParam(param.name, value) catch |err| {
+                std.log.err("refreshParamsRemote: updateParam({s}) failed: {}", .{ param.name, err });
+            };
+        }
+
+        // Remove stale params
+        const cached_names = try self.store.listParams(self.allocator);
+        defer {
+            for (cached_names) |n| self.allocator.free(n);
+            self.allocator.free(cached_names);
+        }
+
+        for (cached_names) |name| {
+            if (discovered_names.get(name) == null) {
+                self.store.removeParam(name) catch {};
+            }
+        }
+    }
+
     /// Refresh HAL state and update cache
     ///
     /// This function performs a complete refresh cycle:
@@ -287,12 +487,18 @@ pub const RefreshThread = struct {
     /// Refresh all pins from HAL
     ///
     /// This function:
-    /// 1. Discovers all pins from HAL using halcmd
+    /// 1. Discovers all pins from HAL using halcmd (local) or remote backend
     /// 2. Updates all pin values from HAL
     ///
     /// Thread safety:
     ///   - Reads HAL pins without holding cache lock
     fn refreshPins(self: *RefreshThread) !void {
+        // Check if using remote HAL backend
+        if (self.remote_backend) |backend_ptr| {
+            return self.refreshPinsRemote(backend_ptr);
+        }
+
+        // Local HAL refresh path
         // Track all discovered pin names in this refresh cycle
         // Note: HashMap owns copies of pin names to avoid dangling pointers
         var discovered_names = std.StringHashMap(void).init(self.allocator);
@@ -363,6 +569,12 @@ pub const RefreshThread = struct {
     /// Thread safety:
     ///   - Reads HAL signals without holding cache lock
     fn refreshSignals(self: *RefreshThread) !void {
+        // Check if using remote HAL backend
+        if (self.remote_backend) |backend_ptr| {
+            return self.refreshSignalsRemote(backend_ptr);
+        }
+
+        // Local HAL refresh path
         // Track all discovered signal names in this refresh cycle
         // Note: HashMap owns copies of signal names to avoid dangling pointers
         var discovered_names = std.StringHashMap(void).init(self.allocator);
@@ -428,6 +640,12 @@ pub const RefreshThread = struct {
     /// Thread safety:
     ///   - Reads HAL parameters without holding cache lock
     fn refreshParams(self: *RefreshThread) !void {
+        // Check if using remote HAL backend
+        if (self.remote_backend) |backend_ptr| {
+            return self.refreshParamsRemote(backend_ptr);
+        }
+
+        // Local HAL refresh path
         // Track all discovered param names in this refresh cycle
         // Note: HashMap owns copies of param names to avoid dangling pointers
         var discovered_names = std.StringHashMap(void).init(self.allocator);
