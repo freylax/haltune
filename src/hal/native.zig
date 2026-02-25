@@ -212,7 +212,6 @@ pub const NativeBackend = struct {
 
         return pin_list.toOwnedSlice(allocator);
     }
-    }
 
     fn listSignals(ptr: *anyopaque, allocator: std.mem.Allocator) ![]SignalInfo {
         const self: *State = @ptrCast(@alignCast(ptr));
