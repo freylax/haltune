@@ -14,7 +14,15 @@ const PinDir = backend.PinDir;
 const ParamDir = backend.ParamDir;
 
 // HAL FFI imports
-const c = @import("ffi-c").c;
+const ffi_c_module = @import("ffi-c");
+const c = ffi_c_module.c;
+
+// Manual extern declarations (at module level, not in c namespace)
+const halpr_find_pin_by_name = ffi_c_module.halpr_find_pin_by_name;
+const halpr_find_sig_by_name = ffi_c_module.halpr_find_sig_by_name;
+const halpr_find_param_by_name = ffi_c_module.halpr_find_param_by_name;
+const hal_pin_t = ffi_c_module.hal_pin_t;
+const hal_param_t = ffi_c_module.hal_param_t;
 
 // Discovery helpers using halcmd
 const discovery = @import("ffi-safe-discovery");
@@ -139,10 +147,10 @@ pub const NativeBackend = struct {
             const name_z = try toCStr(allocator, pin_name);
             defer allocator.free(name_z);
 
-            const pin_ptr = c.halpr_find_pin_by_name(name_z.ptr);
+            const pin_ptr = halpr_find_pin_by_name(name_z.ptr);
             if (pin_ptr == null) continue;
 
-            const pin = pin_ptr.*;
+            const pin: *const hal_pin_t = @ptrCast(@alignCast(pin_ptr));
 
             // Get pin type
             const pin_type: PinType = switch (pin.type) {
@@ -161,12 +169,12 @@ pub const NativeBackend = struct {
                 else => .in, // fallback
             };
 
-            // Get pin value
+            // Get pin value from data_ptr_addr
             const pin_value: HalValue = switch (pin.type) {
-                c.HAL_BIT => if (pin.data.ptr) |d| .{ .bit = d.*.b != 0 } else HalValue{ .bit = false },
-                c.HAL_FLOAT => if (pin.data.ptr) |d| .{ .float = d.*.f } else HalValue{ .float = 0.0 },
-                c.HAL_S32 => if (pin.data.ptr) |d| .{ .s32 = d.*.s } else HalValue{ .s32 = 0 },
-                c.HAL_U32 => if (pin.data.ptr) |d| .{ .u32 = d.*.u } else HalValue{ .u32 = 0 },
+                c.HAL_BIT => if (pin.data_ptr_addr) |d| @as([*c]c.hal_bit_t, @ptrCast(d)).*.* else HalValue{ .bit = false },
+                c.HAL_FLOAT => if (pin.data_ptr_addr) |d| @as([*c]c.hal_float_t, @ptrCast(d)).*.* else HalValue{ .float = 0.0 },
+                c.HAL_S32 => if (pin.data_ptr_addr) |d| @as([*c]c.hal_s32_t, @ptrCast(d)).*.* else HalValue{ .s32 = 0 },
+                c.HAL_U32 => if (pin.data_ptr_addr) |d| @as([*c]c.hal_u32_t, @ptrCast(d)).*.* else HalValue{ .u32 = 0 },
                 else => HalValue{ .bit = false },
             };
 
@@ -201,10 +209,13 @@ pub const NativeBackend = struct {
             const name_z = try toCStr(allocator, sig_name);
             defer allocator.free(name_z);
 
-            const sig_ptr = c.halpr_find_sig_by_name(name_z.ptr);
+            // Use hal_get_signal_value_by_name to get signal value
+            var hal_type: c_int = undefined;
+            var data_ptr: [*c][*c]c.hal_data_u = undefined;
+            var has_writers: bool = undefined;
 
-            // Get signal type (default to float if not found)
-            const sig_type: PinType = if (sig_ptr) |s| switch (s.type) {
+            const rc = c.hal_get_signal_value_by_name(name_z.ptr, &hal_type, &data_ptr, &has_writers);
+            const sig_type: PinType = if (rc == 0) switch (hal_type) {
                 c.HAL_BIT => .bit,
                 c.HAL_FLOAT => .float,
                 c.HAL_S32 => .s32,
@@ -212,13 +223,15 @@ pub const NativeBackend = struct {
                 else => .float,
             } else .float;
 
-            // Get signal value
-            const sig_value: HalValue = if (sig_ptr) |s| switch (s.type) {
-                c.HAL_BIT => if (s.data.ptr) |d| .{ .bit = d.*.b != 0 } else HalValue{ .bit = false },
-                c.HAL_FLOAT => if (s.data.ptr) |d| .{ .float = d.*.f } else HalValue{ .float = 0.0 },
-                c.HAL_S32 => if (s.data.ptr) |d| .{ .s32 = d.*.s } else HalValue{ .s32 = 0 },
-                c.HAL_U32 => if (s.data.ptr) |d| .{ .u32 = d.*.u } else HalValue{ .u32 = 0 },
-                else => HalValue{ .float = 0.0 },
+            const sig_value: HalValue = if (rc == 0 and data_ptr != null) blk: {
+                const data = data_ptr.*.*;
+                break :blk switch (hal_type) {
+                    c.HAL_BIT => HalValue{ .bit = data.b != 0 },
+                    c.HAL_FLOAT => HalValue{ .float = data.f },
+                    c.HAL_S32 => HalValue{ .s32 = data.s },
+                    c.HAL_U32 => HalValue{ .u32 = data.u },
+                    else => HalValue{ .float = 0.0 },
+                };
             } else HalValue{ .float = 0.0 };
 
             // Collect writers and readers (empty for now - would need more complex iteration)
@@ -254,10 +267,10 @@ pub const NativeBackend = struct {
             const name_z = try toCStr(allocator, param_name);
             defer allocator.free(name_z);
 
-            const param_ptr = c.halpr_find_param_by_name(name_z.ptr);
+            const param_ptr = halpr_find_param_by_name(name_z.ptr);
             if (param_ptr == null) continue;
 
-            const param = param_ptr.*;
+            const param: *const hal_param_t = @ptrCast(@alignCast(param_ptr));
 
             // Get param type
             const param_type: PinType = switch (param.type) {
@@ -276,12 +289,12 @@ pub const NativeBackend = struct {
                 else => .rw, // fallback
             };
 
-            // Get param value
+            // Get param value from data_ptr
             const param_value: HalValue = switch (param.type) {
-                c.HAL_BIT => if (param.data.ptr) |d| .{ .bit = d.*.b != 0 } else HalValue{ .bit = false },
-                c.HAL_FLOAT => if (param.data.ptr) |d| .{ .float = d.*.f } else HalValue{ .float = 0.0 },
-                c.HAL_S32 => if (param.data.ptr) |d| .{ .s32 = d.*.s } else HalValue{ .s32 = 0 },
-                c.HAL_U32 => if (param.data.ptr) |d| .{ .u32 = d.*.u } else HalValue{ .u32 = 0 },
+                c.HAL_BIT => if (param.data_ptr) |d| @as([*c]c.hal_bit_t, @ptrCast(d)).*.* else HalValue{ .bit = false },
+                c.HAL_FLOAT => if (param.data_ptr) |d| @as([*c]c.hal_float_t, @ptrCast(d)).*.* else HalValue{ .float = 0.0 },
+                c.HAL_S32 => if (param.data_ptr) |d| @as([*c]c.hal_s32_t, @ptrCast(d)).*.* else HalValue{ .s32 = 0 },
+                c.HAL_U32 => if (param.data_ptr) |d| @as([*c]c.hal_u32_t, @ptrCast(d)).*.* else HalValue{ .u32 = 0 },
                 else => HalValue{ .float = 0.0 },
             };
 
