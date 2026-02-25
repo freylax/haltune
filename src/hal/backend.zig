@@ -129,6 +129,8 @@ pub const HalError = error{
     InvalidMessageType,
     InvalidHalValue,
     OutOfMemory,
+    LinkFailed,
+    UnlinkFailed,
 };
 
 pub const HalBackend = struct {

@@ -164,11 +164,12 @@ pub const NativeBackend = struct {
 
         const data = data_ptr orelse return error.NotLinked;
 
+        const hal_data = data.*.*;
         return switch (hal_type) {
-            c.HAL_BIT => HalValue{ .bit = if (data.*.*.b != 0) true else false },
-            c.HAL_FLOAT => HalValue{ .float = data.*.*.f },
-            c.HAL_S32 => HalValue{ .s32 = data.*.*.s },
-            c.HAL_U32 => HalValue{ .u32 = data.*.*.u },
+            c.HAL_BIT => HalValue{ .bit = hal_data.b },
+            c.HAL_FLOAT => HalValue{ .float = hal_data.f },
+            c.HAL_S32 => HalValue{ .s32 = hal_data.s },
+            c.HAL_U32 => HalValue{ .u32 = hal_data.u },
             else => error.InvalidHalType,
         };
     }
@@ -179,30 +180,22 @@ pub const NativeBackend = struct {
         const name_z = try toCStr(self.allocator, name);
         defer self.allocator.free(name_z);
 
-        // Find pin by name to get its data_ptr
-        const pin_ptr = c.halpr_find_pin_by_name(name_z.ptr);
-        if (pin_ptr == null) return error.PinNotFound;
-
-        // Set value based on type - write directly to pin's data_ptr
-        // Note: We can't access pin fields directly due to opaque type
-        // For now, we need to use hal_pin_*_set functions if available
-        // Or we can use the data_ptr from hal_get_pin_value_by_name above
-
-        // Get data_ptr first
+        // Get data_ptr using hal_get_pin_value_by_name
         var hal_type: c_int = undefined;
-        var data_ptr2: [*c][*c]c.hal_data_u = undefined;
+        var data_ptr: [*c][*c]c.hal_data_u = undefined;
         var connected: bool = undefined;
 
-        const rc = c.hal_get_pin_value_by_name(name_z.ptr, &hal_type, &data_ptr2, &connected);
+        const rc = c.hal_get_pin_value_by_name(name_z.ptr, &hal_type, &data_ptr, &connected);
         if (rc != 0) return error.PinNotFound;
 
-        const data = data_ptr2 orelse return error.NotLinked;
+        const data = data_ptr orelse return error.NotLinked;
+        const hal_data = data.*;
 
         switch (value) {
-            .bit => |v| data.*.*.b = @intFromBool(v),
-            .float => |v| data.*.*.f = v,
-            .s32 => |v| data.*.*.s = v,
-            .u32 => |v| data.*.*.u = v,
+            .bit => |v| hal_data.*.b = v,
+            .float => |v| hal_data.*.f = v,
+            .s32 => |v| hal_data.*.s = v,
+            .u32 => |v| hal_data.*.u = v,
         }
     }
 
@@ -221,11 +214,13 @@ pub const NativeBackend = struct {
 
         const data = data_ptr orelse return error.ParamNotFound;
 
+        const hal_data = data.*;
+
         return switch (hal_type) {
-            c.HAL_BIT => HalValue{ .bit = if (data.*.*.b != 0) true else false },
-            c.HAL_FLOAT => HalValue{ .float = data.*.*.f },
-            c.HAL_S32 => HalValue{ .s32 = data.*.*.s },
-            c.HAL_U32 => HalValue{ .u32 = data.*.*.u },
+            c.HAL_BIT => HalValue{ .bit = hal_data.*.b },
+            c.HAL_FLOAT => HalValue{ .float = hal_data.*.f },
+            c.HAL_S32 => HalValue{ .s32 = hal_data.*.s },
+            c.HAL_U32 => HalValue{ .u32 = hal_data.*.u },
             else => error.InvalidHalType,
         };
     }
@@ -236,15 +231,7 @@ pub const NativeBackend = struct {
         const name_z = try toCStr(self.allocator, name);
         defer self.allocator.free(name_z);
 
-        // Get param data_ptr
-        const param_ptr = c.halpr_find_param_by_name(name_z.ptr);
-        if (param_ptr == null) return error.ParamNotFound;
-
-        // For setting, we need to access the param's data_ptr
-        // Since types are opaque, we need to use hal_param_*_set functions
-        // Or directly access the data pointer offset
-        // For now, let's use a workaround: get the value first to get data_ptr
-
+        // Get param data_ptr using hal_get_param_value_by_name
         var hal_type: c_int = undefined;
         var data_ptr: [*c][*c]c.hal_data_u = undefined;
 
@@ -252,12 +239,13 @@ pub const NativeBackend = struct {
         if (rc != 0) return error.ParamNotFound;
 
         const data = data_ptr orelse return error.ParamNotFound;
+        const hal_data = data.*;
 
         switch (value) {
-            .bit => |v| data.*.*.b = @intFromBool(v),
-            .float => |v| data.*.*.f = v,
-            .s32 => |v| data.*.*.s = v,
-            .u32 => |v| data.*.*.u = v,
+            .bit => |v| hal_data.*.b = v,
+            .float => |v| hal_data.*.f = v,
+            .s32 => |v| hal_data.*.s = v,
+            .u32 => |v| hal_data.*.u = v,
         }
     }
 
@@ -267,8 +255,8 @@ pub const NativeBackend = struct {
         const name_z = try toCStr(self.allocator, name);
         defer self.allocator.free(name_z);
 
-        const sig_ptr = c.hal_signal_new(name_z.ptr, @intFromEnum(pin_type));
-        if (sig_ptr == null) return error.InitFailed;
+        const rc = c.hal_signal_new(name_z.ptr, @intFromEnum(pin_type));
+        if (rc < 0) return error.InitFailed;
     }
 
     fn deleteSignal(ptr: *anyopaque, name: []const u8) !void {

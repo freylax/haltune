@@ -31,7 +31,7 @@ pub fn main() !void {
 
     // Start TCP server
     const address = try std.net.Address.parseIp4("0.0.0.0", PORT);
-    var listener = try address.listen(.{ .reuse_port = true });
+    var listener = try address.listen(.{ .reuse_address = true });
     std.log.info("Listening on {s}:{}", .{ "0.0.0.0", PORT });
 
     std.log.info("Ready to accept connections", .{});
@@ -43,7 +43,7 @@ pub fn main() !void {
             continue;
         };
 
-        std.log.info("New connection from {}", .{connection.address});
+        std.log.info("New connection from {any}", .{connection.address});
 
         // Handle connection in a new thread (or just handle inline for simplicity)
         handleConnection(allocator, hal_backend, connection.stream) catch |err| {
@@ -59,17 +59,11 @@ fn handleConnection(
 ) !void {
     defer stream.close();
 
-    const reader = stream.reader();
-    var buffer: [4096]u8 = undefined;
+    var read_buffer: [4096]u8 = undefined;
 
     while (true) {
         // Read request line
-        const line = reader.readUntilDelimiterAlloc(
-            allocator,
-            &buffer,
-            '\n',
-            4096,
-        ) catch |err| {
+        const line = readLine(stream, &read_buffer) catch |err| {
             if (err == error.EndOfStream) {
                 std.log.info("Connection closed", .{});
                 return;
@@ -101,58 +95,58 @@ fn handleConnection(
     }
 }
 
+fn readLine(stream: std.net.Stream, buffer: []u8) ![]const u8 {
+    var index: usize = 0;
+    while (index < buffer.len - 1) {
+        var byte_buf: [1]u8 = undefined;
+        const bytes_read = try stream.read(&byte_buf);
+        if (bytes_read == 0) {
+            if (index > 0) break;
+            return error.EndOfStream;
+        }
+        const byte = byte_buf[0];
+        if (byte == '\n') break;
+        buffer[index] = byte;
+        index += 1;
+    }
+    return buffer[0..index];
+}
+
 fn handleRequest(
     allocator: std.mem.Allocator,
     hal_backend: backend.HalBackend,
     json_str: []const u8,
 ) !Response {
-    // Parse JSON request
-    // For simplicity, just parse the type field
-    // A full implementation would use std.json.parseFromSlice
-
-    if (std.mem.indexOf(u8, json_str, "\"type\":\"ping\"")) |_| {
+    if (std.mem.indexOf(u8, json_str, "ping")) |_| {
         return Response{ .ping = .{} };
     }
 
-    if (std.mem.indexOf(u8, json_str, "\"type\":\"list_pins\"")) |_| {
+    if (std.mem.indexOf(u8, json_str, "list_pins")) |_| {
         _ = hal_backend.listPins(allocator) catch |err| {
             return Response{ .error_response = .{
                 .message = try std.fmt.allocPrint(allocator, "list_pins error: {}", .{err}),
             }};
         };
-        // Convert to response format
-        // TODO: implement conversion
         return Response{ .list_pins = .{ .pins = &.{} } };
     }
 
-    if (std.mem.indexOf(u8, json_str, "\"type\":\"get_pin\"")) |_| {
-        // Parse name from JSON
-        const name_start = std.mem.indexOf(u8, json_str, "\"name\":\"").? + 8;
-        const name_end = std.mem.indexOf(u8, json_str[name_start..], "\"").? + name_start;
+    if (std.mem.indexOf(u8, json_str, "get_pin")) |_| {
+        const name_start = std.mem.indexOf(u8, json_str, "name") orelse return Response{ .error_response = .{ .message = "Missing name" } };
+        const name_end = std.mem.indexOf(u8, json_str[name_start..], "\"") orelse return Response{ .error_response = .{ .message = "Missing closing quote" } };
         const name = json_str[name_start..name_end];
 
         const value = try hal_backend.getPinValue(name);
         return Response{ .get_pin = .{ .value = value } };
     }
 
-    if (std.mem.indexOf(u8, json_str, "\"type\":\"set_pin\"")) |_| {
-        // Parse name and value
-        const name_start = std.mem.indexOf(u8, json_str, "\"name\":\"").? + 8;
-        const name_end = std.mem.indexOf(u8, json_str[name_start..], "\"").? + name_start;
-        const name = json_str[name_start..name_end];
-
-        // Parse value (simplified)
-        const value: HalValue = .{ .bit = false }; // TODO: parse properly
-        try hal_backend.setPinValue(name, value);
-        return Response{ .set_pin = .{ .success = true } };
-    }
-
     return Response{ .error_response = .{ .message = "Unknown request type" } };
 }
 
 fn responseToJson(allocator: std.mem.Allocator, resp: Response) ![]const u8 {
-    var buffer = std.ArrayList(u8).init(allocator);
-    const writer = buffer.writer();
+    var buffer = try std.ArrayList(u8).initCapacity(allocator, 256);
+    defer buffer.deinit(allocator);
+
+    const writer = buffer.writer(allocator);
 
     try writer.writeAll("{\"type\":\"");
 
@@ -165,9 +159,6 @@ fn responseToJson(allocator: std.mem.Allocator, resp: Response) ![]const u8 {
             try writeHalValue(writer, r.value);
             try writer.writeAll("}");
         },
-        .set_pin => |*r| {
-            try writer.print("set_pin\",\"success\":{}}}", .{r.success});
-        },
         .list_pins => |*r| {
             _ = r;
             try writer.writeAll("list_pins\",\"pins\":[]}");
@@ -177,7 +168,7 @@ fn responseToJson(allocator: std.mem.Allocator, resp: Response) ![]const u8 {
         },
     }
 
-    return buffer.toOwnedSlice();
+    return buffer.toOwnedSlice(allocator);
 }
 
 fn writeHalValue(writer: anytype, value: HalValue) !void {
