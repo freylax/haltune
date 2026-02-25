@@ -124,7 +124,7 @@ pub const NativeBackend = struct {
         _ = self;
 
         // Get all pin names using halcmd
-        const pin_names = try discovery.listPinNames(allocator);
+        var pin_names = try discovery.listPinNames(allocator);
         defer {
             for (pin_names.items) |n| allocator.free(n);
             pin_names.deinit(allocator);
@@ -186,7 +186,7 @@ pub const NativeBackend = struct {
         _ = self;
 
         // Get all signal names using halcmd
-        const sig_names = try discovery.listSignalNames(allocator);
+        var sig_names = try discovery.listSignalNames(allocator);
         defer {
             for (sig_names.items) |n| allocator.free(n);
             sig_names.deinit(allocator);
@@ -239,7 +239,7 @@ pub const NativeBackend = struct {
         _ = self;
 
         // Get all param names using halcmd
-        const param_names = try discovery.listParamNames(allocator);
+        var param_names = try discovery.listParamNames(allocator);
         defer {
             for (param_names.items) |n| allocator.free(n);
             param_names.deinit(allocator);

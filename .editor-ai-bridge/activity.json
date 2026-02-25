@@ -8702,6 +8702,63 @@
       "description": "Modified: // HAL FFI imports",
       "timestamp": 1772049055,
       "severity": null
+    },
+    {
+      "id": "edit-1772049261-458",
+      "type": "edit_capture",
+      "file_path": "/home/robert/prog/zig/haltune/src/hal/native.zig",
+      "range": {
+        "start": {
+          "line": 0,
+          "character": 0
+        },
+        "end": {
+          "line": 0,
+          "character": 0
+        }
+      },
+      "actor": "claude-code",
+      "description": "Modified:     fn listPins(ptr: *anyopaque, allocator: std.mem.Allocator) ![]PinInfo {",
+      "timestamp": 1772049261,
+      "severity": null
+    },
+    {
+      "id": "edit-1772049333-459",
+      "type": "edit_capture",
+      "file_path": "/home/robert/prog/zig/haltune/src/hal/native.zig",
+      "range": {
+        "start": {
+          "line": 0,
+          "character": 0
+        },
+        "end": {
+          "line": 0,
+          "character": 0
+        }
+      },
+      "actor": "claude-code",
+      "description": "Modified:     fn listSignals(ptr: *anyopaque, allocator: std.mem.Allocator) ![]SignalInfo ",
+      "timestamp": 1772049333,
+      "severity": null
+    },
+    {
+      "id": "edit-1772049406-460",
+      "type": "edit_capture",
+      "file_path": "/home/robert/prog/zig/haltune/src/hal/native.zig",
+      "range": {
+        "start": {
+          "line": 0,
+          "character": 0
+        },
+        "end": {
+          "line": 0,
+          "character": 0
+        }
+      },
+      "actor": "claude-code",
+      "description": "Modified:     fn listParams(ptr: *anyopaque, allocator: std.mem.Allocator) ![]ParamInfo {",
+      "timestamp": 1772049406,
+      "severity": null
     }
   ]
 }
