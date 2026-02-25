@@ -170,11 +170,28 @@ pub const NativeBackend = struct {
             };
 
             // Get pin value from data_ptr_addr
+            // data_ptr_addr points to a pointer to the actual data
             const pin_value: HalValue = switch (pin.type) {
-                c.HAL_BIT => if (pin.data_ptr_addr) |d| @as([*c]c.hal_bit_t, @ptrCast(d)).*.* else HalValue{ .bit = false },
-                c.HAL_FLOAT => if (pin.data_ptr_addr) |d| @as([*c]c.hal_float_t, @ptrCast(d)).*.* else HalValue{ .float = 0.0 },
-                c.HAL_S32 => if (pin.data_ptr_addr) |d| @as([*c]c.hal_s32_t, @ptrCast(d)).*.* else HalValue{ .s32 = 0 },
-                c.HAL_U32 => if (pin.data_ptr_addr) |d| @as([*c]c.hal_u32_t, @ptrCast(d)).*.* else HalValue{ .u32 = 0 },
+                c.HAL_BIT => if (pin.data_ptr_addr) |d| blk: {
+                    const data_ptr_ptr: [*c][*c]c.hal_data_u = @ptrCast(d);
+                    if (data_ptr_ptr.* == null) break :blk HalValue{ .bit = false };
+                    break :blk HalValue{ .bit = data_ptr_ptr.*.*.b != 0 };
+                } else HalValue{ .bit = false },
+                c.HAL_FLOAT => if (pin.data_ptr_addr) |d| blk: {
+                    const data_ptr_ptr: [*c][*c]c.hal_data_u = @ptrCast(d);
+                    if (data_ptr_ptr.* == null) break :blk HalValue{ .float = 0.0 };
+                    break :blk HalValue{ .float = data_ptr_ptr.*.*.f };
+                } else HalValue{ .float = 0.0 },
+                c.HAL_S32 => if (pin.data_ptr_addr) |d| blk: {
+                    const data_ptr_ptr: [*c][*c]c.hal_data_u = @ptrCast(d);
+                    if (data_ptr_ptr.* == null) break :blk HalValue{ .s32 = 0 };
+                    break :blk HalValue{ .s32 = data_ptr_ptr.*.*.s };
+                } else HalValue{ .s32 = 0 },
+                c.HAL_U32 => if (pin.data_ptr_addr) |d| blk: {
+                    const data_ptr_ptr: [*c][*c]c.hal_data_u = @ptrCast(d);
+                    if (data_ptr_ptr.* == null) break :blk HalValue{ .u32 = 0 };
+                    break :blk HalValue{ .u32 = data_ptr_ptr.*.*.u };
+                } else HalValue{ .u32 = 0 },
                 else => HalValue{ .bit = false },
             };
 
@@ -291,10 +308,22 @@ pub const NativeBackend = struct {
 
             // Get param value from data_ptr
             const param_value: HalValue = switch (param.type) {
-                c.HAL_BIT => if (param.data_ptr) |d| @as([*c]c.hal_bit_t, @ptrCast(d)).*.* else HalValue{ .bit = false },
-                c.HAL_FLOAT => if (param.data_ptr) |d| @as([*c]c.hal_float_t, @ptrCast(d)).*.* else HalValue{ .float = 0.0 },
-                c.HAL_S32 => if (param.data_ptr) |d| @as([*c]c.hal_s32_t, @ptrCast(d)).*.* else HalValue{ .s32 = 0 },
-                c.HAL_U32 => if (param.data_ptr) |d| @as([*c]c.hal_u32_t, @ptrCast(d)).*.* else HalValue{ .u32 = 0 },
+                c.HAL_BIT => if (param.data_ptr) |d| blk: {
+                    const data_ptr_ptr: [*c]c.hal_data_u = @ptrCast(d);
+                    break :blk HalValue{ .bit = data_ptr_ptr.*.b != 0 };
+                } else HalValue{ .bit = false },
+                c.HAL_FLOAT => if (param.data_ptr) |d| blk: {
+                    const data_ptr_ptr: [*c]c.hal_data_u = @ptrCast(d);
+                    break :blk HalValue{ .float = data_ptr_ptr.*.f };
+                } else HalValue{ .float = 0.0 },
+                c.HAL_S32 => if (param.data_ptr) |d| blk: {
+                    const data_ptr_ptr: [*c]c.hal_data_u = @ptrCast(d);
+                    break :blk HalValue{ .s32 = data_ptr_ptr.*.s };
+                } else HalValue{ .s32 = 0 },
+                c.HAL_U32 => if (param.data_ptr) |d| blk: {
+                    const data_ptr_ptr: [*c]c.hal_data_u = @ptrCast(d);
+                    break :blk HalValue{ .u32 = data_ptr_ptr.*.u };
+                } else HalValue{ .u32 = 0 },
                 else => HalValue{ .float = 0.0 },
             };
 
