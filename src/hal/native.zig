@@ -17,7 +17,7 @@ const ParamDir = backend.ParamDir;
 const c = @import("ffi-c").c;
 
 // Discovery helpers using halcmd
-const discovery = @import("../ffi/safe_discovery.zig");
+const discovery = @import("ffi-safe-discovery");
 
 /// Helper to create a null-terminated C string
 fn toCStr(allocator: std.mem.Allocator, str: []const u8) ![:0]const u8 {

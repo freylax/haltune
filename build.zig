@@ -94,6 +94,14 @@ pub fn build(b: *std.Build) void {
     ffi_safe.addImport("types.zig", ffi_types);
     ffi_safe.addImport("../state/cache.zig", state_cache);
 
+    // Safe discovery module (uses halcmd for HAL enumeration)
+    const ffi_safe_discovery = b.createModule(.{
+        .root_source_file = b.path("src/ffi/safe_discovery.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    ffi_safe_discovery.addImport("c.zig", ffi_c);
+
     // Vaxis dependency for TUI framework
     const vaxis = b.dependency("vaxis", .{
         .target = target,
@@ -500,6 +508,7 @@ pub fn build(b: *std.Build) void {
         });
         hal_native_module.addImport("backend", hal_backend_module);
         hal_native_module.addImport("ffi-c", ffi_c);
+        hal_native_module.addImport("ffi-safe-discovery", ffi_safe_discovery);
 
         // Create protocol module for bridge server
         // IMPORTANT: protocol imports backend as a MODULE to avoid circular deps
