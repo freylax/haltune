@@ -249,7 +249,7 @@ pub const NativeBackend = struct {
             const sig_value: HalValue = if (rc == 0 and data_ptr != null) blk: {
                 const data = data_ptr.*.*;
                 break :blk switch (hal_type) {
-                    c.HAL_BIT => HalValue{ .bit = data.b != 0 },
+                    c.HAL_BIT => HalValue{ .bit = data.b },
                     c.HAL_FLOAT => HalValue{ .float = data.f },
                     c.HAL_S32 => HalValue{ .s32 = data.s },
                     c.HAL_U32 => HalValue{ .u32 = data.u },
@@ -319,7 +319,7 @@ pub const NativeBackend = struct {
             const param_value: HalValue = switch (param.type) {
                 c.HAL_BIT => if (param.data_ptr) |d| blk: {
                     const data_ptr_ptr: [*c]c.hal_data_u = @ptrCast(@alignCast(d));
-                    break :blk HalValue{ .bit = data_ptr_ptr.*.b != 0 };
+                    break :blk HalValue{ .bit = data_ptr_ptr.*.b };
                 } else HalValue{ .bit = false },
                 c.HAL_FLOAT => if (param.data_ptr) |d| blk: {
                     const data_ptr_ptr: [*c]c.hal_data_u = @ptrCast(@alignCast(d));
