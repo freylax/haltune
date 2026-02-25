@@ -191,9 +191,11 @@ fn handleRequest(
                 }};
             };
             defer {
-                for (signals) |s| allocator.free(s.name);
-                allocator.free(s.writers);
-                allocator.free(s.readers);
+                for (signals) |s| {
+                    allocator.free(s.name);
+                    allocator.free(s.writers);
+                    allocator.free(s.readers);
+                }
                 allocator.free(signals);
             }
 
