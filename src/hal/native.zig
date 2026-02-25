@@ -134,6 +134,7 @@ pub const NativeBackend = struct {
     fn listPins(ptr: *anyopaque, allocator: std.mem.Allocator) ![]PinInfo {
         const self: *State = @ptrCast(@alignCast(ptr));
         _ = self;
+        _ = allocator;
 
         // TODO: For now return empty array to test basic flow
         // The HAL enumeration code needs more debugging
