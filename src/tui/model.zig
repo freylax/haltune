@@ -49,8 +49,8 @@ const exportHal = @import("../hal/export.zig");
 const ffi = @import("../ffi/safe.zig");
 const HalError = @import("../ffi/errors.zig").HalError;
 
-// Remote backend imports
-const HalBackend = @import("../hal/backend.zig").HalBackend;
+// Remote backend imports (via module from build.zig)
+const HalBackend = @import("backend").HalBackend;
 const RemoteBackend = @import("../hal/remote/client.zig").RemoteBackend;
 
 /// Global redraw flag pointer for pubsub callbacks

@@ -1,0 +1,24 @@
+# haltune configuration file for laura
+# Connects to HAL bridge server on pib
+
+[files]
+# HAL files to load for origin tracking
+# hal_files = ["custom.hal", "core_stepper.hal"]
+
+# INI files to load for origin tracking
+# ini_files = ["myconfig.ini"]
+
+[logging]
+# Log file path (comment out to log to stderr)
+file = "debug.log"
+
+[plugins]
+# Enabled plugins
+# enabled = ["plugin1", "plugin2"]
+
+[remote]
+# Remote HAL server configuration
+# Connect to HAL bridge server on pib instead of using local HAL
+enabled = true
+host = "192.168.2.118"
+port = 8765

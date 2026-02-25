@@ -1,0 +1,21 @@
+=== haltune log started ===
+[1772042732] [info] default: Global plugin registry initialized
+[1772042732] [info] default: Registered plugin: velocity_control v0.1.0
+[1772042732] [info] default: Registered plugin: trapvel_control v0.1.0
+[1772042732] [info] default: Registered 2 plugins
+[1772042732] [info] default: Using remote HAL server at 192.168.2.118:8765
+[1772042732] [info] default: Tree initialized with 0 components
+[1772042732] [info] default: Creating remote HAL backend for 192.168.2.118:8765
+[1772042732] [info] default: Using remote HAL for refresh thread
+[1772042732] [info] default: Waiting for refresh thread to populate StateStore...
+[1772042732] [info] default: Refresh thread started, continuing to TUI
+[1772042732] [info] vaxis: pixel mouse capability detected
+[1772042732] [info] vaxis: unicode capability detected
+[1772042732] [info] vaxis: kitty graphics capability detected
+[1772042732] [info] default: .init event: tree has 0 components
+[1772042743] [info] default: Stopping RefreshThread...
+[1772042743] [info] default: RefreshThread stopped
+[1772042743] [info] default: Cleaning up remote HAL backend
+[1772042743] [info] default: Exiting HAL component -1...
+[1772042743] [info] default: HAL component exited
+=== haltune log ended ===

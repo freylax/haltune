@@ -162,7 +162,7 @@ fn handleRequest(
                 });
             }
 
-            break :blk Response{ .list_pins = .{ .pins = try pin_infos.toOwnedSlice(allocator) } };
+            return Response{ .list_pins = .{ .pins = try pin_infos.toOwnedSlice(allocator) } };
         },
 
         .get_pin => {
@@ -210,7 +210,7 @@ fn handleRequest(
                 });
             }
 
-            break :blk Response{ .list_signals = .{ .signals = try signal_infos.toOwnedSlice(allocator) } };
+            return Response{ .list_signals = .{ .signals = try signal_infos.toOwnedSlice(allocator) } };
         },
 
         .list_params => {
@@ -236,7 +236,7 @@ fn handleRequest(
                 });
             }
 
-            break :blk Response{ .list_params = .{ .params = try param_infos.toOwnedSlice(allocator) } };
+            return Response{ .list_params = .{ .params = try param_infos.toOwnedSlice(allocator) } };
         },
 
         .list_components => {
@@ -250,7 +250,7 @@ fn handleRequest(
                 allocator.free(components);
             }
 
-            break :blk Response{ .list_components = .{ .components = components } };
+            return Response{ .list_components = .{ .components = components } };
         },
 
         .get_param => {
@@ -377,9 +377,9 @@ fn responseToJson(allocator: std.mem.Allocator, resp: Response) ![]const u8 {
                     try writer.print("\"{s}\"", .{w});
                 }
                 try writer.writeAll("],\"readers\":[");
-                for (sig.readers, 0..) |r, j| {
+                for (sig.readers, 0..) |reader, j| {
                     if (j > 0) try writer.writeAll(",");
-                    try writer.print("\"{s}\"", .{r});
+                    try writer.print("\"{s}\"", .{reader});
                 }
                 try writer.writeAll("]}");
             }

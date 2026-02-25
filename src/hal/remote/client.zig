@@ -3,7 +3,7 @@
 // This implementation connects to a HAL bridge server over TCP.
 
 const std = @import("std");
-const backend = @import("../backend.zig");
+const backend = @import("backend");
 const HalBackend = backend.HalBackend;
 const HalValue = backend.HalValue;
 const PinInfo = backend.PinInfo;

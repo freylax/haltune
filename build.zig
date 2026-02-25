@@ -180,6 +180,14 @@ pub fn build(b: *std.Build) void {
     plugins.addImport("velocity_control", velocity_control_plugin);
     plugins.addImport("trapvel_control", trapvel_control_plugin);
 
+    // Create HAL backend module for haltune (needed for protocol module)
+    // Must be created before tui_module which depends on it
+    const hal_backend_module = b.createModule(.{
+        .root_source_file = b.path("src/hal/backend.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+
     // Create TUI module
     const tui_module = b.createModule(.{
         .root_source_file = b.path("src/tui/app.zig"),
@@ -209,11 +217,9 @@ pub fn build(b: *std.Build) void {
     tui_module.addImport("plugin/registry", plugin_registry);
     tui_module.addImport("plugin/manager", plugin_manager);
     tui_module.addImport("plugins", plugins);
+    tui_module.addImport("backend", hal_backend_module); // For protocol access
 
     // Create root module
-
-    // Add Glob to TUI module
-    tui_module.addImport("glob", glob.module("glob"));
 
     // Create root module
     const root_module = b.createModule(.{
@@ -221,6 +227,9 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
+
+    // Add backend module to root for protocol access
+    root_module.addImport("backend", hal_backend_module);
 
     // Add FFI modules to root module
     root_module.addImport("ffi/c.zig", ffi_c);
@@ -484,13 +493,6 @@ pub fn build(b: *std.Build) void {
     // Skip bridge server build when skip_hal_link is set (development without LinuxCNC)
 
     if (!skip_hal_link) {
-        // Create HAL backend module for bridge server
-        const hal_backend_module = b.createModule(.{
-            .root_source_file = b.path("src/hal/backend.zig"),
-            .target = target,
-            .optimize = optimize,
-        });
-
         const hal_native_module = b.createModule(.{
             .root_source_file = b.path("src/hal/native.zig"),
             .target = target,

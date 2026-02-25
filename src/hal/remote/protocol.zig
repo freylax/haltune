@@ -3,7 +3,8 @@
 // JSON message format for HAL bridge client/server communication.
 
 const std = @import("std");
-const backend = @import("../backend.zig");
+// Use module import for backend (configured in build.zig)
+const backend = @import("backend");
 const PinType = backend.PinType;
 const HalValue = backend.HalValue;
 
