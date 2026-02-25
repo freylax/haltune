@@ -76,7 +76,7 @@ fn isValidHalName(name: []const u8) bool {
 }
 
 /// List all pin names from HAL
-pub fn listPinNames(allocator: std.mem.Allocator) !std.ArrayList([]const u8) {
+pub fn listPinNames(allocator: std.mem.Allocator) anyerror!std.ArrayList([]const u8) {
     var result = try std.ArrayList([]const u8).initCapacity(allocator, 8);
     const cmd_result = try runHalcmd(allocator, &[_][]const u8{ "list", "pin" });
     defer cmd_result.deinit();
@@ -96,7 +96,7 @@ pub fn listPinNames(allocator: std.mem.Allocator) !std.ArrayList([]const u8) {
 }
 
 /// List all param names from HAL
-pub fn listParamNames(allocator: std.mem.Allocator) !std.ArrayList([]const u8) {
+pub fn listParamNames(allocator: std.mem.Allocator) anyerror!std.ArrayList([]const u8) {
     var result = try std.ArrayList([]const u8).initCapacity(allocator, 4);
     const cmd_result = try runHalcmd(allocator, &[_][]const u8{ "list", "param" });
     defer cmd_result.deinit();
@@ -114,7 +114,7 @@ pub fn listParamNames(allocator: std.mem.Allocator) !std.ArrayList([]const u8) {
 }
 
 /// List all signal names from HAL
-pub fn listSignalNames(allocator: std.mem.Allocator) !std.ArrayList([]const u8) {
+pub fn listSignalNames(allocator: std.mem.Allocator) anyerror!std.ArrayList([]const u8) {
     var result = try std.ArrayList([]const u8).initCapacity(allocator, 4);
     const cmd_result = try runHalcmd(allocator, &[_][]const u8{ "list", "sig" });
     defer cmd_result.deinit();

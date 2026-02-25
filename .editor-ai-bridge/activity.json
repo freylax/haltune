@@ -9101,6 +9101,82 @@
       "description": "Modified:                     break :blk HalValue{ .bit = data_ptr_ptr.*.*.b };",
       "timestamp": 1772050865,
       "severity": null
+    },
+    {
+      "id": "edit-1772051046-479",
+      "type": "edit_capture",
+      "file_path": "/home/robert/prog/zig/haltune/src/ffi/safe_discovery.zig",
+      "range": {
+        "start": {
+          "line": 0,
+          "character": 0
+        },
+        "end": {
+          "line": 0,
+          "character": 0
+        }
+      },
+      "actor": "claude-code",
+      "description": "Modified: /// List all pin names from HAL",
+      "timestamp": 1772051046,
+      "severity": null
+    },
+    {
+      "id": "edit-1772051082-480",
+      "type": "edit_capture",
+      "file_path": "/home/robert/prog/zig/haltune/src/ffi/safe_discovery.zig",
+      "range": {
+        "start": {
+          "line": 0,
+          "character": 0
+        },
+        "end": {
+          "line": 0,
+          "character": 0
+        }
+      },
+      "actor": "claude-code",
+      "description": "Modified: /// List all pin names from HAL",
+      "timestamp": 1772051082,
+      "severity": null
+    },
+    {
+      "id": "edit-1772051118-481",
+      "type": "edit_capture",
+      "file_path": "/home/robert/prog/zig/haltune/src/ffi/safe_discovery.zig",
+      "range": {
+        "start": {
+          "line": 0,
+          "character": 0
+        },
+        "end": {
+          "line": 0,
+          "character": 0
+        }
+      },
+      "actor": "claude-code",
+      "description": "Modified: /// List all param names from HAL",
+      "timestamp": 1772051118,
+      "severity": null
+    },
+    {
+      "id": "edit-1772051153-482",
+      "type": "edit_capture",
+      "file_path": "/home/robert/prog/zig/haltune/src/ffi/safe_discovery.zig",
+      "range": {
+        "start": {
+          "line": 0,
+          "character": 0
+        },
+        "end": {
+          "line": 0,
+          "character": 0
+        }
+      },
+      "actor": "claude-code",
+      "description": "Modified: /// List all signal names from HAL",
+      "timestamp": 1772051153,
+      "severity": null
     }
   ]
 }
