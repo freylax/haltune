@@ -477,4 +477,69 @@ pub fn build(b: *std.Build) void {
 
     const toml_write_step = b.step("toml-write-test", "Run TOML write test");
     toml_write_step.dependOn(&run_toml_write.step);
+
+    // ===== HAL Bridge Server =====
+
+    // Create HAL backend module for bridge server
+    const hal_backend_module = b.createModule(.{
+        .root_source_file = b.path("src/hal/backend.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+
+    const hal_native_module = b.createModule(.{
+        .root_source_file = b.path("src/hal/native.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    hal_native_module.addImport("backend", hal_backend_module);
+    hal_native_module.addImport("ffi-c", ffi_c);
+
+    const hal_protocol_module = b.createModule(.{
+        .root_source_file = b.path("src/hal/remote/protocol.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    hal_protocol_module.addImport("backend", hal_backend_module);
+
+    // Create bridge server module
+    const bridge_server_module = b.createModule(.{
+        .root_source_file = b.path("src/hal/bridge_server/main.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    bridge_server_module.addImport("backend", hal_backend_module);
+    bridge_server_module.addImport("native", hal_native_module);
+    bridge_server_module.addImport("protocol", hal_protocol_module);
+    bridge_server_module.addIncludePath(.{ .cwd_relative = linuxcnc_include });
+
+    // Create bridge server executable
+    const bridge_server_exe = b.addExecutable(.{
+        .name = "hal_bridge_server",
+        .root_module = bridge_server_module,
+    });
+
+    // Link bridge server against LinuxCNC HAL library
+    if (!skip_hal_link) {
+        bridge_server_exe.addLibraryPath(.{ .cwd_relative = "/usr/lib" });
+        bridge_server_exe.linkSystemLibrary("c");
+        bridge_server_exe.linkSystemLibrary("linuxcnchal");
+        bridge_server_exe.linkSystemLibrary("rt");
+        bridge_server_exe.linker_allow_shlib_undefined = true;
+    } else {
+        bridge_server_exe.linkSystemLibrary("c");
+        bridge_server_exe.addCSourceFile(.{
+            .file = b.path("src/ffi/hal_stubs.c"),
+        });
+    }
+
+    // Install bridge server
+    b.installArtifact(bridge_server_exe);
+
+    // Bridge server run step
+    const run_bridge_server = b.addRunArtifact(bridge_server_exe);
+    run_bridge_server.step.dependOn(b.getInstallStep());
+
+    const bridge_server_step = b.step("bridge-server", "Run HAL bridge server");
+    bridge_server_step.dependOn(&run_bridge_server.step);
 }
