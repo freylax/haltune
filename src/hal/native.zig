@@ -137,7 +137,7 @@ pub const NativeBackend = struct {
 
         // TODO: For now return empty array to test basic flow
         // The HAL enumeration code needs more debugging
-        return allocator.alloc(PinInfo, 0);
+        return &[_]PinInfo{};
     }
 
     fn listSignals(ptr: *anyopaque, allocator: std.mem.Allocator) ![]SignalInfo {
