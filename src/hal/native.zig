@@ -135,82 +135,9 @@ pub const NativeBackend = struct {
         const self: *State = @ptrCast(@alignCast(ptr));
         _ = self;
 
-        // Get all pin names using halcmd
-        var pin_names = discovery.listPinNames(allocator) catch |err| {
-            std.log.scoped(.hal_native).err("listPinNames failed: {}", .{err});
-            return error.UnexpectedResponse;
-        };
-        defer {
-            for (pin_names.items) |n| allocator.free(n);
-            pin_names.deinit(allocator);
-        }
-
-        // Use ArrayList to build result (only count valid pins)
-        var pin_list = try std.ArrayList(PinInfo).initCapacity(allocator, pin_names.items.len);
-        errdefer pin_list.deinit(allocator);
-
-        // Get details for each pin using HAL API
-        for (pin_names.items) |pin_name| {
-            const name_z = try toCStr(allocator, pin_name);
-            defer allocator.free(name_z);
-
-            const pin_ptr = halpr_find_pin_by_name(name_z.ptr);
-            if (pin_ptr == null) continue;
-
-            const pin: *const hal_pin_t = @ptrCast(@alignCast(pin_ptr));
-
-            // Get pin type
-            const pin_type: PinType = switch (pin.type) {
-                c.HAL_BIT => .bit,
-                c.HAL_FLOAT => .float,
-                c.HAL_S32 => .s32,
-                c.HAL_U32 => .u32,
-                else => .bit, // fallback
-            };
-
-            // Get pin direction
-            const pin_dir: PinDir = switch (pin.dir) {
-                c.HAL_IN => .in,
-                c.HAL_OUT => .out,
-                c.HAL_IO => .io,
-                else => .in, // fallback
-            };
-
-            // Get pin value from data_ptr_addr
-            // data_ptr_addr points to a pointer to the actual data
-            const pin_value: HalValue = switch (pin.type) {
-                c.HAL_BIT => if (pin.data_ptr_addr) |d| blk: {
-                    const data_ptr_ptr: [*c][*c]c.hal_data_u = @ptrCast(@alignCast(d));
-                    if (data_ptr_ptr.* == null) break :blk HalValue{ .bit = false };
-                    break :blk HalValue{ .bit = data_ptr_ptr.*.*.b };
-                } else HalValue{ .bit = false },
-                c.HAL_FLOAT => if (pin.data_ptr_addr) |d| blk: {
-                    const data_ptr_ptr: [*c][*c]c.hal_data_u = @ptrCast(@alignCast(d));
-                    if (data_ptr_ptr.* == null) break :blk HalValue{ .float = 0.0 };
-                    break :blk HalValue{ .float = data_ptr_ptr.*.*.f };
-                } else HalValue{ .float = 0.0 },
-                c.HAL_S32 => if (pin.data_ptr_addr) |d| blk: {
-                    const data_ptr_ptr: [*c][*c]c.hal_data_u = @ptrCast(@alignCast(d));
-                    if (data_ptr_ptr.* == null) break :blk HalValue{ .s32 = 0 };
-                    break :blk HalValue{ .s32 = data_ptr_ptr.*.*.s };
-                } else HalValue{ .s32 = 0 },
-                c.HAL_U32 => if (pin.data_ptr_addr) |d| blk: {
-                    const data_ptr_ptr: [*c][*c]c.hal_data_u = @ptrCast(@alignCast(d));
-                    if (data_ptr_ptr.* == null) break :blk HalValue{ .u32 = 0 };
-                    break :blk HalValue{ .u32 = data_ptr_ptr.*.*.u };
-                } else HalValue{ .u32 = 0 },
-                else => HalValue{ .bit = false },
-            };
-
-            try pin_list.append(allocator, PinInfo{
-                .name = try allocator.dupe(u8, pin_name),
-                .type = pin_type,
-                .dir = pin_dir,
-                .value = pin_value,
-            });
-        }
-
-        return pin_list.toOwnedSlice(allocator);
+        // TODO: For now return empty array to test basic flow
+        // The HAL enumeration code needs more debugging
+        return allocator.alloc(PinInfo, 0);
     }
 
     fn listSignals(ptr: *anyopaque, allocator: std.mem.Allocator) ![]SignalInfo {
