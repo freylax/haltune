@@ -16,6 +16,9 @@ const ParamDir = backend.ParamDir;
 // HAL FFI imports
 const c = @import("ffi-c").c;
 
+// Discovery helpers using halcmd
+const discovery = @import("../ffi/safe_discovery.zig");
+
 /// Helper to create a null-terminated C string
 fn toCStr(allocator: std.mem.Allocator, str: []const u8) ![:0]const u8 {
     const result = try allocator.allocSentinel(u8, str.len + 1, 0);
@@ -120,32 +123,210 @@ pub const NativeBackend = struct {
         const self: *State = @ptrCast(@alignCast(ptr));
         _ = self;
 
-        // TODO: Implement by iterating over hal_data
-        return allocator.alloc(PinInfo, 0);
+        // Get all pin names using halcmd
+        const pin_names = try discovery.listPinNames(allocator);
+        defer {
+            for (pin_names.items) |n| allocator.free(n);
+            pin_names.deinit(allocator);
+        }
+
+        // Allocate result array
+        const pins = try allocator.alloc(PinInfo, pin_names.items.len);
+        errdefer allocator.free(pins);
+
+        // Get details for each pin using HAL API
+        for (pin_names.items, 0..) |pin_name, i| {
+            const name_z = try toCStr(allocator, pin_name);
+            defer allocator.free(name_z);
+
+            const pin_ptr = c.halpr_find_pin_by_name(name_z.ptr);
+            if (pin_ptr == null) continue;
+
+            const pin = pin_ptr.*;
+
+            // Get pin type
+            const pin_type: PinType = switch (pin.type) {
+                c.HAL_BIT => .bit,
+                c.HAL_FLOAT => .float,
+                c.HAL_S32 => .s32,
+                c.HAL_U32 => .u32,
+                else => .bit, // fallback
+            };
+
+            // Get pin direction
+            const pin_dir: PinDir = switch (pin.dir) {
+                c.HAL_IN => .in,
+                c.HAL_OUT => .out,
+                c.HAL_IO => .io,
+                else => .in, // fallback
+            };
+
+            // Get pin value
+            const pin_value: HalValue = switch (pin.type) {
+                c.HAL_BIT => if (pin.data.ptr) |d| .{ .bit = d.*.b != 0 } else HalValue{ .bit = false },
+                c.HAL_FLOAT => if (pin.data.ptr) |d| .{ .float = d.*.f } else HalValue{ .float = 0.0 },
+                c.HAL_S32 => if (pin.data.ptr) |d| .{ .s32 = d.*.s } else HalValue{ .s32 = 0 },
+                c.HAL_U32 => if (pin.data.ptr) |d| .{ .u32 = d.*.u } else HalValue{ .u32 = 0 },
+                else => HalValue{ .bit = false },
+            };
+
+            pins[i] = PinInfo{
+                .name = try allocator.dupe(u8, pin_name),
+                .type = pin_type,
+                .dir = pin_dir,
+                .value = pin_value,
+            };
+        }
+
+        return pins;
     }
 
     fn listSignals(ptr: *anyopaque, allocator: std.mem.Allocator) ![]SignalInfo {
         const self: *State = @ptrCast(@alignCast(ptr));
         _ = self;
 
-        // TODO: Implement by iterating over hal_data
-        return allocator.alloc(SignalInfo, 0);
+        // Get all signal names using halcmd
+        const sig_names = try discovery.listSignalNames(allocator);
+        defer {
+            for (sig_names.items) |n| allocator.free(n);
+            sig_names.deinit(allocator);
+        }
+
+        // Allocate result array
+        const signals = try allocator.alloc(SignalInfo, sig_names.items.len);
+        errdefer allocator.free(signals);
+
+        // Get details for each signal using HAL API
+        for (sig_names.items, 0..) |sig_name, i| {
+            const name_z = try toCStr(allocator, sig_name);
+            defer allocator.free(name_z);
+
+            const sig_ptr = c.halpr_find_sig_by_name(name_z.ptr);
+
+            // Get signal type (default to float if not found)
+            const sig_type: PinType = if (sig_ptr) |s| switch (s.type) {
+                c.HAL_BIT => .bit,
+                c.HAL_FLOAT => .float,
+                c.HAL_S32 => .s32,
+                c.HAL_U32 => .u32,
+                else => .float,
+            } else .float;
+
+            // Get signal value
+            const sig_value: HalValue = if (sig_ptr) |s| switch (s.type) {
+                c.HAL_BIT => if (s.data.ptr) |d| .{ .bit = d.*.b != 0 } else HalValue{ .bit = false },
+                c.HAL_FLOAT => if (s.data.ptr) |d| .{ .float = d.*.f } else HalValue{ .float = 0.0 },
+                c.HAL_S32 => if (s.data.ptr) |d| .{ .s32 = d.*.s } else HalValue{ .s32 = 0 },
+                c.HAL_U32 => if (s.data.ptr) |d| .{ .u32 = d.*.u } else HalValue{ .u32 = 0 },
+                else => HalValue{ .float = 0.0 },
+            } else HalValue{ .float = 0.0 };
+
+            // Collect writers and readers (empty for now - would need more complex iteration)
+            signals[i] = SignalInfo{
+                .name = try allocator.dupe(u8, sig_name),
+                .type = sig_type,
+                .value = sig_value,
+                .writers = &[_][]const u8{},
+                .readers = &[_][]const u8{},
+            };
+        }
+
+        return signals;
     }
 
     fn listParams(ptr: *anyopaque, allocator: std.mem.Allocator) ![]ParamInfo {
         const self: *State = @ptrCast(@alignCast(ptr));
         _ = self;
 
-        // TODO: Implement by iterating over hal_data
-        return allocator.alloc(ParamInfo, 0);
+        // Get all param names using halcmd
+        const param_names = try discovery.listParamNames(allocator);
+        defer {
+            for (param_names.items) |n| allocator.free(n);
+            param_names.deinit(allocator);
+        }
+
+        // Allocate result array
+        const params = try allocator.alloc(ParamInfo, param_names.items.len);
+        errdefer allocator.free(params);
+
+        // Get details for each param using HAL API
+        for (param_names.items, 0..) |param_name, i| {
+            const name_z = try toCStr(allocator, param_name);
+            defer allocator.free(name_z);
+
+            const param_ptr = c.halpr_find_param_by_name(name_z.ptr);
+            if (param_ptr == null) continue;
+
+            const param = param_ptr.*;
+
+            // Get param type
+            const param_type: PinType = switch (param.type) {
+                c.HAL_BIT => .bit,
+                c.HAL_FLOAT => .float,
+                c.HAL_S32 => .s32,
+                c.HAL_U32 => .u32,
+                else => .float, // fallback
+            };
+
+            // Get param direction
+            const param_dir: ParamDir = switch (param.dir) {
+                c.HAL_RD => .in,
+                c.HAL_WR => .out,
+                c.HAL_RW => .rw,
+                else => .rw, // fallback
+            };
+
+            // Get param value
+            const param_value: HalValue = switch (param.type) {
+                c.HAL_BIT => if (param.data.ptr) |d| .{ .bit = d.*.b != 0 } else HalValue{ .bit = false },
+                c.HAL_FLOAT => if (param.data.ptr) |d| .{ .float = d.*.f } else HalValue{ .float = 0.0 },
+                c.HAL_S32 => if (param.data.ptr) |d| .{ .s32 = d.*.s } else HalValue{ .s32 = 0 },
+                c.HAL_U32 => if (param.data.ptr) |d| .{ .u32 = d.*.u } else HalValue{ .u32 = 0 },
+                else => HalValue{ .float = 0.0 },
+            };
+
+            params[i] = ParamInfo{
+                .name = try allocator.dupe(u8, param_name),
+                .type = param_type,
+                .dir = param_dir,
+                .value = param_value,
+            };
+        }
+
+        return params;
     }
 
     fn listComponents(ptr: *anyopaque, allocator: std.mem.Allocator) ![][]const u8 {
         const self: *State = @ptrCast(@alignCast(ptr));
         _ = self;
 
-        // TODO: Implement by iterating over hal_data
-        return allocator.alloc([]const u8, 0);
+        // Use halcmd to list components
+        const result = try std.process.Child.run(.{
+            .allocator = allocator,
+            .argv = &[_][]const u8{ "halcmd", "list", "comp" },
+        }) catch |err| {
+            return err;
+        };
+        defer {
+            allocator.free(result.stderr);
+            allocator.free(result.stdout);
+        }
+
+        if (result.term != .Exited or result.term.Exited != 0) {
+            return error.HalcmdFailed;
+        }
+
+        // Parse component names
+        var components = std.ArrayList([]const u8).init(allocator);
+        var lines = std.mem.splitScalar(u8, result.stdout, '\n');
+        while (lines.next()) |line| {
+            const trimmed = std.mem.trim(u8, line, " \t\r");
+            if (trimmed.len > 0) {
+                try components.append(try allocator.dupe(u8, trimmed));
+            }
+        }
+
+        return components.toOwnedSlice();
     }
 
     fn getPinValue(ptr: *anyopaque, name: []const u8) !HalValue {
