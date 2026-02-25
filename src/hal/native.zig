@@ -382,7 +382,7 @@ pub const NativeBackend = struct {
             }
         }
 
-        return components.toOwnedSlice();
+        return components.toOwnedSlice(allocator);
     }
 
     fn getPinValue(ptr: *anyopaque, name: []const u8) !HalValue {
