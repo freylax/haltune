@@ -71,6 +71,14 @@ pub const PinType = enum(u8) {
     pub fn toHal(comptime self: PinType) c_int {
         return @intFromEnum(self);
     }
+
+    pub fn fromString(s: []const u8) ?PinType {
+        if (std.mem.eql(u8, s, "bit")) return .bit;
+        if (std.mem.eql(u8, s, "float")) return .float;
+        if (std.mem.eql(u8, s, "s32")) return .s32;
+        if (std.mem.eql(u8, s, "u32")) return .u32;
+        return null;
+    }
 };
 
 /// Pin direction

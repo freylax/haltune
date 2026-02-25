@@ -95,13 +95,14 @@ fn handleConnection(
     }
 }
 
+/// Read a line (up to \n) from stream
 fn readLine(stream: std.net.Stream, buffer: []u8) ![]const u8 {
     var index: usize = 0;
     while (index < buffer.len - 1) {
         var byte_buf: [1]u8 = undefined;
         const bytes_read = try stream.read(&byte_buf);
         if (bytes_read == 0) {
-            if (index > 0) break;
+            if (index > 0) break; // End of input but we have data
             return error.EndOfStream;
         }
         const byte = byte_buf[0];
@@ -117,29 +118,162 @@ fn handleRequest(
     hal_backend: backend.HalBackend,
     json_str: []const u8,
 ) !Response {
-    if (std.mem.indexOf(u8, json_str, "ping")) |_| {
-        return Response{ .ping = .{} };
+    // First, try to determine the request type from the JSON
+    const parsed = std.json.parseFromSlice(std.json.Value, allocator, json_str, .{
+        .allocate = .alloc_always,
+    }) catch |err| {
+        std.log.err("JSON parse error: {}", .{err});
+        return Response{ .error_response = .{ .message = "Invalid JSON" } };
+    };
+    defer parsed.deinit();
+
+    const obj = parsed.value.object;
+    const type_str = obj.get("type") orelse return Response{ .error_response = .{ .message = "Missing type field" } };
+
+    const msg_type = protocol.MessageType.fromString(type_str.string) orelse {
+        return Response{ .error_response = .{ .message = "Unknown request type" } };
+    };
+
+    // Now handle each request type
+    switch (msg_type) {
+        .ping => return Response{ .ping = .{} },
+
+        .list_pins => {
+            _ = hal_backend.listPins(allocator) catch |err| {
+                return Response{ .error_response = .{
+                    .message = try std.fmt.allocPrint(allocator, "list_pins error: {}", .{err}),
+                }};
+            };
+            // TODO: implement proper conversion
+            return Response{ .list_pins = .{ .pins = &.{} } };
+        },
+
+        .get_pin => {
+            const name_node = obj.get("name") orelse return Response{ .error_response = .{ .message = "Missing name field" } };
+            const name = name_node.string;
+
+            const value = try hal_backend.getPinValue(name);
+            return Response{ .get_pin = .{ .value = value } };
+        },
+
+        .set_pin => {
+            const name_node = obj.get("name") orelse return Response{ .error_response = .{ .message = "Missing name field" } };
+            const name = name_node.string;
+
+            const value_node = obj.get("value") orelse return Response{ .error_response = .{ .message = "Missing value field" } };
+            const value = try parseHalValue(&value_node);
+
+            try hal_backend.setPinValue(name, value);
+            return Response{ .set_pin = .{ .success = true } };
+        },
+
+        .list_signals => {
+            _ = hal_backend.listSignals(allocator) catch |err| {
+                return Response{ .error_response = .{
+                    .message = try std.fmt.allocPrint(allocator, "list_signals error: {}", .{err}),
+                }};
+            };
+            return Response{ .list_signals = .{ .signals = &.{} } };
+        },
+
+        .list_params => {
+            _ = hal_backend.listParams(allocator) catch |err| {
+                return Response{ .error_response = .{
+                    .message = try std.fmt.allocPrint(allocator, "list_params error: {}", .{err}),
+                }};
+            };
+            return Response{ .list_params = .{ .params = &.{} } };
+        },
+
+        .list_components => {
+            _ = hal_backend.listComponents(allocator) catch |err| {
+                return Response{ .error_response = .{
+                    .message = try std.fmt.allocPrint(allocator, "list_components error: {}", .{err}),
+                }};
+            };
+            return Response{ .list_components = .{ .components = &.{} } };
+        },
+
+        .get_param => {
+            const name_node = obj.get("name") orelse return Response{ .error_response = .{ .message = "Missing name field" } };
+            const name = name_node.string;
+
+            const value = try hal_backend.getParamValue(name);
+            return Response{ .get_param = .{ .value = value } };
+        },
+
+        .set_param => {
+            const name_node = obj.get("name") orelse return Response{ .error_response = .{ .message = "Missing name field" } };
+            const name = name_node.string;
+
+            const value_node = obj.get("value") orelse return Response{ .error_response = .{ .message = "Missing value field" } };
+            const value = try parseHalValue(&value_node);
+
+            try hal_backend.setParamValue(name, value);
+            return Response{ .set_param = .{ .success = true } };
+        },
+
+        .create_signal => {
+            const name_node = obj.get("name") orelse return Response{ .error_response = .{ .message = "Missing name field" } };
+            const name = name_node.string;
+
+            const type_node = obj.get("type") orelse return Response{ .error_response = .{ .message = "Missing type field" } };
+            const pin_type_str = type_node.string;
+            const pin_type = PinType.fromString(pin_type_str) orelse return Response{ .error_response = .{ .message = "Invalid pin type" } };
+
+            try hal_backend.createSignal(name, pin_type);
+            return Response{ .create_signal = .{ .success = true } };
+        },
+
+        .delete_signal => {
+            const name_node = obj.get("name") orelse return Response{ .error_response = .{ .message = "Missing name field" } };
+            const name = name_node.string;
+
+            try hal_backend.deleteSignal(name);
+            return Response{ .delete_signal = .{ .success = true } };
+        },
+
+        .link_pin => {
+            const pin_name_node = obj.get("pin_name") orelse return Response{ .error_response = .{ .message = "Missing pin_name field" } };
+            const pin_name = pin_name_node.string;
+
+            const sig_name_node = obj.get("sig_name") orelse return Response{ .error_response = .{ .message = "Missing sig_name field" } };
+            const sig_name = sig_name_node.string;
+
+            try hal_backend.linkPin(pin_name, sig_name);
+            return Response{ .link_pin = .{ .success = true } };
+        },
+
+        .unlink_pin => {
+            const name_node = obj.get("name") orelse return Response{ .error_response = .{ .message = "Missing name field" } };
+            const name = name_node.string;
+
+            try hal_backend.unlinkPin(name);
+            return Response{ .unlink_pin = .{ .success = true } };
+        },
+
+        .error_response => return Response{ .error_response = .{ .message = "Unexpected error_response from client" } },
     }
+}
 
-    if (std.mem.indexOf(u8, json_str, "list_pins")) |_| {
-        _ = hal_backend.listPins(allocator) catch |err| {
-            return Response{ .error_response = .{
-                .message = try std.fmt.allocPrint(allocator, "list_pins error: {}", .{err}),
-            }};
-        };
-        return Response{ .list_pins = .{ .pins = &.{} } };
+/// Parse HalValue from JSON node
+fn parseHalValue(value_node: *const std.json.Value) !HalValue {
+    if (value_node.* != .object) return error.InvalidHalValue;
+
+    const obj = &value_node.object;
+    if (obj.get("bit")) |*v| {
+        return HalValue{ .bit = v.bool };
     }
-
-    if (std.mem.indexOf(u8, json_str, "get_pin")) |_| {
-        const name_start = std.mem.indexOf(u8, json_str, "name") orelse return Response{ .error_response = .{ .message = "Missing name" } };
-        const name_end = std.mem.indexOf(u8, json_str[name_start..], "\"") orelse return Response{ .error_response = .{ .message = "Missing closing quote" } };
-        const name = json_str[name_start..name_end];
-
-        const value = try hal_backend.getPinValue(name);
-        return Response{ .get_pin = .{ .value = value } };
+    if (obj.get("float")) |*v| {
+        return HalValue{ .float = v.float };
     }
-
-    return Response{ .error_response = .{ .message = "Unknown request type" } };
+    if (obj.get("s32")) |*v| {
+        return HalValue{ .s32 = @intCast(v.integer) };
+    }
+    if (obj.get("u32")) |*v| {
+        return HalValue{ .u32 = @intCast(v.integer) };
+    }
+    return error.InvalidHalValue;
 }
 
 fn responseToJson(allocator: std.mem.Allocator, resp: Response) ![]const u8 {
@@ -159,12 +293,49 @@ fn responseToJson(allocator: std.mem.Allocator, resp: Response) ![]const u8 {
             try writeHalValue(writer, r.value);
             try writer.writeAll("}");
         },
+        .set_pin => |*r| {
+            try writer.print("set_pin\",\"success\":{}}}", .{r.success});
+        },
         .list_pins => |*r| {
             _ = r;
             try writer.writeAll("list_pins\",\"pins\":[]}");
         },
-        else => {
-            try writer.writeAll("error\"}");
+        .list_signals => |*r| {
+            _ = r;
+            try writer.writeAll("list_signals\",\"signals\":[]}");
+        },
+        .list_params => |*r| {
+            _ = r;
+            try writer.writeAll("list_params\",\"params\":[]}");
+        },
+        .list_components => |*r| {
+            _ = r;
+            try writer.writeAll("list_components\",\"components\":[]}");
+        },
+        .get_param => |*r| {
+            try writer.writeAll("get_param\",\"value\":");
+            try writeHalValue(writer, r.value);
+            try writer.writeAll("}");
+        },
+        .set_param => |*r| {
+            try writer.print("set_param\",\"success\":{}}}", .{r.success});
+        },
+        .create_signal => |*r| {
+            try writer.print("create_signal\",\"success\":{}}}", .{r.success});
+        },
+        .delete_signal => |*r| {
+            try writer.print("delete_signal\",\"success\":{}}}", .{r.success});
+        },
+        .link_pin => |*r| {
+            try writer.print("link_pin\",\"success\":{}}}", .{r.success});
+        },
+        .unlink_pin => |*r| {
+            try writer.print("unlink_pin\",\"success\":{}}}", .{r.success});
+        },
+        .error_response => |*r| {
+            try writer.writeAll("error\",\"message\":\"");
+            try writeJsonEscapedWriter(writer, r.message);
+            try writer.writeAll("\"}");
         },
     }
 
@@ -191,6 +362,19 @@ fn writeJsonEscaped(stream: std.net.Stream, s: []const u8) !void {
             '\r' => try stream.writeAll("\\r"),
             '\t' => try stream.writeAll("\\t"),
             else => try stream.writeAll(&.{c}),
+        }
+    }
+}
+
+fn writeJsonEscapedWriter(writer: anytype, s: []const u8) !void {
+    for (s) |c| {
+        switch (c) {
+            '\\' => try writer.writeAll("\\\\"),
+            '"' => try writer.writeAll("\\\""),
+            '\n' => try writer.writeAll("\\n"),
+            '\r' => try writer.writeAll("\\r"),
+            '\t' => try writer.writeAll("\\t"),
+            else => try writer.writeAll(&.{c}),
         }
     }
 }
