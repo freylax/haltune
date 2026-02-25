@@ -536,6 +536,26 @@ pub fn build(b: *std.Build) void {
     // Install bridge server
     b.installArtifact(bridge_server_exe);
 
+    // Bridge server tests
+    const bridge_server_test_module = b.createModule(.{
+        .root_source_file = b.path("src/hal/bridge_server/test.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    bridge_server_test_module.addImport("backend", hal_backend_module);
+    bridge_server_test_module.addImport("protocol", hal_protocol_module);
+
+    const bridge_server_tests = b.addTest(.{
+        .root_module = bridge_server_test_module,
+        .name = "bridge-server-test",
+    });
+
+    const run_bridge_server_tests = b.addRunArtifact(bridge_server_tests);
+    run_bridge_server_tests.step.dependOn(b.getInstallStep());
+
+    const bridge_server_test_step = b.step("bridge-server-test", "Run HAL bridge server tests");
+    bridge_server_test_step.dependOn(&run_bridge_server_tests.step);
+
     // Bridge server run step
     const run_bridge_server = b.addRunArtifact(bridge_server_exe);
     run_bridge_server.step.dependOn(b.getInstallStep());

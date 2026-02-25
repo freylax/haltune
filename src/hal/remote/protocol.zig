@@ -28,7 +28,7 @@ pub const MessageType = enum {
     error_response,
 
     pub fn fromString(s: []const u8) ?MessageType {
-        const map = std.ComptimeStringMap(MessageType, .{
+        const map = std.StaticStringMap(MessageType).initComptime(.{
             .{ "list_pins", .list_pins },
             .{ "list_signals", .list_signals },
             .{ "list_params", .list_params },
@@ -47,7 +47,7 @@ pub const MessageType = enum {
         return map.get(s);
     }
 
-    pub fn toString(comptime self: MessageType) []const u8 {
+    pub fn toString(self: MessageType) []const u8 {
         return switch (self) {
             .list_pins => "list_pins",
             .list_signals => "list_signals",
@@ -82,15 +82,16 @@ pub const Request = union(MessageType) {
     link_pin: struct { pin_name: []const u8, sig_name: []const u8 },
     unlink_pin: struct { name: []const u8 },
     ping: struct {},
+    error_response: struct { message: []const u8 },
 
     /// Serialize request to JSON
     pub fn toJson(self: Request, allocator: std.mem.Allocator) ![]const u8 {
         const tag = std.meta.activeTag(self);
 
-        var json_buffer = std.ArrayList(u8).init(allocator);
-        defer json_buffer.deinit();
+        var json_buffer = try std.ArrayList(u8).initCapacity(allocator, 256);
+        defer json_buffer.deinit(allocator);
 
-        const writer = json_buffer.writer();
+        const writer = json_buffer.writer(allocator);
         try writer.writeAll("{\"type\":\"");
         try writer.writeAll(tag.toString());
         try writer.writeAll("\"");
@@ -98,18 +99,34 @@ pub const Request = union(MessageType) {
         // Add fields based on type
         switch (self) {
             .list_pins, .list_signals, .list_params, .list_components, .ping => {},
-            .get_pin, .get_param, .delete_signal, .unlink_pin => |*data| {
+            .get_pin => |data| {
                 try writer.print(",\"name\":\"{s}\"", .{data.name});
             },
-            .set_pin, .set_param => |*data| {
+            .get_param => |data| {
+                try writer.print(",\"name\":\"{s}\"", .{data.name});
+            },
+            .delete_signal => |data| {
+                try writer.print(",\"name\":\"{s}\"", .{data.name});
+            },
+            .unlink_pin => |data| {
+                try writer.print(",\"name\":\"{s}\"", .{data.name});
+            },
+            .set_pin => |data| {
                 try writer.print(",\"name\":\"{s}\",\"value\":", .{data.name});
                 try writeHalValue(writer, data.value);
             },
-            .create_signal => |*data| {
+            .set_param => |data| {
+                try writer.print(",\"name\":\"{s}\",\"value\":", .{data.name});
+                try writeHalValue(writer, data.value);
+            },
+            .create_signal => |data| {
                 try writer.print(",\"name\":\"{s}\",\"type\":\"{s}\"", .{ data.name, @tagName(data.type) });
             },
-            .link_pin => |*data| {
+            .link_pin => |data| {
                 try writer.print(",\"pin_name\":\"{s}\",\"sig_name\":\"{s}\"", .{ data.pin_name, data.sig_name });
+            },
+            .error_response => |data| {
+                try writer.print(",\"message\":\"{s}\"", .{data.message});
             },
         }
 
@@ -171,7 +188,6 @@ pub const Response = union(MessageType) {
     /// Parse response from JSON
     pub fn fromJson(allocator: std.mem.Allocator, json_str: []const u8) !Response {
         const parsed = try std.json.parseFromSlice(std.json.Value, allocator, json_str, .{
-            .ignore_duplicate_fields = true,
             .allocate = .alloc_always,
         });
         defer parsed.deinit();
@@ -194,39 +210,49 @@ pub const Response = union(MessageType) {
             .list_components => Response{
                 .list_components = .{ .components = &.{} },
             },
-            .get_pin => Response{
-                .get_pin = .{ .value = try parseHalValue(obj.get("value").?) },
+            .get_pin => blk: {
+                const val = obj.get("value") orelse return error.InvalidHalValue;
+                break :blk Response{ .get_pin = .{ .value = try parseHalValue(&val) } };
             },
-            .set_pin => Response{
-                .set_pin = .{ .success = obj.get("success").?.bool },
+            .set_pin => blk: {
+                const val = obj.get("success") orelse return error.InvalidHalValue;
+                break :blk Response{ .set_pin = .{ .success = val.bool } };
             },
-            .get_param => Response{
-                .get_param = .{ .value = try parseHalValue(obj.get("value").?) },
+            .get_param => blk: {
+                const val = obj.get("value") orelse return error.InvalidHalValue;
+                break :blk Response{ .get_param = .{ .value = try parseHalValue(&val) } };
             },
-            .set_param => Response{
-                .set_param = .{ .success = obj.get("success").?.bool },
+            .set_param => blk: {
+                const val = obj.get("success") orelse return error.InvalidHalValue;
+                break :blk Response{ .set_param = .{ .success = val.bool } };
             },
-            .create_signal => Response{
-                .create_signal = .{ .success = obj.get("success").?.bool },
+            .create_signal => blk: {
+                const val = obj.get("success") orelse return error.InvalidHalValue;
+                break :blk Response{ .create_signal = .{ .success = val.bool } };
             },
-            .delete_signal => Response{
-                .delete_signal = .{ .success = obj.get("success").?.bool },
+            .delete_signal => blk: {
+                const val = obj.get("success") orelse return error.InvalidHalValue;
+                break :blk Response{ .delete_signal = .{ .success = val.bool } };
             },
-            .link_pin => Response{
-                .link_pin = .{ .success = obj.get("success").?.bool },
+            .link_pin => blk: {
+                const val = obj.get("success") orelse return error.InvalidHalValue;
+                break :blk Response{ .link_pin = .{ .success = val.bool } };
             },
-            .unlink_pin => Response{
-                .unlink_pin = .{ .success = obj.get("success").?.bool },
+            .unlink_pin => blk: {
+                const val = obj.get("success") orelse return error.InvalidHalValue;
+                break :blk Response{ .unlink_pin = .{ .success = val.bool } };
             },
             .ping => Response{ .ping = .{} },
-            .error_response => Response{
-                .error_response = .{ .message = obj.get("message").?.string },
+            .error_response => blk: {
+                const val = obj.get("message") orelse return error.InvalidHalValue;
+                break :blk Response{ .error_response = .{ .message = val.string } };
             },
         };
     }
 
     fn parseHalValue(value_node: *const std.json.Value) !HalValue {
-        const obj = value_node.object;
+        if (value_node.* != .object) return error.InvalidHalValue;
+        const obj = &value_node.object;
         if (obj.get("bit")) |v| {
             return HalValue{ .bit = v.bool };
         }
