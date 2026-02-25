@@ -132,7 +132,10 @@ pub const NativeBackend = struct {
         _ = self;
 
         // Get all pin names using halcmd
-        var pin_names = try discovery.listPinNames(allocator);
+        var pin_names = discovery.listPinNames(allocator) catch |err| {
+            std.log.scoped(.hal_native).err("listPinNames failed: {}", .{err});
+            return error.UnexpectedResponse;
+        };
         defer {
             for (pin_names.items) |n| allocator.free(n);
             pin_names.deinit(allocator);
@@ -211,7 +214,10 @@ pub const NativeBackend = struct {
         _ = self;
 
         // Get all signal names using halcmd
-        var sig_names = try discovery.listSignalNames(allocator);
+        var sig_names = discovery.listSignalNames(allocator) catch |err| {
+            std.log.scoped(.hal_native).err("listSignalNames failed: {}", .{err});
+            return error.UnexpectedResponse;
+        };
         defer {
             for (sig_names.items) |n| allocator.free(n);
             sig_names.deinit(allocator);
@@ -269,7 +275,10 @@ pub const NativeBackend = struct {
         _ = self;
 
         // Get all param names using halcmd
-        var param_names = try discovery.listParamNames(allocator);
+        var param_names = discovery.listParamNames(allocator) catch |err| {
+            std.log.scoped(.hal_native).err("listParamNames failed: {}", .{err});
+            return error.UnexpectedResponse;
+        };
         defer {
             for (param_names.items) |n| allocator.free(n);
             param_names.deinit(allocator);
@@ -355,7 +364,7 @@ pub const NativeBackend = struct {
         }
 
         if (result.term != .Exited or result.term.Exited != 0) {
-            return error.HalcmdFailed;
+            return error.UnexpectedResponse;
         }
 
         // Parse component names
