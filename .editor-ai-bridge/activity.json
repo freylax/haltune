@@ -9424,6 +9424,25 @@
       "description": "Modified:                 try components.append(allocator, try allocator.dupe(u8, trimmed)",
       "timestamp": 1772052943,
       "severity": null
+    },
+    {
+      "id": "edit-1772053128-496",
+      "type": "edit_capture",
+      "file_path": "/home/robert/prog/zig/haltune/src/hal/native.zig",
+      "range": {
+        "start": {
+          "line": 0,
+          "character": 0
+        },
+        "end": {
+          "line": 0,
+          "character": 0
+        }
+      },
+      "actor": "claude-code",
+      "description": "Modified:         defer components.deinit(allocator);",
+      "timestamp": 1772053128,
+      "severity": null
     }
   ]
 }
