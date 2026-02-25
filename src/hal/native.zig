@@ -373,12 +373,12 @@ pub const NativeBackend = struct {
 
         // Parse component names
         var components = try std.ArrayList([]const u8).initCapacity(allocator, 8);
-        defer components.deinit(allocator);
+        defer components.deinit();
         var lines = std.mem.splitScalar(u8, result.stdout, '\n');
         while (lines.next()) |line| {
             const trimmed = std.mem.trim(u8, line, " \t\r");
             if (trimmed.len > 0) {
-                try components.append(try allocator.dupe(u8, trimmed));
+                try components.append(allocator, try allocator.dupe(u8, trimmed));
             }
         }
 
