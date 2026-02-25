@@ -355,11 +355,12 @@ pub const NativeBackend = struct {
         _ = self;
 
         // Use halcmd to list components
-        const result = try std.process.Child.run(.{
+        const result = std.process.Child.run(.{
             .allocator = allocator,
             .argv = &[_][]const u8{ "halcmd", "list", "comp" },
         }) catch |err| {
-            return err;
+            std.log.scoped(.hal_native).err("halcmd list comp failed: {}", .{err});
+            return error.UnexpectedResponse;
         };
         defer {
             allocator.free(result.stderr);
