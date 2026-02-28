@@ -1,0 +1,25 @@
+[test]
+timeout = 30
+verbose = true
+
+[hosts.local]
+haltune_binary = "./zig-out/bin/haltune"
+bridge_host = "localhost"
+bridge_port = 8765
+
+[hosts.pib]
+hostname = "pib"
+user = "cnc"
+haltune_binary = "/home/cnc/prog/haltune/zig-out/bin/haltune"
+bridge_host = "localhost"
+bridge_port = 8765
+ssh_key = ""
+
+[tests.tui]
+startup_timeout = 10
+
+[tests.bridge]
+connect_timeout = 5
+
+[tests.build]
+timeout = 120
