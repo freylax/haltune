@@ -1,0 +1,7 @@
+# Core test dependencies
+pytest>=7.4.0
+pexpect>=4.8.0
+paramiko>=3.3.0
+
+# TOML parsing (Python < 3.11)
+tomli>=2.0.1; python_version < "3.11"

@@ -1,0 +1,7 @@
+-r requirements.txt
+
+# Development tools
+pytest-cov>=4.1.0
+pytest-xdist>=3.5.0  # parallel tests
+black>=23.0.0
+mypy>=1.7.0
