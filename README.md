@@ -47,6 +47,21 @@ Requires an active LinuxCNC session with HAL running.
 
 ## Testing
 
+### Python Test Suite
+
+The primary test suite is located in `tests/` and uses pytest:
+
+```bash
+cd tests
+pytest
+```
+
+See [tests/README.md](tests/README.md) for detailed documentation on:
+- Running specific test categories
+- Test organization and helpers
+- Remote testing configuration
+- Customizing test settings
+
 ### Automated PTY Testing
 
 The `--test-mode` flag allows running haltune without an interactive terminal for automated testing:
