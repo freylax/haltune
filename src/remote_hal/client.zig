@@ -17,6 +17,13 @@ const protocol = @import("../hal_protocol.zig");
 const Request = protocol.Request;
 const Response = protocol.Response;
 
+// C setsockopt for setting socket timeout
+const c_socket = @cImport({
+    @cDefine("_DEFAULT_SOURCE", "");
+    @cInclude("sys/socket.h");
+    @cInclude("sys/time.h");
+});
+
 /// Remote backend client state
 pub const RemoteBackend = struct {
     allocator: std.mem.Allocator,
@@ -24,6 +31,7 @@ pub const RemoteBackend = struct {
     port: u16,
     stream: ?std.net.Stream = null,
     comp_id: c_int = -1,
+    mutex: std.Thread.Mutex, // Protect stream access
 
     /// Create a new remote HAL backend
     pub fn create(allocator: std.mem.Allocator, host: []const u8, port: u16) !HalBackend {
@@ -34,6 +42,7 @@ pub const RemoteBackend = struct {
             .port = port,
             .stream = null,
             .comp_id = -1,
+            .mutex = std.Thread.Mutex{},
         };
 
         return HalBackend{
@@ -48,6 +57,7 @@ pub const RemoteBackend = struct {
         port: u16,
         stream: ?std.net.Stream,
         comp_id: c_int,
+        mutex: std.Thread.Mutex, // Protect stream access
 
         fn connect(self: *State) !void {
             if (self.stream != null) return; // Already connected
@@ -61,7 +71,27 @@ pub const RemoteBackend = struct {
                 std.log.err("Remote: tcpConnectToAddress failed: {}", .{err});
                 return error.RemoteError;
             };
-            std.log.err("DEBUG Remote: Connected successfully", .{});
+
+            // Set socket receive timeout (30 seconds for large responses)
+            const stream = self.stream.?;
+            const fd = stream.handle;
+            var timeout = c_socket.struct_timeval{
+                .tv_sec = 30,
+                .tv_usec = 0,
+            };
+            const rc = c_socket.setsockopt(
+                fd,
+                c_socket.SOL_SOCKET,
+                c_socket.SO_RCVTIMEO,
+                &timeout,
+                @sizeOf(c_socket.struct_timeval),
+            );
+            if (rc != 0) {
+                std.log.err("Remote: failed to set socket timeout (rc={})", .{rc});
+                // Continue anyway - timeout is nice-to-have, not critical
+            }
+
+            std.log.err("DEBUG Remote: Connected successfully (with 30s timeout)", .{});
         }
 
         fn disconnect(self: *State) void {
@@ -72,23 +102,41 @@ pub const RemoteBackend = struct {
         }
 
         fn sendRequest(self: *State, req: Request) !Response {
+            std.log.err("DEBUG Remote: sendRequest() called", .{});
+
+            // Lock mutex to protect stream access
+            self.mutex.lock();
+            defer self.mutex.unlock();
+
             try self.connect();
 
             const json = try req.toJson(self.allocator);
             defer self.allocator.free(json);
 
-            const stream = self.stream.?;
+            std.log.err("DEBUG Remote: Sending request: {s}", .{json});
+
+            const stream = self.stream.?; // Must be non-null after connect()
             _ = try stream.writeAll(json);
             _ = try stream.writeAll("\n");
+
+            std.log.err("DEBUG Remote: Request sent, waiting for response...", .{});
 
             // Read response - accumulate data in ArrayList (Zig 0.15 API)
             var buffer_list = try std.ArrayList(u8).initCapacity(self.allocator, 1024);
             defer buffer_list.deinit(self.allocator);
 
             var read_buf: [1024]u8 = undefined;
+            var total_read: usize = 0;
             while (true) {
-                const bytes_read = try stream.read(&read_buf);
-                if (bytes_read == 0) break;
+                const bytes_read = stream.read(&read_buf) catch |err| {
+                    std.log.err("DEBUG Remote: read() failed with error: {} (total_read={})", .{err, total_read});
+                    return error.RemoteError;
+                };
+                if (bytes_read == 0) {
+                    std.log.err("Remote: connection closed by server (total_read={})", .{total_read});
+                    return error.RemoteError;
+                }
+                total_read += bytes_read;
                 try buffer_list.appendSlice(self.allocator, read_buf[0..bytes_read]);
                 // Check if we have a complete JSON response (ending with \n)
                 if (buffer_list.getLastOrNull()) |last| {
@@ -98,6 +146,8 @@ pub const RemoteBackend = struct {
 
             const response_json = try buffer_list.toOwnedSlice(self.allocator);
             defer self.allocator.free(response_json);
+
+            std.log.err("DEBUG Remote: Received response (len={d}): {s}", .{response_json.len, response_json[0..@min(response_json.len, 200)]});
 
             return try Response.fromJson(self.allocator, response_json);
         }
@@ -157,20 +207,28 @@ pub const RemoteBackend = struct {
         const self: *State = @ptrCast(@alignCast(ptr));
 
         const req = Request{ .list_pins = .{} };
-        const resp = self.sendRequest(req) catch {
+        const resp = self.sendRequest(req) catch |err| {
+            std.log.err("listPins: sendRequest failed with error: {}", .{err});
             return error.RemoteError;
         };
 
+        std.log.err("listPins: got response, checking type...", .{});
+
         switch (resp) {
             .list_pins => |r| {
+                std.log.err("listPins: response has {} pins", .{r.pins.len});
+
                 // Convert from protocol.PinInfoResponse to backend.PinInfo
                 // Note: we own the memory from r.pins now
                 var result = try std.ArrayList(PinInfo).initCapacity(allocator, r.pins.len);
                 errdefer result.deinit(allocator);
 
-                for (r.pins) |pin_resp| {
+                for (r.pins, 0..) |pin_resp, i| {
                     // Duplicate the name so we own the memory
-                    const name_dup = try allocator.dupe(u8, pin_resp.name);
+                    const name_dup = allocator.dupe(u8, pin_resp.name) catch |err| {
+                        std.log.err("listPins: failed to dupe pin name {}: {}", .{i, err});
+                        return err;
+                    };
                     try result.append(allocator, .{
                         .name = name_dup,
                         .type = pin_resp.type,
@@ -180,6 +238,7 @@ pub const RemoteBackend = struct {
                 }
 
                 const owned_slice = try result.toOwnedSlice(allocator);
+                std.log.err("listPins: returning {} pins", .{owned_slice.len});
                 // Note: r.pins memory will be freed when resp is deinitialized
                 // We've taken ownership of the names by duplicating them
                 return owned_slice;

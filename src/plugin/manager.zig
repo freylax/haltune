@@ -6,12 +6,16 @@
 // - Dispatching events to active plugins
 // - Providing rendering context to plugins
 //
-// Plugins use HAL FFI directly - HAL is the communication channel.
+// Plugins use HalBackend for all HAL operations - backend abstraction handles
+// routing to local or remote HAL.
 
 const std = @import("std");
 const vxfw = @import("vaxis").vxfw;
 const interface = @import("interface.zig");
 const registry = @import("registry.zig");
+
+// Import backend module (defined in build.zig)
+const HalBackend = @import("backend").HalBackend;
 
 /// Plugin state - tracks whether a plugin is active
 pub const PluginState = enum {
@@ -38,6 +42,9 @@ pub const PluginManager = struct {
     /// Reference to the plugin registry
     registry: *registry.PluginRegistry,
 
+    /// HAL backend (null = no HAL available)
+    hal_backend: ?*HalBackend = null,
+
     /// All active plugins
     active_plugins: std.ArrayList(ActivePlugin),
 
@@ -48,12 +55,19 @@ pub const PluginManager = struct {
     pub fn init(
         allocator: std.mem.Allocator,
         reg: *registry.PluginRegistry,
+        backend: ?*HalBackend,
     ) PluginManager {
         return .{
             .allocator = allocator,
             .registry = reg,
+            .hal_backend = backend,
             .active_plugins = std.ArrayList(ActivePlugin).initCapacity(allocator, 0) catch unreachable,
         };
+    }
+
+    /// Set the HAL backend (can be called after init if backend created later)
+    pub fn setBackend(self: *PluginManager, backend: *HalBackend) void {
+        self.hal_backend = backend;
     }
 
     /// Clean up the plugin manager
@@ -76,7 +90,16 @@ pub const PluginManager = struct {
             if (std.mem.eql(u8, p.plugin.name, name)) {
                 if (p.state == .active) return; // Already active
                 p.state = .active;
-                p.plugin.init(self.allocator, logInfo, logError) catch |err| {
+
+                // Create PluginContext for this plugin
+                const ctx = interface.PluginContext{
+                    .allocator = self.allocator,
+                    .backend = self.hal_backend,
+                    .log = logInfo,
+                    .log_err = logError,
+                };
+
+                p.plugin.init(ctx) catch |err| {
                     std.log.err("Failed to initialize plugin '{s}': {}", .{name, err});
                     return err;
                 };
@@ -91,13 +114,17 @@ pub const PluginManager = struct {
 
         try self.active_plugins.append(self.allocator, active_plugin);
 
-        // Initialize the plugin
+        // Initialize the plugin with PluginContext
         const last_idx = self.active_plugins.items.len - 1;
-        self.active_plugins.items[last_idx].plugin.init(
-            self.allocator,
-            logInfo,
-            logError,
-        ) catch |err| {
+
+        const ctx = interface.PluginContext{
+            .allocator = self.allocator,
+            .backend = self.hal_backend,
+            .log = logInfo,
+            .log_err = logError,
+        };
+
+        self.active_plugins.items[last_idx].plugin.init(ctx) catch |err| {
             std.log.err("Failed to initialize plugin '{s}': {}", .{name, err});
             _ = self.active_plugins.pop();
             return err;
@@ -114,12 +141,15 @@ pub const PluginManager = struct {
             if (std.mem.eql(u8, plugin.plugin.name, name)) {
                 if (plugin.state == .active) {
                     plugin.plugin.deinit();
-                    // Note: We can't modify state in const array,
-                    // but deinit() was called which is what matters
                 }
+                // Remove from active plugins list
+                _ = self.active_plugins.swapRemove(idx);
+                // Clear focused plugin if needed
                 if (self.focused_plugin) |focused| {
                     if (focused == idx) {
                         self.focused_plugin = null;
+                    } else if (focused > idx) {
+                        self.focused_plugin = focused - 1;
                     }
                 }
                 std.log.info("Deactivated plugin: {s}", .{name});

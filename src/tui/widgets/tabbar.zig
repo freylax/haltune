@@ -29,7 +29,7 @@ pub const TabBar = struct {
     allocator: std.mem.Allocator,
 
     /// List of tabs
-    tabs: std.ArrayList(Tab),
+    tabs: std.ArrayListUnmanaged(Tab),
 
     /// Index of currently selected tab
     selected_idx: usize = 0,
@@ -47,7 +47,7 @@ pub const TabBar = struct {
     pub fn init(allocator: std.mem.Allocator) TabBar {
         return .{
             .allocator = allocator,
-            .tabs = std.ArrayList(Tab).init(allocator),
+            .tabs = .{},
         };
     }
 
@@ -71,7 +71,7 @@ pub const TabBar = struct {
     pub fn addTab(self: *TabBar, name: []const u8, key_hint: ?[]const u8) !void {
         const hint = if (key_hint) |h| try self.allocator.dupe(u8, h) else null;
         errdefer if (hint) |h| self.allocator.free(h);
-        try self.tabs.append(.{
+        try self.tabs.append(self.allocator, .{
             .name = try self.allocator.dupe(u8, name),
             .key_hint = hint,
         });

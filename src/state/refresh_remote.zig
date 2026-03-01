@@ -7,7 +7,7 @@ const std = @import("std");
 const StateStore = @import("cache.zig").StateStore;
 const HalValue = @import("cache.zig").HalValue;
 const backend = @import("backend");
-const RemoteBackend = @import("../../hal/remote/client.zig").RemoteBackend;
+const RemoteBackend = @import("../remote_hal/client.zig").RemoteBackend;
 
 /// Remote HAL refresh module
 ///
@@ -26,12 +26,12 @@ pub const RemoteRefresh = struct {
         host: []const u8,
         port: u16,
     ) !RemoteRefresh {
-        // Create remote backend
+        // Create remote backend - this returns a fully initialized HalBackend
         const hal_backend = try RemoteBackend.create(allocator, host, port);
 
         return .{
             .store = store,
-            .backend = try allocator.create(backend.HalBackend),
+            .backend = hal_backend,  // Use the initialized backend directly
             .allocator = allocator,
             .host = host,
             .port = port,

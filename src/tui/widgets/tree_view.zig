@@ -16,6 +16,7 @@ const vaxis = @import("vaxis");
 const cache = @import("../../state/cache.zig");
 const StateStore = cache.StateStore;
 const HalValue = cache.HalValue;
+const NameKey = cache.NameKey;
 const glob = @import("glob");
 const safe = @import("../../ffi/safe.zig");
 const hal_value = @import("hal_value.zig");
@@ -256,8 +257,11 @@ pub const TreeView = struct {
     /// New structure: Components first (with pins/params as children),
     /// then a "Signals" pseudo-component containing all signals
     pub fn buildTree(self: *TreeView) !void {
+        std.log.info("DEBUG: buildTree() called", .{});
+        std.log.info("DEBUG: self.root.items.len = {d}", .{self.root.items.len});
         // Clean up existing tree before rebuilding
-        for (self.root.items) |node| {
+        for (self.root.items, 0..) |node, i| {
+            std.log.info("DEBUG: Freeing node {d}: name={s}, type={}", .{i, node.name, node.item_type});
             self.freeNode(node);
         }
         self.root.clearRetainingCapacity();
@@ -282,89 +286,90 @@ pub const TreeView = struct {
         }
 
         // Get all pins, signals, and params from StateStore
+        std.log.info("DEBUG: About to call listPins", .{});
         const pins = try self.store.listPins(self.allocator);
+        std.log.info("DEBUG: listPins returned {d} pins", .{pins.len});
         defer {
             for (pins) |p| self.allocator.free(p);
             self.allocator.free(pins);
         }
 
+        std.log.info("DEBUG: About to call listSignals", .{});
         const signals = try self.store.listSignals(self.allocator);
+        std.log.info("DEBUG: listSignals returned {d} signals", .{signals.len});
         defer {
             for (signals) |s| self.allocator.free(s);
             self.allocator.free(signals);
         }
 
+        std.log.info("DEBUG: About to call listParams", .{});
         const params = try self.store.listParams(self.allocator);
+        std.log.info("DEBUG: listParams returned {d} params", .{params.len});
         defer {
             for (params) |p| self.allocator.free(p);
             self.allocator.free(params);
         }
 
         // Track unique component names to avoid duplicates
-        var component_set = std.StringHashMap(void).init(self.allocator);
+        // Use ArrayList to avoid StringHashMap bug in Zig 0.15.2
+        var component_list = try std.ArrayList([]const u8).initCapacity(self.allocator, 32);
         defer {
-            var iter = component_set.iterator();
-            while (iter.next()) |entry| {
-                self.allocator.free(entry.key_ptr.*);
-            }
-            component_set.deinit();
-        }
-
-        // Track processed components to avoid adding duplicates
-        var processed_components = std.StringHashMap(void).init(self.allocator);
-        defer {
-            var iter = processed_components.iterator();
-            while (iter.next()) |entry| {
-                self.allocator.free(entry.key_ptr.*);
-            }
-            processed_components.deinit();
+            for (component_list.items) |n| self.allocator.free(n);
+            component_list.deinit(self.allocator);
         }
 
         // First pass: collect all unique component names from pins
+        std.log.info("DEBUG: First pass: starting pins loop", .{});
         for (pins) |pin_name| {
             const component_name = try extractComponentName(self.allocator, pin_name);
-            defer self.allocator.free(component_name);
 
-            const comp_copy = try self.allocator.dupe(u8, component_name);
-            try component_set.put(comp_copy, {});
+            // Check if already in list
+            var exists = false;
+            for (component_list.items) |existing| {
+                if (std.mem.eql(u8, existing, component_name)) {
+                    exists = true;
+                    self.allocator.free(component_name);
+                    break;
+                }
+            }
+            if (!exists) {
+                try component_list.append(self.allocator, component_name);
+            }
         }
+        std.log.info("DEBUG: First pass complete, component_list.items.len = {d}", .{component_list.items.len});
 
         // Also collect component names from params
         for (params) |param_name| {
             const component_name = try extractComponentName(self.allocator, param_name);
-            defer self.allocator.free(component_name);
 
-            const gop = try component_set.getOrPut(component_name);
-            if (!gop.found_existing) {
-                const comp_copy = try self.allocator.dupe(u8, component_name);
-                gop.key_ptr.* = comp_copy;
+            // Check if already in list
+            var exists = false;
+            for (component_list.items) |existing| {
+                if (std.mem.eql(u8, existing, component_name)) {
+                    exists = true;
+                    self.allocator.free(component_name);
+                    break;
+                }
+            }
+            if (!exists) {
+                try component_list.append(self.allocator, component_name);
             }
         }
 
         // Second pass: build component nodes with pins and params
-        // Iterate over unique component names in sorted order
-        var component_names = try std.ArrayList([]const u8).initCapacity(self.allocator, component_set.count());
-        defer {
-            for (component_names.items) |n| self.allocator.free(n);
-            component_names.deinit(self.allocator);
-        }
-
-        {
-            var iter = component_set.iterator();
-            while (iter.next()) |entry| {
-                try component_names.append(self.allocator, try self.allocator.dupe(u8, entry.key_ptr.*));
-            }
-        }
+        std.log.info("DEBUG: component_list.items.len = {d}", .{component_list.items.len});
 
         // Sort component names alphabetically
-        std.sort.insertion([]const u8, component_names.items, {}, struct {
+        std.log.info("DEBUG: About to sort component_list", .{});
+        std.sort.insertion([]const u8, component_list.items, {}, struct {
             fn compare(_: void, a: []const u8, b: []const u8) bool {
                 return std.mem.order(u8, a, b) == .lt;
             }
         }.compare);
+        std.log.info("DEBUG: Sort complete", .{});
 
         // Build component nodes
-        for (component_names.items) |comp_name| {
+        for (component_list.items) |comp_name| {
             const comp_name_copy = try self.allocator.dupe(u8, comp_name);
             const component_node = try Node.init(
                 self.allocator,
@@ -433,10 +438,6 @@ pub const TreeView = struct {
             // Only add component if it has children (pins or params)
             if (has_children) {
                 try self.root.append(self.allocator, component_node);
-
-                // Mark as processed to avoid duplicates
-                const processed_copy = try self.allocator.dupe(u8, comp_name);
-                try processed_components.put(processed_copy, {});
             } else {
                 // Free unused component node
                 self.freeNode(component_node);
@@ -948,7 +949,7 @@ pub const TreeView = struct {
 
                             if (signal_name.len == 0) {
                                 // Disconnect: Unlink pin from signal
-                                const old_signal = self.store.pin_links.get(pin_name);
+                                const old_signal = self.store.pin_links.get(NameKey.fromStr(pin_name));
 
                                 ffi.halUnlink(try self.allocator.dupeZ(u8, pin_name)) catch |err| {
                                     std.log.err("Disconnect failed: {}", .{err});
@@ -959,12 +960,13 @@ pub const TreeView = struct {
 
                                 // Check if this was the last pin connected to the signal
                                 if (old_signal) |sig| {
-                                    const remaining_pins = self.store.countPinsForSignal(sig);
+                                    const sig_str = sig.slice();
+                                    const remaining_pins = self.store.countPinsForSignal(sig_str);
                                     if (remaining_pins == 0) {
                                         // Prompt for signal deletion
                                         self.signal_delete_prompt = true;
-                                        self.pending_signal_delete = try self.allocator.dupe(u8, sig);
-                                        std.log.err("Delete orphaned signal '{s}'? (y/n)", .{sig});
+                                        self.pending_signal_delete = try self.allocator.dupe(u8, sig_str);
+                                        std.log.err("Delete orphaned signal '{s}'? (y/n)", .{sig_str});
                                     } else {
                                         std.log.err("Disconnected from signal ({d} pins remain)", .{remaining_pins});
                                     }
@@ -1421,8 +1423,8 @@ pub const TreeView = struct {
                     self.signal_edit_buffer.clearRetainingCapacity();
 
                     // Pre-populate with current signal if connected
-                    if (self.store.pin_links.get(node.full_name)) |current_signal| {
-                        try self.signal_edit_buffer.appendSlice(self.allocator, current_signal);
+                    if (self.store.pin_links.get(NameKey.fromStr(node.full_name))) |current_signal| {
+                        try self.signal_edit_buffer.appendSlice(self.allocator, current_signal.slice());
                     }
 
                     ctx.consumeAndRedraw();

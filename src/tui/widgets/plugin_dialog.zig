@@ -174,14 +174,18 @@ pub const PluginDialog = struct {
                 manager.deactivatePlugin(plugin.name) catch |err| {
                     try self.setError("Failed to deactivate plugin");
                     std.log.err("Failed to deactivate plugin '{s}': {}", .{ plugin.name, err });
+                    return true; // Keep error visible
                 };
+                // Successfully deactivated - clear any previous error
                 self.clearError();
             } else {
                 // Activate
                 manager.activatePlugin(plugin.name) catch |err| {
                     try self.setError("Failed to activate plugin");
                     std.log.err("Failed to activate plugin '{s}': {}", .{ plugin.name, err });
+                    return true; // Keep error visible
                 };
+                // Successfully activated - clear any previous error
                 self.clearError();
             }
             return true;
@@ -211,10 +215,23 @@ pub const PluginDialog = struct {
         // Store content height for scrolling
         self.content_height = if (height > 5) height - 5 else 5;
 
-        // Create surface
+        // Create surface with minimal widget (events handled by Model)
+        const dialog_widget = vxfw.Widget{
+            .userdata = self,
+            .eventHandler = null, // Events handled by Model's event handler
+            .drawFn = struct {
+                fn draw(ptr: *anyopaque, draw_ctx: vxfw.DrawContext) std.mem.Allocator.Error!vxfw.Surface {
+                    // This should never be called - we're doing custom drawing
+                    _ = ptr;
+                    _ = draw_ctx;
+                    unreachable;
+                }
+            }.draw,
+        };
+
         var surface = try vxfw.Surface.init(
             ctx.arena,
-            makeWidget(self),
+            dialog_widget,
             .{ .width = @intCast(width), .height = @intCast(height) },
         );
 
@@ -223,7 +240,6 @@ pub const PluginDialog = struct {
         @memset(surface.buffer, base_cell);
 
         const plugin_count = self.registry.count();
-        std.log.err("PluginDialog: plugin_count={d}, width={d}, height={d}", .{ plugin_count, width, height });
 
         // Draw border box
         // Top border
@@ -258,9 +274,9 @@ pub const PluginDialog = struct {
         // Title
         const title = "Available Plugins";
         const title_start = @as(usize, @intCast((width - title.len) / 2));
-        for (title, 0..) |c, i| {
+        for (title, 0..) |_, i| {
             if (title_start + i < width) surface.writeCell(@intCast(title_start + i), 1, .{
-                .char = .{ .grapheme = &[1]u8{c}, .width = 1 },
+                .char = .{ .grapheme = title[i..i+1], .width = 1 },
                 .style = .{ .bold = true },
             });
         }
@@ -275,20 +291,18 @@ pub const PluginDialog = struct {
             // Show "no plugins" message centered
             const msg = "No plugins registered";
             const msg_start = if (width > msg.len) (width - msg.len) / 2 else 0;
-            for (msg, 0..) |c, i| {
+            for (msg, 0..) |_, i| {
                 if (msg_start + i < width and msg_start + i < width - 1) {
                     surface.writeCell(@intCast(msg_start + i), start_row, .{
-                        .char = .{ .grapheme = &[1]u8{c}, .width = 1 },
+                        .char = .{ .grapheme = msg[i..i+1], .width = 1 },
                         .style = .{ .dim = true },
                     });
                 }
             }
         } else {
-            std.log.err("PluginDialog: drawing plugins, content_height={d}, scroll_offset={d}", .{ self.content_height, self.scroll_offset });
             const end_idx = @min(self.scroll_offset + self.content_height, plugin_count);
             for (self.scroll_offset..end_idx) |i| {
             const plugin = self.registry.getPluginByIndex(i) orelse {
-                std.log.err("PluginDialog: failed to get plugin at index {d}", .{i});
                 continue;
             };
             const is_active = self.isPluginActive(plugin.name);
@@ -312,19 +326,19 @@ pub const PluginDialog = struct {
             // Status indicator
             const status = if (is_active) "[x]" else "[ ]";
             const status_style: vaxis.Style = if (is_active) .{ .fg = .{ .rgb = .{ 0, 255, 0 } } } else .{ .dim = true };
-            for (status, 0..) |c, j| {
+            for (status, 0..) |_, j| {
                 surface.writeCell(@intCast(3 + j), @intCast(row), .{
-                    .char = .{ .grapheme = &[1]u8{c}, .width = 1 },
+                    .char = .{ .grapheme = status[j..j+1], .width = 1 },
                     .style = if (is_selected) .{ .reverse = true } else status_style,
                 });
             }
 
             // Plugin name
             const name_start = 8;
-            for (plugin.name, 0..) |c, j| {
+            for (plugin.name, 0..) |_, j| {
                 if (name_start + j >= width - 2) break;
                 surface.writeCell(@intCast(name_start + j), @intCast(row), .{
-                    .char = .{ .grapheme = &[1]u8{c}, .width = 1 },
+                    .char = .{ .grapheme = plugin.name[j..j+1], .width = 1 },
                     .style = if (is_selected) .{ .reverse = true } else .{},
                 });
             }
@@ -333,10 +347,10 @@ pub const PluginDialog = struct {
             if (plugin.version.len > 0) {
                 const ver_start = name_start + plugin.name.len + 2;
                 const ver_str = try std.fmt.allocPrint(ctx.arena, "v{s}", .{plugin.version});
-                for (ver_str, 0..) |c, j| {
+                for (ver_str, 0..) |_, j| {
                     if (ver_start + j >= width - 2) break;
                     surface.writeCell(@intCast(ver_start + j), @intCast(row), .{
-                        .char = .{ .grapheme = &[1]u8{c}, .width = 1 },
+                        .char = .{ .grapheme = ver_str[j..j+1], .width = 1 },
                         .style = if (is_selected) .{ .reverse = true } else .{ .dim = true },
                     });
                 }
@@ -344,13 +358,32 @@ pub const PluginDialog = struct {
             } // end for plugin loop
         } // end else block
 
+        // Show error message if any
+        if (self.error_message) |msg| {
+            const error_row = height - 3;
+            // Truncate error if too long
+            const max_msg_len = width - 4;
+            const display_msg = if (msg.len > max_msg_len) msg[0..max_msg_len] else msg;
+            const msg_start = if (width > display_msg.len) (width - display_msg.len) / 2 else 1;
+
+            for (display_msg, 0..) |_, i| {
+                if (msg_start + i < width - 1) {
+                    const error_style: vaxis.Style = .{ .fg = .{ .rgb = .{ 255, 0, 0 } }, .bold = true };
+                    surface.writeCell(@intCast(msg_start + i), @intCast(error_row), .{
+                        .char = .{ .grapheme = display_msg[i..i+1], .width = 1 },
+                        .style = error_style,
+                    });
+                }
+            }
+        }
+
         // Bottom help text
         const help = "Enter:Toggle q/Q:Quit";
         const help_start = if (width > help.len) (width - help.len) / 2 else 1;
-        for (help, 0..) |c, i| {
+        for (help, 0..) |_, i| {
             if (help_start + i < width - 1) {
                 surface.writeCell(@intCast(help_start + i), height - 2, .{
-                    .char = .{ .grapheme = &[1]u8{c}, .width = 1 },
+                    .char = .{ .grapheme = help[i..i+1], .width = 1 },
                     .style = .{ .dim = true },
                 });
             }

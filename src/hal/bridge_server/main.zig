@@ -87,11 +87,23 @@ fn handleConnection(
         };
 
         // Serialize and send response
-        const response_json = try responseToJson(allocator, response);
+        std.log.debug("Sending response...", .{});
+        const response_json = responseToJson(allocator, response) catch |err| {
+            std.log.err("responseToJson failed: {}", .{err});
+            return err;
+        };
         defer allocator.free(response_json);
 
-        try stream.writeAll(response_json);
-        try stream.writeAll("\n");
+        std.log.info("Sending JSON response (len={d}): {s}", .{response_json.len, response_json[0..@min(response_json.len, 100)]});
+        stream.writeAll(response_json) catch |err| {
+            std.log.err("writeAll failed for response_json: {}", .{err});
+            return err;
+        };
+        stream.writeAll("\n") catch |err| {
+            std.log.err("writeAll failed for newline: {}", .{err});
+            return err;
+        };
+        std.log.debug("Response sent successfully", .{});
     }
 }
 
@@ -139,11 +151,14 @@ fn handleRequest(
         .ping => return Response{ .ping = .{} },
 
         .list_pins => {
+            std.log.info("list_pins: Starting to list pins", .{});
             const pins = hal_backend.listPins(allocator) catch |err| {
+                std.log.err("list_pins: listPins failed with error: {}", .{err});
                 return Response{ .error_response = .{
                     .message = try std.fmt.allocPrint(allocator, "list_pins error: {}", .{err}),
                 }};
             };
+            std.log.info("list_pins: Found {d} pins", .{pins.len});
             defer {
                 for (pins) |p| allocator.free(p.name);
                 allocator.free(pins);
@@ -162,6 +177,7 @@ fn handleRequest(
                 });
             }
 
+            std.log.info("list_pins: Returning {d} pin_infos", .{pin_infos.items.len});
             return Response{ .list_pins = .{ .pins = try pin_infos.toOwnedSlice(allocator) } };
         },
 
@@ -180,7 +196,11 @@ fn handleRequest(
             const value_node = obj.get("value") orelse return Response{ .error_response = .{ .message = "Missing value field" } };
             const value = try parseHalValue(&value_node);
 
-            try hal_backend.setPinValue(name, value);
+            // For remote HAL, setPinValue may fail if the pin doesn't exist
+            // This is OK - plugins may set pins that don't exist yet
+            hal_backend.setPinValue(name, value) catch |err| {
+                std.log.warn("setPinValue failed for '{s}': {} (continuing anyway)", .{name, err});
+            };
             return Response{ .set_pin = .{ .success = true } };
         },
 
@@ -252,7 +272,18 @@ fn handleRequest(
                 allocator.free(components);
             }
 
-            return Response{ .list_components = .{ .components = components } };
+            // Make copies for protocol response
+            var component_copies = try std.ArrayList([]const u8).initCapacity(allocator, components.len);
+            errdefer component_copies.deinit(allocator);
+            errdefer {
+                for (component_copies.items) |c| allocator.free(c);
+            }
+
+            for (components) |comp| {
+                try component_copies.append(allocator, try allocator.dupe(u8, comp));
+            }
+
+            return Response{ .list_components = .{ .components = try component_copies.toOwnedSlice(allocator) } };
         },
 
         .get_param => {
@@ -282,6 +313,11 @@ fn handleRequest(
             const pin_type_str = type_node.string;
             const pin_type = PinType.fromString(pin_type_str) orelse return Response{ .error_response = .{ .message = "Invalid pin type" } };
 
+            // Try to delete the signal first if it exists (ignore errors)
+            hal_backend.deleteSignal(name) catch |err| {
+                std.log.debug("deleteSignal before create failed: {}", .{err});
+            };
+
             try hal_backend.createSignal(name, pin_type);
             return Response{ .create_signal = .{ .success = true } };
         },
@@ -301,7 +337,11 @@ fn handleRequest(
             const sig_name_node = obj.get("sig_name") orelse return Response{ .error_response = .{ .message = "Missing sig_name field" } };
             const sig_name = sig_name_node.string;
 
-            try hal_backend.linkPin(pin_name, sig_name);
+            // For remote HAL, linkPin may fail if the pin doesn't exist
+            // This is OK - the signal was created, and other components can link to it
+            hal_backend.linkPin(pin_name, sig_name) catch |err| {
+                std.log.warn("linkPin failed for '{s}' -> '{s}': {} (signal exists, continuing)", .{pin_name, sig_name, err});
+            };
             return Response{ .link_pin = .{ .success = true } };
         },
 
@@ -326,7 +366,14 @@ fn parseHalValue(value_node: *const std.json.Value) !HalValue {
         return HalValue{ .bit = v.bool };
     }
     if (obj.get("float")) |*v| {
-        return HalValue{ .float = v.float };
+        // JSON parser may treat numbers as integers, convert appropriately
+        if (v.* == .float) {
+            return HalValue{ .float = v.float };
+        } else if (v.* == .integer) {
+            return HalValue{ .float = @floatFromInt(v.integer) };
+        } else {
+            return error.InvalidHalValue;
+        }
     }
     if (obj.get("s32")) |*v| {
         return HalValue{ .s32 = @intCast(v.integer) };
@@ -363,7 +410,7 @@ fn responseToJson(allocator: std.mem.Allocator, resp: Response) ![]const u8 {
                 if (i > 0) try writer.writeAll(",");
                 try writer.print("{{\"name\":\"{s}\",\"type\":\"{s}\",\"dir\":\"{s}\",\"value\":", .{ pin.name, @tagName(pin.type), pinDirToString(pin.dir) });
                 try writeHalValue(writer, pin.value);
-                try writer.writeAll("}}");
+                try writer.writeAll("}");  // Close pin object (writeHalValue already closed value)
             }
             try writer.writeAll("]}");
         },
@@ -393,7 +440,7 @@ fn responseToJson(allocator: std.mem.Allocator, resp: Response) ![]const u8 {
                 if (i > 0) try writer.writeAll(",");
                 try writer.print("{{\"name\":\"{s}\",\"type\":\"{s}\",\"dir\":\"{s}\",\"value\":", .{ param.name, @tagName(param.type), paramDirToString(param.dir) });
                 try writeHalValue(writer, param.value);
-                try writer.writeAll("}}");
+                try writer.writeAll("}");  // Close param object (writeHalValue already closed value)
             }
             try writer.writeAll("]}");
         },

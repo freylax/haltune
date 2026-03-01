@@ -54,8 +54,8 @@ pub fn main(config: Config) !void {
     const registry = plugin_registry_mod.getGlobalRegistry();
     std.log.info("Registered {d} plugins", .{if (registry) |r| r.count() else 0});
 
-    // Initialize plugin manager
-    var plugin_manager = if (registry) |r| plugin_manager_mod.PluginManager.init(allocator, r) else return error.PluginRegistryNotAvailable;
+    // Initialize plugin manager (backend will be set after Model creates it)
+    var plugin_manager = if (registry) |r| plugin_manager_mod.PluginManager.init(allocator, r, null) else return error.PluginRegistryNotAvailable;
     plugin_manager_mod.setGlobalPluginManager(&plugin_manager);
     defer plugin_manager.deinit();
 
@@ -122,13 +122,8 @@ pub fn main(config: Config) !void {
         allocator.destroy(model);
     }
 
-    // Initialize Vxfw application FIRST
-    // Vxfw manages the event loop, terminal I/O, and rendering
-    // Must initialize before starting refresh thread to avoid terminal access conflicts
-    var app = try vxfw.App.init(allocator);
-    defer app.deinit();
-
-    // Create and start RefreshThread for HAL polling AFTER vaxis is ready
+    // Create and start RefreshThread for HAL polling BEFORE initializing vaxis
+    // This allows StateStore to be populated before the UI starts
     // Using c_allocator (like flow does) for both main and refresh threads
     const refresh_thread = try thread_safe_allocator.create(RefreshThread);
     refresh_thread.* = RefreshThread.init(thread_safe_allocator, &store);
@@ -138,22 +133,51 @@ pub fn main(config: Config) !void {
     // Set remote backend if available
     if (model.remote_backend) |backend| {
         refresh_thread.setRemoteBackend(backend);
-        std.log.info("Using remote HAL for refresh thread", .{});
+        plugin_manager.setBackend(backend);
+        std.log.info("Using remote HAL for refresh thread and plugins", .{});
     }
 
+    // Start the refresh thread
     _ = try refresh_thread.start();
 
-    // Give refresh thread time to populate StateStore before first draw
+    // Give refresh thread time to populate StateStore before initializing UI
     // This ensures the tree is built with actual data, not empty
     std.log.info("Waiting for refresh thread to populate StateStore...", .{});
-    std.Thread.sleep(200 * std.time.ns_per_ms); // 200ms delay
-    std.log.info("Refresh thread started, continuing to TUI", .{});
 
-    defer {
+    // Wait up to 2 seconds for StateStore to be populated
+    var wait_count: u32 = 0;
+    while (wait_count < 20) : (wait_count += 1) {
+        std.Thread.sleep(100 * std.time.ns_per_ms);
+        if (refresh_thread.populated.load(.acquire)) {
+            std.log.info("StateStore populated after {d}ms", .{wait_count * 100});
+            break;
+        }
+    }
+    if (!refresh_thread.populated.load(.acquire)) {
+        std.log.warn("StateStore not populated after 2s, continuing anyway", .{});
+    }
+
+    // Rebuild tree now that StateStore has been populated
+    try model.tree_view.buildTree();
+    std.log.info("Tree rebuilt with {d} components", .{model.tree_view.root.items.len});
+
+    // NOW initialize Vxfw application (requires /dev/tty)
+    // Vxfw manages the event loop, terminal I/O, and rendering
+    var app = vxfw.App.init(allocator) catch |err| {
+        // Clean up refresh thread if app init fails
         std.log.info("Stopping RefreshThread...", .{});
         refresh_thread.stop();
         std.log.info("RefreshThread stopped", .{});
         thread_safe_allocator.destroy(refresh_thread);
+        return err;
+    };
+    defer {
+        // Clean up refresh thread and app when function exits (normal case)
+        std.log.info("Stopping RefreshThread...", .{});
+        refresh_thread.stop();
+        std.log.info("RefreshThread stopped", .{});
+        thread_safe_allocator.destroy(refresh_thread);
+        app.deinit();
     }
 
     // Validate terminal size before running the TUI
@@ -184,7 +208,14 @@ pub fn main(config: Config) !void {
             std.process.exit(1);
         }
     } else {
-        std.debug.print("TEST MODE: Terminal size check bypassed\n", .{});
+        std.debug.print("TEST MODE: Setting default terminal size 80x24\n", .{});
+        // In test mode, set a default terminal size to prevent vaxis division by zero
+        const os = std.os.linux;
+        const winsize = extern struct { ws_row: u16, ws_col: u16, ws_xpixel: u16, ws_ypixel: u16 };
+        var ws: winsize = .{ .ws_row = 24, .ws_col = 80, .ws_xpixel = 0, .ws_ypixel = 0 };
+        const fd = std.posix.STDOUT_FILENO;
+        const TIOCSWINSZ = 0x5414; // Set window size
+        _ = os.ioctl(fd, TIOCSWINSZ, @intFromPtr(&ws));
     }
 
     // Run the application with our Model widget

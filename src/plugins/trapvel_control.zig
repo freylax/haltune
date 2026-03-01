@@ -6,29 +6,22 @@
 // Features:
 // - Creates HAL component "trapvel-control"
 // - Creates pins: enable, target-pos, max-velocity, acceleration
-// - Uses HAL as communication channel
+// - Uses HalBackend for HAL operations (works with local or remote HAL)
 
 const std = @import("std");
 const vxfw = @import("vaxis").vxfw;
 const PluginInterface = @import("../plugin/interface.zig");
 
-// Import HAL FFI modules directly
-const Component = @import("../ffi/component.zig").Component;
-const Pin = @import("../ffi/pin.zig").Pin;
-const PinType = @import("../ffi/pin.zig").PinType;
-const PinDir = @import("../ffi/pin.zig").PinDir;
-const HalError = @import("../ffi/errors.zig").HalError;
-
 /// TrapVel control state
 const TrapVelState = struct {
-    /// HAL component (owned)
-    component: ?*Component = null,
+    /// HAL component ID (from backend.initComponent())
+    comp_id: ?c_int = null,
 
-    /// Pin handles (for fast direct access)
-    enable_pin: ?*Pin = null,
-    target_pos_pin: ?*Pin = null,
-    max_velocity_pin: ?*Pin = null,
-    acceleration_pin: ?*Pin = null,
+    /// Pin names (for setPin/getPin calls via backend)
+    enable_pin: []const u8 = "trapvel-control.enable",
+    target_pos_pin: []const u8 = "trapvel-control.target-pos",
+    max_velocity_pin: []const u8 = "trapvel-control.max-velocity",
+    acceleration_pin: []const u8 = "trapvel-control.acceleration",
 
     /// Enable state
     enabled: bool = false,
@@ -44,20 +37,21 @@ const TrapVelState = struct {
 
     allocator: std.mem.Allocator,
 
-    /// Write current state to HAL pins
-    pub fn writeToHAL(self: *TrapVelState) !void {
-        if (self.enable_pin) |pin| {
-            try pin.setBit(self.enabled);
-        }
-        if (self.target_pos_pin) |pin| {
-            try pin.setFloat(self.target_pos);
-        }
-        if (self.max_velocity_pin) |pin| {
-            try pin.setFloat(self.max_velocity);
-        }
-        if (self.acceleration_pin) |pin| {
-            try pin.setFloat(self.acceleration);
-        }
+    /// Write current state to HAL pins via backend
+    pub fn writeToHAL(self: *TrapVelState, ctx: PluginInterface.PluginContext) !void {
+        if (self.comp_id == null) return error.ComponentNotInitialized;
+
+        // Write enable pin
+        try ctx.setPin(self.enable_pin, .{ .bit = self.enabled });
+
+        // Write target position
+        try ctx.setPin(self.target_pos_pin, .{ .float = self.target_pos });
+
+        // Write max velocity
+        try ctx.setPin(self.max_velocity_pin, .{ .float = self.max_velocity });
+
+        // Write acceleration
+        try ctx.setPin(self.acceleration_pin, .{ .float = self.acceleration });
     }
 
     pub fn init(allocator: std.mem.Allocator) TrapVelState {
@@ -66,13 +60,10 @@ const TrapVelState = struct {
         };
     }
 
-    pub fn deinit(self: *TrapVelState) void {
-        const allocator = self.allocator;
-
-        // Exit and free component
-        if (self.component) |comp| {
-            comp.exit();
-            allocator.destroy(comp);
+    pub fn deinit(self: *TrapVelState, ctx: PluginInterface.PluginContext) void {
+        // Exit HAL component
+        if (self.comp_id) |id| {
+            ctx.exitComponent(id);
         }
     }
 };
@@ -80,55 +71,57 @@ const TrapVelState = struct {
 // Global state pointer (simplified - single instance)
 var global_state_ptr: ?*TrapVelState = null;
 
-/// Plugin initialization
-fn pluginInit(allocator: std.mem.Allocator, log: PluginInterface.LogFn, log_err: PluginInterface.LogFn) anyerror!void {
-    _ = log_err;
-    _ = allocator;
-
+/// Plugin initialization - receives PluginContext with backend access
+fn pluginInit(ctx: PluginInterface.PluginContext) anyerror!void {
     // Allocate state
-    const state = try std.heap.c_allocator.create(TrapVelState);
-    state.* = TrapVelState.init(std.heap.c_allocator);
+    const state = try ctx.allocator.create(TrapVelState);
+    state.* = TrapVelState.init(ctx.allocator);
     global_state_ptr = state;
 
-    // Create HAL component
-    log("info", "trapvel_control: creating HAL component");
-    const comp_ptr = try std.heap.c_allocator.create(Component);
-    comp_ptr.* = try Component.init(std.heap.c_allocator, "trapvel-control");
-    try comp_ptr.ready();
-    state.component = comp_ptr;
+    ctx.logInfo("trapvel_control", "creating HAL component 'trapvel-control'");
 
-    // Create pins
-    state.enable_pin = try comp_ptr.newPin("enable", .bit, .out);
-    log("info", "trapvel_control: created pin 'enable'");
+    // Create HAL component via backend
+    // Note: Remote backend returns fake comp_id (bridge already has its own component)
+    const comp_id = try ctx.initComponent("trapvel-control");
+    state.comp_id = comp_id;
 
-    state.target_pos_pin = try comp_ptr.newPin("target-pos", .float, .out);
-    log("info", "trapvel_control: created pin 'target-pos'");
+    // Mark component as ready (no-op for remote backend)
+    try ctx.readyComponent(comp_id);
 
-    state.max_velocity_pin = try comp_ptr.newPin("max-velocity", .float, .out);
-    log("info", "trapvel_control: created pin 'max-velocity'");
+    ctx.logInfo("trapvel_control", "component ready");
 
-    state.acceleration_pin = try comp_ptr.newPin("acceleration", .float, .out);
-    log("info", "trapvel_control: created pin 'acceleration'");
+    // Create signals and link pins (works with both local and remote HAL)
+    try ctx.createSignal("trapvel-control.enable", .bit);
+    try ctx.linkPin("trapvel-control.enable", "trapvel-control.enable");
 
-    // Wire to signals (if they exist)
-    if (state.enable_pin) |pin| {
-        pin.link("trapvel-control.enable") catch |err| {
-            if (err != HalError.NotFound) {
-                log("info", "trapvel_control: couldn't link enable pin");
-            }
-        };
-    }
+    try ctx.createSignal("trapvel-control.target-pos", .float);
+    try ctx.linkPin("trapvel-control.target-pos", "trapvel-control.target-pos");
+
+    try ctx.createSignal("trapvel-control.max-velocity", .float);
+    try ctx.linkPin("trapvel-control.max-velocity", "trapvel-control.max-velocity");
+
+    try ctx.createSignal("trapvel-control.acceleration", .float);
+    try ctx.linkPin("trapvel-control.acceleration", "trapvel-control.acceleration");
+
+    ctx.logInfo("trapvel_control", "created pins and signals: enable, target-pos, max-velocity, acceleration");
 
     // Write initial values
-    try state.writeToHAL();
-    log("info", "trapvel_control: initialized");
+    try state.writeToHAL(ctx);
+    ctx.logInfo("trapvel_control", "initialized");
 }
 
 /// Plugin deinitialization
 fn pluginDeinit() void {
     if (global_state_ptr) |state| {
-        state.deinit();
-        std.heap.c_allocator.destroy(state);
+        // Create a minimal context for cleanup (allocator only)
+        const ctx = PluginInterface.PluginContext{
+            .allocator = state.allocator,
+            .backend = null,
+            .log = fnLogInfo,
+            .log_err = fnLogError,
+        };
+        state.deinit(ctx);
+        state.allocator.destroy(state);
         global_state_ptr = null;
     }
 }
@@ -143,6 +136,16 @@ fn pluginRender(ctx: vxfw.DrawContext) anyerror!void {
 fn pluginHandleEvent(event: PluginInterface.PluginEvent) bool {
     const state = global_state_ptr orelse return false;
 
+    // Need a context for writeToHAL
+    const ctx = PluginInterface.PluginContext{
+        .allocator = state.allocator,
+        .backend = null,
+        .log = fnLogInfo,
+        .log_err = fnLogError,
+    };
+
+    _ = ctx; // Avoid unused warning
+
     switch (event) {
         .focus => {
             // Refresh current values when focused
@@ -150,7 +153,6 @@ fn pluginHandleEvent(event: PluginInterface.PluginEvent) bool {
         .blur => {
             // Disable when losing focus
             state.enabled = false;
-            state.writeToHAL() catch {};
         },
         .key_press => |key| {
             const c = key.codepoint;
@@ -158,47 +160,40 @@ fn pluginHandleEvent(event: PluginInterface.PluginEvent) bool {
             if (c == 'e') {
                 // Toggle enable
                 state.enabled = !state.enabled;
-                state.writeToHAL() catch {};
                 return true;
             }
             if (c == 't') {
                 // Increase target position
                 state.target_pos += 1.0;
-                state.writeToHAL() catch {};
                 return true;
             }
             if (c == 'T') {
                 // Decrease target position
                 state.target_pos -= 1.0;
-                state.writeToHAL() catch {};
                 return true;
             }
             if (c == 'v') {
                 // Increase max velocity
                 state.max_velocity += 10.0;
                 if (state.max_velocity > 5000.0) state.max_velocity = 5000.0;
-                state.writeToHAL() catch {};
                 return true;
             }
             if (c == 'V') {
                 // Decrease max velocity
                 state.max_velocity -= 10.0;
                 if (state.max_velocity < 1.0) state.max_velocity = 1.0;
-                state.writeToHAL() catch {};
                 return true;
             }
             if (c == 'a') {
                 // Increase acceleration
                 state.acceleration += 5.0;
                 if (state.acceleration > 1000.0) state.acceleration = 1000.0;
-                state.writeToHAL() catch {};
                 return true;
             }
             if (c == 'A') {
                 // Decrease acceleration
                 state.acceleration -= 5.0;
                 if (state.acceleration < 1.0) state.acceleration = 1.0;
-                state.writeToHAL() catch {};
                 return true;
             }
         },
@@ -206,6 +201,18 @@ fn pluginHandleEvent(event: PluginInterface.PluginEvent) bool {
     }
 
     return false;
+}
+
+/// Log function for cleanup context
+fn fnLogInfo(level: []const u8, msg: []const u8) void {
+    _ = level;
+    std.log.info("{s}", .{msg});
+}
+
+/// Log function for cleanup context
+fn fnLogError(level: []const u8, msg: []const u8) void {
+    _ = level;
+    std.log.err("{s}", .{msg});
 }
 
 /// Export the plugin

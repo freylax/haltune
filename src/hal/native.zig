@@ -1,6 +1,7 @@
 // Native HAL Backend
 //
-// This implementation uses direct HAL FFI calls.
+// This implementation uses direct HAL FFI calls with halpr_find_pin_by_name
+// to access pin structures directly, avoiding name-based lookup issues.
 
 const std = @import("std");
 const backend = @import("backend");
@@ -17,18 +18,7 @@ const ParamDir = backend.ParamDir;
 const ffi_c_module = @import("ffi-c");
 const c = ffi_c_module.c;
 
-// Manual extern declarations (at module level, not in c namespace)
-const halpr_find_pin_by_name = ffi_c_module.halpr_find_pin_by_name;
-const halpr_find_sig_by_name = ffi_c_module.halpr_find_sig_by_name;
-const halpr_find_param_by_name = ffi_c_module.halpr_find_param_by_name;
-const hal_pin_t = ffi_c_module.hal_pin_t;
-const hal_param_t = ffi_c_module.hal_param_t;
-
-// HAL constants (defined at module level in c.zig)
-const HAL_RO = ffi_c_module.HAL_RO;
-const HAL_RW = ffi_c_module.HAL_RW;
-
-// Discovery helpers using halcmd
+// Discovery helpers using halcmd (for now - direct HAL access needs more work)
 const discovery = @import("ffi-safe-discovery");
 
 /// Helper to create a null-terminated C string
@@ -131,14 +121,104 @@ pub const NativeBackend = struct {
         _ = c.hal_exit(comp_id);
     }
 
+    /// Find a pin by name using halpr_find_pin_by_name
+    fn findPinByName(name: [*:0]const u8) ?*const ffi_c_module.hal_pin_t {
+        const pin_opaque = ffi_c_module.halpr_find_pin_by_name(name);
+        if (pin_opaque == null) {
+            std.log.err("DEBUG: halpr_find_pin_by_name('{s}') returned null", .{name});
+            return null;
+        }
+        return @as(*const ffi_c_module.hal_pin_t, @alignCast(@ptrCast(pin_opaque)));
+    }
+
+    /// Read pin value using direct structure access
+    /// When pin is linked, value is at data_ptr_addr
+    /// When pin is unlinked, value is in dummysig field
+    fn readPinValue(pin: *const ffi_c_module.hal_pin_t, pin_type: c_int) HalValue {
+        // Check if pin is linked to a signal (signal field is non-null)
+        const is_linked = pin.signal != null;
+
+        if (is_linked and pin.data_ptr_addr != null) {
+            // Pin is linked - read from signal data via data_ptr_addr
+            const data_ptr = @as([*c]c.hal_data_u, @alignCast(@ptrCast(pin.data_ptr_addr)));
+            return switch (pin_type) {
+                c.HAL_BIT => HalValue{ .bit = data_ptr.*.b },
+                c.HAL_FLOAT => HalValue{ .float = data_ptr.*.f },
+                c.HAL_S32 => HalValue{ .s32 = data_ptr.*.s },
+                c.HAL_U32 => HalValue{ .u32 = data_ptr.*.u },
+                else => HalValue{ .float = 0.0 },
+            };
+        } else {
+            // Pin is unlinked - read from dummysig field in pin structure
+            const dummy = pin.dummysig;
+            return switch (pin_type) {
+                c.HAL_BIT => HalValue{ .bit = dummy.b },
+                c.HAL_FLOAT => HalValue{ .float = dummy.f },
+                c.HAL_S32 => HalValue{ .s32 = dummy.s },
+                c.HAL_U32 => HalValue{ .u32 = dummy.u },
+                else => HalValue{ .float = 0.0 },
+            };
+        }
+    }
+
     fn listPins(ptr: *anyopaque, allocator: std.mem.Allocator) ![]PinInfo {
         const self: *State = @ptrCast(@alignCast(ptr));
         _ = self;
-        _ = allocator;
 
-        // TODO: For now return empty array to test basic flow
-        // The HAL enumeration code needs more debugging
-        return &[_]PinInfo{};
+        std.log.scoped(.hal_native).info("listPins: Starting discovery via halcmd show pin", .{});
+
+        // Use halcmd show pin to get all pins with details in a single call
+        var pin_details = discovery.listPinsDetail(allocator) catch |err| {
+            std.log.scoped(.hal_native).err("listPinsDetail failed: {}", .{err});
+            return error.UnexpectedResponse;
+        };
+        defer {
+            for (pin_details.items) |p| allocator.free(p.name);
+            pin_details.deinit(allocator);
+        }
+
+        // Allocate result array
+        const pins = try allocator.alloc(PinInfo, pin_details.items.len);
+        errdefer allocator.free(pins);
+
+        // Convert discovery.PinDetail to backend.PinInfo
+        for (pin_details.items, 0..) |detail, i| {
+            const pin_type: PinType = switch (detail.type) {
+                .bit => .bit,
+                .float => .float,
+                .s32 => .s32,
+                .u32 => .u32,
+            };
+
+            const pin_dir: PinDir = switch (detail.dir) {
+                .in => .in,
+                .out => .out,
+                .io => .io,
+                .unspecified => .in,
+            };
+
+            // Convert f64 to appropriate HalValue based on type
+            const pin_value: HalValue = switch (detail.type) {
+                .bit => HalValue{ .bit = detail.value != 0 },
+                .float => HalValue{ .float = detail.value },
+                .s32 => HalValue{ .s32 = @intFromFloat(detail.value) },
+                .u32 => HalValue{ .u32 = @intFromFloat(detail.value) },
+            };
+
+            // Debug: Log first few pins
+            if (i < 5) {
+                std.log.err("DEBUG: pin {} name='{s}' type={} dir={} value={}", .{ i, detail.name, pin_type, pin_dir, pin_value });
+            }
+
+            pins[i] = PinInfo{
+                .name = try allocator.dupe(u8, detail.name),
+                .type = pin_type,
+                .dir = pin_dir,
+                .value = pin_value,
+            };
+        }
+
+        return pins;
     }
 
     fn listSignals(ptr: *anyopaque, allocator: std.mem.Allocator) ![]SignalInfo {
@@ -159,35 +239,36 @@ pub const NativeBackend = struct {
         const signals = try allocator.alloc(SignalInfo, sig_names.items.len);
         errdefer allocator.free(signals);
 
-        // Get details for each signal using HAL API
+        // Get details for each signal using halpr_find_sig_by_name
         for (sig_names.items, 0..) |sig_name, i| {
             const name_z = try toCStr(allocator, sig_name);
             defer allocator.free(name_z);
 
-            // Use hal_get_signal_value_by_name to get signal value
-            var hal_type: c_int = undefined;
-            var data_ptr: [*c][*c]c.hal_data_u = undefined;
-            var has_writers: bool = undefined;
+            // Use halpr_find_sig_by_name to get signal structure
+            const sig_ptr = ffi_c_module.halpr_find_sig_by_name(name_z.ptr);
 
-            const rc = c.hal_get_signal_value_by_name(name_z.ptr, &hal_type, &data_ptr, &has_writers);
-            const sig_type: PinType = if (rc == 0) switch (hal_type) {
-                c.HAL_BIT => .bit,
-                c.HAL_FLOAT => .float,
-                c.HAL_S32 => .s32,
-                c.HAL_U32 => .u32,
-                else => .float,
-            } else .float;
-
-            const sig_value: HalValue = if (rc == 0 and data_ptr != null) blk: {
-                const data = data_ptr.*.*;
-                break :blk switch (hal_type) {
-                    c.HAL_BIT => HalValue{ .bit = data.b },
-                    c.HAL_FLOAT => HalValue{ .float = data.f },
-                    c.HAL_S32 => HalValue{ .s32 = data.s },
-                    c.HAL_U32 => HalValue{ .u32 = data.u },
+            const sig_value: HalValue = if (sig_ptr) |p| blk: {
+                const sig = @as(*const ffi_c_module.hal_sig_t, @alignCast(@ptrCast(p)));
+                // Signal value is stored directly in the data union
+                break :blk switch (sig.type) {
+                    c.HAL_BIT => HalValue{ .bit = sig.data.b },
+                    c.HAL_FLOAT => HalValue{ .float = sig.data.f },
+                    c.HAL_S32 => HalValue{ .s32 = sig.data.s },
+                    c.HAL_U32 => HalValue{ .u32 = sig.data.u },
                     else => HalValue{ .float = 0.0 },
                 };
             } else HalValue{ .float = 0.0 };
+
+            const sig_type: PinType = if (sig_ptr) |p| blk: {
+                const sig = @as(*const ffi_c_module.hal_sig_t, @alignCast(@ptrCast(p)));
+                break :blk switch (sig.type) {
+                    c.HAL_BIT => .bit,
+                    c.HAL_FLOAT => .float,
+                    c.HAL_S32 => .s32,
+                    c.HAL_U32 => .u32,
+                    else => .float,
+                };
+            } else .float;
 
             // Collect writers and readers (empty for now - would need more complex iteration)
             signals[i] = SignalInfo{
@@ -220,52 +301,48 @@ pub const NativeBackend = struct {
         const params = try allocator.alloc(ParamInfo, param_names.items.len);
         errdefer allocator.free(params);
 
-        // Get details for each param using HAL API
+        // Get details for each param using halpr_find_param_by_name
         for (param_names.items, 0..) |param_name, i| {
             const name_z = try toCStr(allocator, param_name);
             defer allocator.free(name_z);
 
-            const param_ptr = halpr_find_param_by_name(name_z.ptr);
-            if (param_ptr == null) continue;
+            // Use halpr_find_param_by_name to get param structure
+            const param_ptr = ffi_c_module.halpr_find_param_by_name(name_z.ptr);
 
-            const param: *const hal_param_t = @ptrCast(@alignCast(param_ptr));
+            const param_value: HalValue = if (param_ptr) |p| blk: {
+                const param = @as(*const ffi_c_module.hal_param_t, @alignCast(@ptrCast(p)));
+                if (param.data_ptr) |data_ptr| {
+                    const data = @as(*c.hal_data_u, @alignCast(@ptrCast(data_ptr)));
+                    break :blk switch (param.type) {
+                        c.HAL_BIT => HalValue{ .bit = data.b },
+                        c.HAL_FLOAT => HalValue{ .float = data.f },
+                        c.HAL_S32 => HalValue{ .s32 = data.s },
+                        c.HAL_U32 => HalValue{ .u32 = data.u },
+                        else => HalValue{ .float = 0.0 },
+                    };
+                } else break :blk HalValue{ .float = 0.0 };
+            } else HalValue{ .float = 0.0 };
 
-            // Get param type
-            const param_type: PinType = switch (param.type) {
-                c.HAL_BIT => .bit,
-                c.HAL_FLOAT => .float,
-                c.HAL_S32 => .s32,
-                c.HAL_U32 => .u32,
-                else => .float, // fallback
-            };
+            const param_type: PinType = if (param_ptr) |p| blk: {
+                const param = @as(*const ffi_c_module.hal_param_t, @alignCast(@ptrCast(p)));
+                break :blk switch (param.type) {
+                    c.HAL_BIT => .bit,
+                    c.HAL_FLOAT => .float,
+                    c.HAL_S32 => .s32,
+                    c.HAL_U32 => .u32,
+                    else => .float,
+                };
+            } else .float;
 
-            // Get param direction
-            const param_dir: ParamDir = switch (param.dir) {
-                HAL_RO => .in,
-                HAL_RW => .rw,
-                else => .rw, // fallback
-            };
-
-            // Get param value from data_ptr
-            const param_value: HalValue = switch (param.type) {
-                c.HAL_BIT => if (param.data_ptr) |d| blk: {
-                    const data_ptr_ptr: [*c]c.hal_data_u = @ptrCast(@alignCast(d));
-                    break :blk HalValue{ .bit = data_ptr_ptr.*.b };
-                } else HalValue{ .bit = false },
-                c.HAL_FLOAT => if (param.data_ptr) |d| blk: {
-                    const data_ptr_ptr: [*c]c.hal_data_u = @ptrCast(@alignCast(d));
-                    break :blk HalValue{ .float = data_ptr_ptr.*.f };
-                } else HalValue{ .float = 0.0 },
-                c.HAL_S32 => if (param.data_ptr) |d| blk: {
-                    const data_ptr_ptr: [*c]c.hal_data_u = @ptrCast(@alignCast(d));
-                    break :blk HalValue{ .s32 = data_ptr_ptr.*.s };
-                } else HalValue{ .s32 = 0 },
-                c.HAL_U32 => if (param.data_ptr) |d| blk: {
-                    const data_ptr_ptr: [*c]c.hal_data_u = @ptrCast(@alignCast(d));
-                    break :blk HalValue{ .u32 = data_ptr_ptr.*.u };
-                } else HalValue{ .u32 = 0 },
-                else => HalValue{ .float = 0.0 },
-            };
+            // Get direction from param structure
+            const param_dir: ParamDir = if (param_ptr) |p| blk: {
+                const param = @as(*const ffi_c_module.hal_param_t, @alignCast(@ptrCast(p)));
+                break :blk switch (param.dir) {
+                    ffi_c_module.HAL_RO => .in,
+                    ffi_c_module.HAL_RW => .out,
+                    else => .in,
+                };
+            } else .in;
 
             params[i] = ParamInfo{
                 .name = try allocator.dupe(u8, param_name),
@@ -299,14 +376,25 @@ pub const NativeBackend = struct {
             return error.UnexpectedResponse;
         }
 
-        // Parse component names
+        // Parse component names, sanitizing null bytes and other control characters
         var components = try std.ArrayList([]const u8).initCapacity(allocator, 8);
         defer components.deinit(allocator);
         var lines = std.mem.splitScalar(u8, result.stdout, '\n');
         while (lines.next()) |line| {
-            const trimmed = std.mem.trim(u8, line, " \t\r");
-            if (trimmed.len > 0) {
-                try components.append(allocator, try allocator.dupe(u8, trimmed));
+            // Split by whitespace to get individual component names
+            var iter = std.mem.tokenizeScalar(u8, line, ' ');
+            while (iter.next()) |comp_name| {
+                // Filter out null bytes and other non-printable characters
+                var sanitized = try std.ArrayList(u8).initCapacity(allocator, comp_name.len);
+                defer sanitized.deinit(allocator);
+                for (comp_name) |char| {
+                    if (char >= 32 and char <= 126) { // Printable ASCII
+                        try sanitized.append(allocator, char);
+                    }
+                }
+                if (sanitized.items.len > 0) {
+                    try components.append(allocator, try allocator.dupe(u8, sanitized.items));
+                }
             }
         }
 
@@ -319,24 +407,12 @@ pub const NativeBackend = struct {
         const name_z = try toCStr(self.allocator, name);
         defer self.allocator.free(name_z);
 
-        // Use hal_get_pin_value_by_name
-        var hal_type: c_int = undefined;
-        var data_ptr: [*c][*c]c.hal_data_u = undefined;
-        var connected: bool = undefined;
+        // Use halpr_find_pin_by_name to get pin structure
+        const pin_ptr = ffi_c_module.halpr_find_pin_by_name(name_z.ptr);
+        if (pin_ptr == null) return error.PinNotFound;
 
-        const rc = c.hal_get_pin_value_by_name(name_z.ptr, &hal_type, &data_ptr, &connected);
-        if (rc != 0) return error.PinNotFound;
-
-        const data = data_ptr orelse return error.NotLinked;
-
-        const hal_data = data.*.*;
-        return switch (hal_type) {
-            c.HAL_BIT => HalValue{ .bit = hal_data.b },
-            c.HAL_FLOAT => HalValue{ .float = hal_data.f },
-            c.HAL_S32 => HalValue{ .s32 = hal_data.s },
-            c.HAL_U32 => HalValue{ .u32 = hal_data.u },
-            else => error.InvalidHalType,
-        };
+        const pin = @as(*const ffi_c_module.hal_pin_t, @alignCast(@ptrCast(pin_ptr)));
+        return readPinValue(pin, pin.type);
     }
 
     fn setPinValue(ptr: *anyopaque, name: []const u8, value: HalValue) !void {
@@ -345,22 +421,32 @@ pub const NativeBackend = struct {
         const name_z = try toCStr(self.allocator, name);
         defer self.allocator.free(name_z);
 
-        // Get data_ptr using hal_get_pin_value_by_name
-        var hal_type: c_int = undefined;
-        var data_ptr: [*c][*c]c.hal_data_u = undefined;
-        var connected: bool = undefined;
+        // Use halpr_find_pin_by_name to get pin structure
+        const pin_ptr = ffi_c_module.halpr_find_pin_by_name(name_z.ptr);
+        if (pin_ptr == null) return error.PinNotFound;
 
-        const rc = c.hal_get_pin_value_by_name(name_z.ptr, &hal_type, &data_ptr, &connected);
-        if (rc != 0) return error.PinNotFound;
+        const pin = @as(*ffi_c_module.hal_pin_t, @alignCast(@ptrCast(pin_ptr)));
 
-        const data = data_ptr orelse return error.NotLinked;
-        const hal_data = data.*;
+        // Check if pin is linked
+        const is_linked = pin.signal != null;
 
-        switch (value) {
-            .bit => |v| hal_data.*.b = v,
-            .float => |v| hal_data.*.f = v,
-            .s32 => |v| hal_data.*.s = v,
-            .u32 => |v| hal_data.*.u = v,
+        if (is_linked and pin.data_ptr_addr != null) {
+            // Pin is linked - write to signal data via data_ptr_addr
+            const data_ptr = @as([*c]c.hal_data_u, @alignCast(@ptrCast(pin.data_ptr_addr)));
+            switch (value) {
+                .bit => |v| data_ptr.*.b = v,
+                .float => |v| data_ptr.*.f = v,
+                .s32 => |v| data_ptr.*.s = v,
+                .u32 => |v| data_ptr.*.u = v,
+            }
+        } else {
+            // Pin is unlinked - write to dummysig field
+            switch (value) {
+                .bit => |v| pin.dummysig.b = v,
+                .float => |v| pin.dummysig.f = v,
+                .s32 => |v| pin.dummysig.s = v,
+                .u32 => |v| pin.dummysig.u = v,
+            }
         }
     }
 
@@ -370,22 +456,20 @@ pub const NativeBackend = struct {
         const name_z = try toCStr(self.allocator, name);
         defer self.allocator.free(name_z);
 
-        // Use hal_get_param_value_by_name
-        var hal_type: c_int = undefined;
-        var data_ptr: [*c][*c]c.hal_data_u = undefined;
+        // Use halpr_find_param_by_name to get param structure
+        const param_ptr = ffi_c_module.halpr_find_param_by_name(name_z.ptr);
+        if (param_ptr == null) return error.ParamNotFound;
 
-        const rc = c.hal_get_param_value_by_name(name_z.ptr, &hal_type, &data_ptr);
-        if (rc != 0) return error.ParamNotFound;
+        const param = @as(*const ffi_c_module.hal_param_t, @alignCast(@ptrCast(param_ptr)));
+        const data_ptr = param.data_ptr orelse return error.ParamNotFound;
 
-        const data = data_ptr orelse return error.ParamNotFound;
+        const data = @as(*c.hal_data_u, @alignCast(@ptrCast(data_ptr)));
 
-        const hal_data = data.*;
-
-        return switch (hal_type) {
-            c.HAL_BIT => HalValue{ .bit = hal_data.*.b },
-            c.HAL_FLOAT => HalValue{ .float = hal_data.*.f },
-            c.HAL_S32 => HalValue{ .s32 = hal_data.*.s },
-            c.HAL_U32 => HalValue{ .u32 = hal_data.*.u },
+        return switch (param.type) {
+            c.HAL_BIT => HalValue{ .bit = data.b },
+            c.HAL_FLOAT => HalValue{ .float = data.f },
+            c.HAL_S32 => HalValue{ .s32 = data.s },
+            c.HAL_U32 => HalValue{ .u32 = data.u },
             else => error.InvalidHalType,
         };
     }
@@ -396,21 +480,20 @@ pub const NativeBackend = struct {
         const name_z = try toCStr(self.allocator, name);
         defer self.allocator.free(name_z);
 
-        // Get param data_ptr using hal_get_param_value_by_name
-        var hal_type: c_int = undefined;
-        var data_ptr: [*c][*c]c.hal_data_u = undefined;
+        // Use halpr_find_param_by_name to get param structure
+        const param_ptr = ffi_c_module.halpr_find_param_by_name(name_z.ptr);
+        if (param_ptr == null) return error.ParamNotFound;
 
-        const rc = c.hal_get_param_value_by_name(name_z.ptr, &hal_type, &data_ptr);
-        if (rc != 0) return error.ParamNotFound;
+        const param = @as(*ffi_c_module.hal_param_t, @alignCast(@ptrCast(param_ptr)));
+        const data_ptr = param.data_ptr orelse return error.ParamNotFound;
 
-        const data = data_ptr orelse return error.ParamNotFound;
-        const hal_data = data.*;
+        const data = @as(*c.hal_data_u, @alignCast(@ptrCast(data_ptr)));
 
         switch (value) {
-            .bit => |v| hal_data.*.b = v,
-            .float => |v| hal_data.*.f = v,
-            .s32 => |v| hal_data.*.s = v,
-            .u32 => |v| hal_data.*.u = v,
+            .bit => |v| data.b = v,
+            .float => |v| data.f = v,
+            .s32 => |v| data.s = v,
+            .u32 => |v| data.u = v,
         }
     }
 
@@ -421,7 +504,13 @@ pub const NativeBackend = struct {
         defer self.allocator.free(name_z);
 
         const rc = c.hal_signal_new(name_z.ptr, @intFromEnum(pin_type));
-        if (rc < 0) return error.InitFailed;
+        if (rc < 0) {
+            // Signal might already exist - try to link a dummy pin to verify
+            // If link succeeds, signal exists and we can reuse it
+            std.log.warn("hal_signal_new failed for '{s}', signal may already exist", .{name});
+            // For now, just return error - caller should handle this
+            return error.InitFailed;
+        }
     }
 
     fn deleteSignal(ptr: *anyopaque, name: []const u8) !void {

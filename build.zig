@@ -102,6 +102,14 @@ pub fn build(b: *std.Build) void {
     });
     ffi_safe_discovery.addImport("c.zig", ffi_c);
 
+    // HAL iteration module (direct shared memory access)
+    const ffi_iterate = b.createModule(.{
+        .root_source_file = b.path("src/ffi/iterate.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    ffi_iterate.addImport("c.zig", ffi_c);
+
     // Vaxis dependency for TUI framework
     const vaxis = b.dependency("vaxis", .{
         .target = target,
@@ -196,6 +204,9 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
+    // Add backend import to ffi_iterate (now that hal_backend_module exists)
+    ffi_iterate.addImport("hal/backend", hal_backend_module);
+
     // Create TUI module
     const tui_module = b.createModule(.{
         .root_source_file = b.path("src/tui/app.zig"),
@@ -272,9 +283,8 @@ pub fn build(b: *std.Build) void {
     // Link against LinuxCNC HAL library (system library search path)
     // Skip if building on dev machine without LinuxCNC installed
     if (!skip_hal_link) {
-        // Add multiple library paths for cross-compilation support
+        // Add library path - for native builds, system libraries are sufficient
         exe.addLibraryPath(.{ .cwd_relative = "/usr/lib" });
-        exe.addLibraryPath(.{ .cwd_relative = "/home/robert/zig-sdk/aarch64-linux-gnu/lib" });
 
         // Link libc first to provide GLIBC symbols needed by liblinuxcnchal.so
         exe.linkSystemLibrary("c");
@@ -512,8 +522,9 @@ pub fn build(b: *std.Build) void {
 
         // Create protocol module for bridge server
         // IMPORTANT: protocol imports backend as a MODULE to avoid circular deps
+        // NOTE: protocol.zig is in src/ (not src/hal/) to avoid module overlap
         const hal_protocol_module = b.createModule(.{
-            .root_source_file = b.path("src/hal/remote/protocol.zig"),
+            .root_source_file = b.path("src/hal_protocol.zig"),
             .target = target,
             .optimize = optimize,
         });
@@ -538,7 +549,6 @@ pub fn build(b: *std.Build) void {
 
         // Link bridge server against LinuxCNC HAL library
         bridge_server_exe.addLibraryPath(.{ .cwd_relative = "/usr/lib" });
-        bridge_server_exe.addLibraryPath(.{ .cwd_relative = "/home/robert/zig-sdk/aarch64-linux-gnu/lib" });
         bridge_server_exe.linkSystemLibrary("c");
         bridge_server_exe.linkSystemLibrary("linuxcnchal");
         bridge_server_exe.linkSystemLibrary("rt");

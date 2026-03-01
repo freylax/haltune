@@ -151,3 +151,19 @@ pub const hal_param_t = extern struct {
     dir: hal_param_dir_t, // Parameter direction (RO or RW)
     name: [HAL_NAME_LEN + 1]u8,
 };
+
+// HAL signal structure (from hal_priv.h)
+// This is the actual structure layout in HAL shared memory.
+// Source: LinuxCNC HAL source code (src/hal/hal_priv.h)
+//
+// NOTE: Signals store their value directly in the 'data' union, not via a pointer.
+// This is different from pins which have a data_ptr_addr field.
+pub const hal_sig_t = extern struct {
+    next_ptr: [*c]hal_sig_t,
+    data: c.hal_data_u, // Signal value stored directly here
+    writers: [*c]hal_pin_t, // Linked list of writer pins
+    readers: [*c]hal_pin_t, // Linked list of reader pins
+    oldname: ?*anyopaque,
+    type: c_int,
+    name: [HAL_NAME_LEN + 1]u8,
+};

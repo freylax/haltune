@@ -268,44 +268,37 @@ pub const RefreshThread = struct {
             self.allocator.free(pin_infos);
         }
 
-        // Track discovered names
-        var discovered_names = std.StringHashMap(void).init(self.allocator);
+        // Track discovered names for stale detection
+        // ArrayList owns the name copies - memory stays valid until function end
+        var discovered_names = std.ArrayList([]const u8).initCapacity(self.allocator, 0) catch unreachable;
         defer {
-            var iter = discovered_names.iterator();
-            while (iter.next()) |entry| {
-                self.allocator.free(entry.key_ptr.*);
-            }
-            discovered_names.deinit();
+            for (discovered_names.items) |n| self.allocator.free(n);
+            discovered_names.deinit(self.allocator);
         }
 
         // Process each pin
         for (pin_infos) |pin| {
+            // Create a copy for discovered_names tracking (needed for stale detection)
             const name_copy = try self.allocator.dupe(u8, pin.name);
-            discovered_names.put(name_copy, {}) catch |err| {
-                self.allocator.free(name_copy);
-                return err;
-            };
+            try discovered_names.append(self.allocator, name_copy);
 
-            // Get current value and update store
-            const backend_value = backend.getPinValue(pin.name) catch |err| {
-                std.log.err("refreshPinsRemote: getPinValue({s}) failed: {}", .{ pin.name, err });
-                continue;
-            };
-
+            // Use the value from listPins response (no need for separate getPinValue call)
             // Convert backend.HalValue to cache.HalValue
-            const value: HalValue = switch (backend_value) {
+            const value: HalValue = switch (pin.value) {
                 .bit => |v| HalValue{ .bit = v },
                 .float => |v| HalValue{ .float = v },
                 .s32 => |v| HalValue{ .s32 = v },
                 .u32 => |v| HalValue{ .u32 = v },
             };
 
+            // Use pin.name directly - valid until end of function (freed in defer block)
+            // This matches the local refresh implementation pattern
             self.store.updatePin(pin.name, value) catch |err| {
                 std.log.err("refreshPinsRemote: updatePin({s}) failed: {}", .{ pin.name, err });
             };
         }
 
-        // Remove stale pins
+        // Remove stale pins (linear search is fine for typical pin counts)
         const cached_names = try self.store.listPins(self.allocator);
         defer {
             for (cached_names) |n| self.allocator.free(n);
@@ -313,7 +306,15 @@ pub const RefreshThread = struct {
         }
 
         for (cached_names) |name| {
-            if (discovered_names.get(name) == null) {
+            // Check if this name was discovered
+            var found = false;
+            for (discovered_names.items) |discovered| {
+                if (std.mem.eql(u8, name, discovered)) {
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) {
                 self.store.removePin(name) catch {};
             }
         }
@@ -337,29 +338,25 @@ pub const RefreshThread = struct {
             self.allocator.free(signal_infos);
         }
 
-        // Track discovered names
-        var discovered_names = std.StringHashMap(void).init(self.allocator);
+        // Track discovered names for stale detection
+        // ArrayList owns the name copies - memory stays valid until function end
+        var discovered_names = std.ArrayList([]const u8).initCapacity(self.allocator, 0) catch unreachable;
         defer {
-            var iter = discovered_names.iterator();
-            while (iter.next()) |entry| {
-                self.allocator.free(entry.key_ptr.*);
-            }
-            discovered_names.deinit();
+            for (discovered_names.items) |n| self.allocator.free(n);
+            discovered_names.deinit(self.allocator);
         }
 
         // Process each signal - just track existence for now
         for (signal_infos) |sig| {
+            // Create a copy that will live until the end of this function
             const name_copy = try self.allocator.dupe(u8, sig.name);
-            discovered_names.put(name_copy, {}) catch |err| {
-                self.allocator.free(name_copy);
-                return err;
-            };
+            try discovered_names.append(self.allocator, name_copy);
 
             // TODO: Get signal values when backend supports it
             _ = sig.value;
         }
 
-        // Remove stale signals
+        // Remove stale signals (linear search is fine for typical signal counts)
         const cached_names = try self.store.listSignals(self.allocator);
         defer {
             for (cached_names) |n| self.allocator.free(n);
@@ -367,7 +364,15 @@ pub const RefreshThread = struct {
         }
 
         for (cached_names) |name| {
-            if (discovered_names.get(name) == null) {
+            // Check if this name was discovered
+            var found = false;
+            for (discovered_names.items) |discovered| {
+                if (std.mem.eql(u8, name, discovered)) {
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) {
                 self.store.removeSignal(name) catch {};
             }
         }
@@ -389,44 +394,39 @@ pub const RefreshThread = struct {
             self.allocator.free(param_infos);
         }
 
-        // Track discovered names
-        var discovered_names = std.StringHashMap(void).init(self.allocator);
+        // Track discovered names for stale detection
+        // ArrayList owns the name copies - memory stays valid until function end
+        var discovered_names = std.ArrayList([]const u8).initCapacity(self.allocator, 0) catch unreachable;
         defer {
-            var iter = discovered_names.iterator();
-            while (iter.next()) |entry| {
-                self.allocator.free(entry.key_ptr.*);
-            }
-            discovered_names.deinit();
+            for (discovered_names.items) |n| self.allocator.free(n);
+            discovered_names.deinit(self.allocator);
         }
 
         // Process each param
         for (param_infos) |param| {
+            std.log.debug("Processing param: {s} ptr={*} len={}", .{ param.name, param.name.ptr, param.name.len });
+
+            // Create a copy for discovered_names tracking (needed for stale detection)
             const name_copy = try self.allocator.dupe(u8, param.name);
-            discovered_names.put(name_copy, {}) catch |err| {
-                self.allocator.free(name_copy);
-                return err;
-            };
+            try discovered_names.append(self.allocator, name_copy);
 
-            // Get current value and update store
-            const backend_value = backend.getParamValue(param.name) catch |err| {
-                std.log.err("refreshParamsRemote: getParamValue({s}) failed: {}", .{ param.name, err });
-                continue;
-            };
-
+            // Use the value from listParams response (no need for separate getParamValue call)
             // Convert backend.HalValue to cache.HalValue
-            const value: HalValue = switch (backend_value) {
+            const value: HalValue = switch (param.value) {
                 .bit => |v| HalValue{ .bit = v },
                 .float => |v| HalValue{ .float = v },
                 .s32 => |v| HalValue{ .s32 = v },
                 .u32 => |v| HalValue{ .u32 = v },
             };
 
+            // Use param.name directly - valid until end of function (freed in defer block)
+            // This matches the local refresh implementation pattern
             self.store.updateParam(param.name, value) catch |err| {
                 std.log.err("refreshParamsRemote: updateParam({s}) failed: {}", .{ param.name, err });
             };
         }
 
-        // Remove stale params
+        // Remove stale params (linear search is fine for typical param counts)
         const cached_names = try self.store.listParams(self.allocator);
         defer {
             for (cached_names) |n| self.allocator.free(n);
@@ -434,7 +434,15 @@ pub const RefreshThread = struct {
         }
 
         for (cached_names) |name| {
-            if (discovered_names.get(name) == null) {
+            // Check if this name was discovered
+            var found = false;
+            for (discovered_names.items) |discovered| {
+                if (std.mem.eql(u8, name, discovered)) {
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) {
                 self.store.removeParam(name) catch {};
             }
         }

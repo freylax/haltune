@@ -58,7 +58,8 @@ pub fn isItemWritable(
 ) bool {
     return if (item_type == .pin) blk: {
         // Check if pin is connected to a signal
-        if (store.pin_links.get(name)) |_| {
+        const NameKey = @import("../../state/cache.zig").NameKey;
+        if (store.pin_links.get(NameKey.fromStr(name))) |_| {
             break :blk false; // Connected pins get value from signal
         }
 

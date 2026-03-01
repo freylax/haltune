@@ -13,6 +13,9 @@ const DataTable = @import("widgets/data_table.zig").DataTable;
 const ItemType = @import("widgets/data_table.zig").ItemType;
 const SignalDialog = @import("widgets/signal_dialog.zig").SignalDialog;
 const PluginDialog = @import("widgets/plugin_dialog.zig").PluginDialog;
+const TabBar = @import("widgets/tabbar.zig").TabBar;
+const PluginContainer = @import("widgets/plugin_container.zig").PluginContainer;
+const TabPanelLayout = @import("layout/tab_panel.zig").TabPanelLayout;
 const safe = @import("../ffi/safe.zig");
 
 // Import C HAL functions directly for checkHalAvailable
@@ -51,7 +54,7 @@ const HalError = @import("../ffi/errors.zig").HalError;
 
 // Remote backend imports (via module from build.zig)
 const HalBackend = @import("backend").HalBackend;
-const RemoteBackend = @import("../hal/remote/client.zig").RemoteBackend;
+const RemoteBackend = @import("../remote_hal/client.zig").RemoteBackend;
 
 /// Global redraw flag pointer for pubsub callbacks
 /// This is set by the Model during initialization and used by callbacks
@@ -83,6 +86,8 @@ pub const Model = struct {
     data_table: *DataTable,
     signal_dialog: SignalDialog,
     plugin_dialog: PluginDialog,
+    tab_bar: TabBar,
+    active_tab_idx: usize = 0,
     refresh_thread: ?*RefreshThread,
     hal_comp_id: c_int,
 
@@ -166,6 +171,15 @@ pub const Model = struct {
         };
         const plugin_dialog = PluginDialog.init(allocator, registry);
 
+        // Create TabBar
+        var tab_bar = TabBar.init(allocator);
+
+        // Add Clear tab (Alt+1)
+        try tab_bar.addTab("Clear", "1");
+
+        // Add plugin tabs for enabled plugins from config
+        // Note: config will be passed separately, we'll populate tabs after temp_model creation
+
         // Initialize redraw flag
         const redraw_flag = std.atomic.Value(bool).init(false);
 
@@ -188,6 +202,8 @@ pub const Model = struct {
             .data_table = data_table,
             .signal_dialog = signal_dialog,
             .plugin_dialog = plugin_dialog,
+            .tab_bar = tab_bar,
+            .active_tab_idx = 0,
             .refresh_thread = null,
             .hal_comp_id = comp_id,
             .remote_backend = remote_backend,
@@ -198,6 +214,16 @@ pub const Model = struct {
             .save_filename = std.ArrayList(u8).initCapacity(allocator, 0) catch unreachable,
             .config = config,
         };
+
+        // Add plugin tabs for enabled plugins from config
+        if (config.enabled_plugins) |enabled_plugins| {
+            for (enabled_plugins, 0..) |plugin_name, i| {
+                if (registry.getPlugin(plugin_name)) |plugin| {
+                    const key_hint = try std.fmt.allocPrint(allocator, "{d}", .{i + 2});
+                    try temp_model.tab_bar.addTab(plugin.name, key_hint);
+                }
+            }
+        }
 
         // Parse configuration files for origin tracking
         if (config.hal_files.items.len > 0 or config.ini_files.items.len > 0) {
@@ -298,6 +324,9 @@ pub const Model = struct {
 
         // Clean up PluginDialog
         self.plugin_dialog.deinit();
+
+        // Clean up TabBar
+        self.tab_bar.deinit();
 
         // Free error message if allocated
         if (self.error_message_owner) |msg| {
@@ -530,6 +559,24 @@ pub const Model = struct {
         self.plugin_dialog.close();
     }
 
+    /// Switch to a specific tab
+    pub fn switchTab(self: *Model, idx: usize) !void {
+        if (idx == self.active_tab_idx) return;
+
+        // Deactivate current plugin if leaving plugin tab
+        if (self.active_tab_idx > 0) {
+            // TODO: Call plugin deactivate based on lifecycle config
+        }
+
+        self.active_tab_idx = idx;
+        self.tab_bar.setSelected(idx);
+
+        // Activate new plugin if entering plugin tab
+        if (idx > 0) {
+            // TODO: Call plugin activate based on lifecycle config
+        }
+    }
+
     /// Open save configuration dialog
     pub fn openSaveDialog(self: *Model) !void {
         self.save_dialog_visible = true;
@@ -602,8 +649,9 @@ pub const Model = struct {
                     const in_table_edit = self.data_table.edit_mode or self.data_table.table_edit_mode;
 
                     // Table view: forward ALL keys when in edit mode, or navigation/edit keys otherwise
+                    // But NOT if plugin dialog is visible (it handles navigation)
                     if (self.current_view == .table_only) {
-                        if (in_table_edit or
+                        if (!self.plugin_dialog.visible and (in_table_edit or
                             key.matches(vaxis.Key.up, .{}) or
                             key.matches(vaxis.Key.down, .{}) or
                             key.matches(vaxis.Key.enter, .{}) or
@@ -611,7 +659,7 @@ pub const Model = struct {
                             key.matches(vaxis.Key.page_down, .{}) or
                             key.matches(' ', .{}) or
                             key.matches(vaxis.Key.escape, .{}) or
-                            key.matches(vaxis.Key.backspace, .{}))
+                            key.matches(vaxis.Key.backspace, .{})))
                         {
                             // Forward to DataTable's event handler
                             if (table_widget.eventHandler) |handler| {
@@ -625,13 +673,14 @@ pub const Model = struct {
                     }
 
                     // Tree view: forward keys to TreeView
-                    if (in_edit_mode or
+                    // But NOT if plugin dialog is visible (it handles navigation)
+                    if (!self.plugin_dialog.visible and (in_edit_mode or
                         key.matches(vaxis.Key.up, .{}) or
                         key.matches(vaxis.Key.down, .{}) or
                         key.matches(vaxis.Key.enter, .{}) or
                         key.matches(' ', .{}) or
                         key.matches('/', .{}) or
-                        key.matches(vaxis.Key.backspace, .{}))
+                        key.matches(vaxis.Key.backspace, .{})))
                     {
                         // Forward to TreeView's event handler
                         if (tree_widget.eventHandler) |handler| {

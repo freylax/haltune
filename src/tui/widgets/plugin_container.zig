@@ -52,12 +52,12 @@ pub const PluginContainer = struct {
 
         // Draw border box
         for (0..width) |i| {
-            surface.writeCell(@intCast(i), 0, .{ .char = .{ .grapheme = "-", .width = 1 }, .style = .{ .dim = true }});
-            surface.writeCell(@intCast(i), height - 1, .{ .char = .{ .grapheme = "-", .width = 1 }, .style = .{ .dim = true }});
+            surface.writeCell(@intCast(i), 0, .{ .char = .{ .grapheme = "-", .width = 1 }, .style = .{ .dim = true } });
+            surface.writeCell(@intCast(i), height - 1, .{ .char = .{ .grapheme = "-", .width = 1 }, .style = .{ .dim = true } });
         }
         for (1..height - 1) |i| {
-            surface.writeCell(0, @intCast(i), .{ .char = .{ .grapheme = "|", .width = 1 }, .style = .{ .dim = true }});
-            surface.writeCell(width - 1, @intCast(i), .{ .char = .{ .grapheme = "|", .width = 1 }, .style = .{ .dim = true }});
+            surface.writeCell(0, @intCast(i), .{ .char = .{ .grapheme = "|", .width = 1 }, .style = .{ .dim = true } });
+            surface.writeCell(width - 1, @intCast(i), .{ .char = .{ .grapheme = "|", .width = 1 }, .style = .{ .dim = true } });
         }
 
         // Draw title in top border
