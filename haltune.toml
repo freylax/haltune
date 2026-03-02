@@ -13,8 +13,8 @@
 file = "debug.log"
 
 [plugins]
-# Enabled plugins
-# enabled = ["plugin1", "plugin2"]
+# Enabled plugins - these will appear as tabs in the tabbar
+enabled = ["velocity_control", "trapvel_control"]
 
 [remote]
 # Remote HAL server configuration
