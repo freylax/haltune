@@ -9,9 +9,13 @@ const ItemType = @import("widgets/data_table.zig").ItemType;
 const TreeNode = @import("widgets/tree_view.zig").Node;
 const SignalDialog = @import("widgets/signal_dialog.zig").SignalDialog;
 const PluginDialog = @import("widgets/plugin_dialog.zig").PluginDialog;
+const TabBar = @import("widgets/tabbar.zig").TabBar;
+
+/// Height of the tab bar in rows
+const tab_bar_height: u16 = 1;
 
 /// Draw function for conditional single-panel layout
-/// Renders either tree view or table view at full width based on current_view
+/// Renders TabBar at top, then either tree view or table view based on current_view
 pub fn drawTwoPanelLayout(
     ptr: *anyopaque,
     ctx: vxfw.DrawContext,
@@ -21,7 +25,7 @@ pub fn drawTwoPanelLayout(
     // Get maximum available size
     const max = ctx.max.size();
 
-    // Draw plugin dialog if visible
+    // Draw plugin dialog if visible (full screen, no tab bar)
     if (self.plugin_dialog.visible) {
         std.log.err("Drawing plugin dialog: visible=true, max.width={d}", .{max.width});
         const dialog_surface = try self.plugin_dialog.draw(ctx, max.width);
@@ -58,9 +62,24 @@ pub fn drawTwoPanelLayout(
         // - Error message if present
     }
 
-    // Reserve one row at bottom for help text
+    // Reserve space for tab bar (top) and help text (bottom)
     const help_height: u16 = 1;
-    const panel_height = if (max.height > help_height) max.height - help_height else max.height;
+    const available_height = if (max.height > tab_bar_height + help_height)
+        max.height - tab_bar_height - help_height
+    else if (max.height > tab_bar_height)
+        max.height - tab_bar_height
+    else
+        max.height;
+
+    const panel_height = available_height;
+
+    // Draw the TabBar at the top
+    const tab_bar_widget = self.tab_bar.widget();
+    const tab_bar_ctx = ctx.withConstraints(
+        .{ .width = max.width, .height = tab_bar_height },
+        .{ .width = max.width, .height = tab_bar_height },
+    );
+    const tab_bar_surface = try tab_bar_widget.drawFn(tab_bar_widget.userdata, tab_bar_ctx);
 
     // Render layout based on current view mode
     return switch (self.current_view) {
@@ -68,19 +87,25 @@ pub fn drawTwoPanelLayout(
             // Create full-width tree panel surface
             const tree_surface = try createLeftPanel(self, ctx, max.width, panel_height);
 
-            // Allocate children array (tree + help text)
-            const children = try ctx.arena.alloc(vxfw.SubSurface, 2);
+            // Allocate children array (tab_bar + tree + help text)
+            const children = try ctx.arena.alloc(vxfw.SubSurface, 3);
 
-            // Tree panel: positioned at origin
+            // Tab bar at top (row 0)
             children[0] = .{
                 .origin = .{ .row = 0, .col = 0 },
+                .surface = tab_bar_surface,
+            };
+
+            // Tree panel: positioned below tab bar (row 1)
+            children[1] = .{
+                .origin = .{ .row = tab_bar_height, .col = 0 },
                 .surface = tree_surface,
             };
 
             // Help text at bottom
             const help_text = try createHelpText(ctx, .tree_only, self);
-            children[1] = .{
-                .origin = .{ .row = panel_height, .col = 0 },
+            children[2] = .{
+                .origin = .{ .row = tab_bar_height + panel_height, .col = 0 },
                 .surface = help_text,
             };
 
@@ -96,19 +121,25 @@ pub fn drawTwoPanelLayout(
             // Create full-width table panel surface
             const table_surface = try createRightPanel(self, ctx, max.width, panel_height);
 
-            // Allocate children array (table + help text)
-            const children = try ctx.arena.alloc(vxfw.SubSurface, 2);
+            // Allocate children array (tab_bar + table + help text)
+            const children = try ctx.arena.alloc(vxfw.SubSurface, 3);
 
-            // Table panel: positioned at origin
+            // Tab bar at top (row 0)
             children[0] = .{
                 .origin = .{ .row = 0, .col = 0 },
+                .surface = tab_bar_surface,
+            };
+
+            // Table panel: positioned below tab bar (row 1)
+            children[1] = .{
+                .origin = .{ .row = tab_bar_height, .col = 0 },
                 .surface = table_surface,
             };
 
             // Help text at bottom
             const help_text = try createHelpText(ctx, .table_only, self);
-            children[1] = .{
-                .origin = .{ .row = panel_height, .col = 0 },
+            children[2] = .{
+                .origin = .{ .row = tab_bar_height + panel_height, .col = 0 },
                 .surface = help_text,
             };
 

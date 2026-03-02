@@ -693,6 +693,22 @@ pub const Model = struct {
                     }
                 }
 
+                // Alt+Number for tab switching
+                if (key.matches('1', .{ .alt = true })) {
+                    try self.switchTab(0);
+                    ctx.consumeAndRedraw();
+                    return;
+                }
+                // Handle Alt+2 through Alt+9
+                for (2..10) |i| {
+                    const char = @as(u8, @intCast('0' + i));
+                    if (key.matches(char, .{ .alt = true })) {
+                        try self.switchTab(i - 1);
+                        ctx.consumeAndRedraw();
+                        return;
+                    }
+                }
+
                 // Ctrl+Q to quit
                 if (key.matches('q', .{ .ctrl = true })) {
                     ctx.quit = true;
