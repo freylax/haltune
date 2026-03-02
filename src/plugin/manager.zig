@@ -25,6 +25,16 @@ pub const PluginState = enum {
     active,
 };
 
+/// Plugin lifecycle mode - determines when plugin stays initialized
+pub const Lifecycle = enum {
+    /// Deinitialize when leaving tab (default)
+    deactivate,
+    /// Keep initialized in background (receives no events)
+    background,
+    /// Always active regardless of tab switching
+    always_active,
+};
+
 /// Active plugin instance
 pub const ActivePlugin = struct {
     /// Pointer to the plugin definition
@@ -32,6 +42,12 @@ pub const ActivePlugin = struct {
 
     /// Current state
     state: PluginState = .inactive,
+
+    /// User context allocated during init (for plugin-specific state)
+    user_context: ?*anyopaque = null,
+
+    /// Lifecycle mode - when to deinitialize
+    lifecycle: Lifecycle = .deactivate,
 };
 
 /// Plugin Manager - manages active plugins and dispatches events
@@ -77,70 +93,67 @@ pub const PluginManager = struct {
             if (plugin.state == .active) {
                 plugin.plugin.deinit();
             }
+            // Clean up user context if allocated
+            if (plugin.user_context) |ctx| {
+                const plugin_ctx: *interface.PluginContext = @ptrCast(@alignCast(ctx));
+                self.allocator.destroy(plugin_ctx);
+            }
         }
         self.active_plugins.deinit(self.allocator);
     }
 
     /// Activate a plugin by name
     pub fn activatePlugin(self: *PluginManager, name: []const u8) !void {
-        const plugin = self.registry.getPlugin(name) orelse return error.PluginNotFound;
-
         // Check if already active
         for (self.active_plugins.items) |*p| {
             if (std.mem.eql(u8, p.plugin.name, name)) {
                 if (p.state == .active) return; // Already active
                 p.state = .active;
-
-                // Create PluginContext for this plugin
-                const ctx = interface.PluginContext{
-                    .allocator = self.allocator,
-                    .backend = self.hal_backend,
-                    .log = logInfo,
-                    .log_err = logError,
-                };
-
-                p.plugin.init(ctx) catch |err| {
-                    std.log.err("Failed to initialize plugin '{s}': {}", .{name, err});
-                    return err;
-                };
                 return;
             }
         }
 
-        // Create new active plugin
-        const active_plugin = ActivePlugin{
-            .plugin = plugin,
-        };
+        const plugin = self.registry.getPlugin(name) orelse return error.PluginNotFound;
 
-        try self.active_plugins.append(self.allocator, active_plugin);
+        // Create and store user context for this plugin
+        var user_context: ?*anyopaque = null;
 
-        // Initialize the plugin with PluginContext
-        const last_idx = self.active_plugins.items.len - 1;
-
-        const ctx = interface.PluginContext{
+        // Allocate PluginContext to store for later use
+        const ctx = try self.allocator.create(interface.PluginContext);
+        ctx.* = interface.PluginContext{
             .allocator = self.allocator,
             .backend = self.hal_backend,
             .log = logInfo,
             .log_err = logError,
         };
+        user_context = ctx;
 
-        self.active_plugins.items[last_idx].plugin.init(ctx) catch |err| {
-            std.log.err("Failed to initialize plugin '{s}': {}", .{name, err});
-            _ = self.active_plugins.pop();
-            return err;
-        };
+        // Call plugin.init with the context
+        try plugin.init(ctx.*);
 
-        self.active_plugins.items[last_idx].state = .active;
+        // Add to active list
+        try self.active_plugins.append(self.allocator, .{
+            .plugin = plugin,
+            .state = .active,
+            .user_context = user_context,
+            .lifecycle = .deactivate,
+        });
 
         std.log.info("Activated plugin: {s}", .{name});
     }
 
     /// Deactivate a plugin by name
     pub fn deactivatePlugin(self: *PluginManager, name: []const u8) !void {
-        for (self.active_plugins.items, 0..) |plugin, idx| {
+        for (self.active_plugins.items, 0..) |*plugin, idx| {
             if (std.mem.eql(u8, plugin.plugin.name, name)) {
                 if (plugin.state == .active) {
                     plugin.plugin.deinit();
+
+                    // Clean up user context if allocated
+                    if (plugin.user_context) |ctx| {
+                        const plugin_ctx: *interface.PluginContext = @ptrCast(@alignCast(ctx));
+                        self.allocator.destroy(plugin_ctx);
+                    }
                 }
                 // Remove from active plugins list
                 _ = self.active_plugins.swapRemove(idx);
