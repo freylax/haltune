@@ -12,7 +12,6 @@ const VisibilityState = @import("widgets/tree_view.zig").VisibilityState;
 const DataTable = @import("widgets/data_table.zig").DataTable;
 const ItemType = @import("widgets/data_table.zig").ItemType;
 const SignalDialog = @import("widgets/signal_dialog.zig").SignalDialog;
-const PluginDialog = @import("widgets/plugin_dialog.zig").PluginDialog;
 const TabBar = @import("widgets/tabbar.zig").TabBar;
 const PluginContainer = @import("widgets/plugin_container.zig").PluginContainer;
 const TabPanelLayout = @import("layout/tab_panel.zig").TabPanelLayout;
@@ -85,7 +84,6 @@ pub const Model = struct {
     tree_view: *TreeView,
     data_table: *DataTable,
     signal_dialog: SignalDialog,
-    plugin_dialog: PluginDialog,
     tab_bar: TabBar,
     active_tab_idx: usize = 0,
     refresh_thread: ?*RefreshThread,
@@ -165,12 +163,6 @@ pub const Model = struct {
         // Create SignalDialog widget
         const signal_dialog = SignalDialog.init(allocator, store);
 
-        // Create PluginDialog widget
-        const registry = @import("../plugin/registry.zig").getGlobalRegistry() orelse {
-            return error.PluginRegistryNotAvailable;
-        };
-        const plugin_dialog = PluginDialog.init(allocator, registry);
-
         // Create TabBar
         var tab_bar = TabBar.init(allocator);
 
@@ -201,7 +193,6 @@ pub const Model = struct {
             .tree_view = tree_view,
             .data_table = data_table,
             .signal_dialog = signal_dialog,
-            .plugin_dialog = plugin_dialog,
             .tab_bar = tab_bar,
             .active_tab_idx = 0,
             .refresh_thread = null,
@@ -217,6 +208,9 @@ pub const Model = struct {
 
         // Add plugin tabs for enabled plugins from config
         if (config.enabled_plugins) |enabled_plugins| {
+            const registry = @import("../plugin/registry.zig").getGlobalRegistry() orelse {
+                return error.PluginRegistryNotAvailable;
+            };
             for (enabled_plugins, 0..) |plugin_name, i| {
                 if (registry.getPlugin(plugin_name)) |plugin| {
                     const key_hint = try std.fmt.allocPrint(allocator, "{d}", .{i + 2});
@@ -321,9 +315,6 @@ pub const Model = struct {
 
         // Clean up SignalDialog
         self.signal_dialog.deinit();
-
-        // Clean up PluginDialog
-        self.plugin_dialog.deinit();
 
         // Clean up TabBar
         self.tab_bar.deinit();
@@ -539,26 +530,6 @@ pub const Model = struct {
         self.signal_dialog.close();
     }
 
-    /// Open plugin dialog
-    pub fn openPluginDialog(self: *Model) !void {
-        std.log.err("openPluginDialog called", .{});
-        // Set up plugin manager reference if not already set
-        if (self.plugin_dialog.manager == null) {
-            const manager = @import("../plugin/manager.zig").getGlobalPluginManager() orelse {
-                try self.setError("Plugin manager not available");
-                return;
-            };
-            self.plugin_dialog.setManager(manager);
-        }
-        self.plugin_dialog.open();
-        std.log.err("openPluginDialog done: visible={}", .{self.plugin_dialog.visible});
-    }
-
-    /// Close plugin dialog
-    pub fn closePluginDialog(self: *Model) void {
-        self.plugin_dialog.close();
-    }
-
     /// Switch to a specific tab
     pub fn switchTab(self: *Model, idx: usize) !void {
         if (idx == self.active_tab_idx) return;
@@ -661,9 +632,8 @@ pub const Model = struct {
                     const in_table_edit = self.data_table.edit_mode or self.data_table.table_edit_mode;
 
                     // Table view: forward ALL keys when in edit mode, or navigation/edit keys otherwise
-                    // But NOT if plugin dialog is visible (it handles navigation)
                     if (self.current_view == .table_only) {
-                        if (!self.plugin_dialog.visible and (in_table_edit or
+                        if (in_table_edit or
                             key.matches(vaxis.Key.up, .{}) or
                             key.matches(vaxis.Key.down, .{}) or
                             key.matches(vaxis.Key.enter, .{}) or
@@ -671,7 +641,7 @@ pub const Model = struct {
                             key.matches(vaxis.Key.page_down, .{}) or
                             key.matches(' ', .{}) or
                             key.matches(vaxis.Key.escape, .{}) or
-                            key.matches(vaxis.Key.backspace, .{})))
+                            key.matches(vaxis.Key.backspace, .{}))
                         {
                             // Forward to DataTable's event handler
                             if (table_widget.eventHandler) |handler| {
@@ -685,14 +655,13 @@ pub const Model = struct {
                     }
 
                     // Tree view: forward keys to TreeView
-                    // But NOT if plugin dialog is visible (it handles navigation)
-                    if (!self.plugin_dialog.visible and (in_edit_mode or
+                    if (in_edit_mode or
                         key.matches(vaxis.Key.up, .{}) or
                         key.matches(vaxis.Key.down, .{}) or
                         key.matches(vaxis.Key.enter, .{}) or
                         key.matches(' ', .{}) or
                         key.matches('/', .{}) or
-                        key.matches(vaxis.Key.backspace, .{})))
+                        key.matches(vaxis.Key.backspace, .{}))
                     {
                         // Forward to TreeView's event handler
                         if (tree_widget.eventHandler) |handler| {
@@ -732,21 +701,6 @@ pub const Model = struct {
                     self.openSignalDialog() catch |err| {
                         std.log.err("Failed to open signal dialog: {}", .{err});
                     };
-                    ctx.consumeAndRedraw();
-                    return;
-                }
-
-                // Ctrl+O to open plugin dialog
-                if (key.matches('o', .{ .ctrl = true })) {
-                    std.log.err("Ctrl+O pressed: plugin_dialog.visible={}", .{self.plugin_dialog.visible});
-                    if (!self.plugin_dialog.visible) {
-                        self.openPluginDialog() catch |err| {
-                            std.log.err("Failed to open plugin dialog: {}", .{err});
-                        };
-                        std.log.err("After open: plugin_dialog.visible={}", .{self.plugin_dialog.visible});
-                    } else {
-                        self.closePluginDialog();
-                    }
                     ctx.consumeAndRedraw();
                     return;
                 }
@@ -797,18 +751,6 @@ pub const Model = struct {
                 if (self.signal_dialog.visible) {
                     const handled = self.signal_dialog.handleKey(key) catch |err| {
                         std.log.err("Signal dialog key error: {}", .{err});
-                        return;
-                    };
-                    if (handled) {
-                        ctx.consumeAndRedraw();
-                        return;
-                    }
-                }
-
-                // Pass key to plugin dialog if visible
-                if (self.plugin_dialog.visible) {
-                    const handled = self.plugin_dialog.handleKey(key) catch |err| {
-                        std.log.err("Plugin dialog key error: {}", .{err});
                         return;
                     };
                     if (handled) {
