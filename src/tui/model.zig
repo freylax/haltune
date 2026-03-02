@@ -563,17 +563,29 @@ pub const Model = struct {
     pub fn switchTab(self: *Model, idx: usize) !void {
         if (idx == self.active_tab_idx) return;
 
+        const manager = @import("../plugin/manager.zig").getGlobalPluginManager() orelse {
+            return error.PluginManagerNotAvailable;
+        };
+
+        const plugin_names = self.config.enabled_plugins orelse &[_][]const u8{};
+
         // Deactivate current plugin if leaving plugin tab
-        if (self.active_tab_idx > 0) {
-            // TODO: Call plugin deactivate based on lifecycle config
+        if (self.active_tab_idx > 0 and self.active_tab_idx - 1 < plugin_names.len) {
+            const old_plugin = plugin_names[self.active_tab_idx - 1];
+            manager.deactivatePlugin(old_plugin) catch |err| {
+                std.log.err("Failed to deactivate plugin '{s}': {}", .{old_plugin, err});
+            };
         }
 
         self.active_tab_idx = idx;
         self.tab_bar.setSelected(idx);
 
         // Activate new plugin if entering plugin tab
-        if (idx > 0) {
-            // TODO: Call plugin activate based on lifecycle config
+        if (idx > 0 and idx - 1 < plugin_names.len) {
+            const new_plugin = plugin_names[idx - 1];
+            manager.activatePlugin(new_plugin) catch |err| {
+                std.log.err("Failed to activate plugin '{s}': {}", .{new_plugin, err});
+            };
         }
     }
 
