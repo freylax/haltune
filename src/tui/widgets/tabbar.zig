@@ -112,8 +112,17 @@ pub const TabBar = struct {
 
     /// Draw function - renders the tab bar
     pub fn draw(self: *TabBar, ctx: vxfw.DrawContext) !vxfw.Surface {
+        // Debug log - show all tab names
+        for (self.tabs.items, 0..) |tab, i| {
+            std.log.info("  Tab {d}: name='{s}', hint={s}", .{ i, tab.name, if (tab.key_hint) |h| h else "(null)" });
+        }
+
         const width = ctx.max.width orelse 80;
         const height: u16 = 1;
+
+        const size = ctx.max.size();
+        std.log.info("TabBar.draw: width={d}, size_width={d}, size_height={d}, tabs={d}",
+            .{width, size.width, size.height, self.tabs.items.len});
 
         // Create surface
         var surface = try vxfw.Surface.init(
@@ -130,6 +139,8 @@ pub const TabBar = struct {
         var x: usize = 0;
         for (self.tabs.items, 0..) |tab, i| {
             const is_selected = (i == self.selected_idx);
+            std.log.info("  Drawing tab {d} '{s}' at x={d}, is_selected={}",
+                .{i, tab.name, x, is_selected});
 
             // Draw opening bracket for selected tab
             if (is_selected and x < width) {

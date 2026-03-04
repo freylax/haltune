@@ -62,9 +62,103 @@ pub fn drawTwoPanelLayout(
     );
     const tab_bar_surface = try tab_bar_widget.drawFn(tab_bar_widget.userdata, tab_bar_ctx);
 
+    // Render layout based on current view mode and active tab
+    // If plugin tab is active (active_tab_idx > 0), show split view: tree (left) + plugin (right)
+    if (self.active_tab_idx > 0) {
+        std.log.info("Layout: plugin tab active (idx={d}), creating split view", .{self.active_tab_idx});
+        // Calculate split widths: 40% tree, 60% plugin
+        const tree_width = @as(u16, @intCast(@divFloor(max.width * 4, 10)));
+        const plugin_width = max.width - tree_width;
+
+        // Create left panel (tree view)
+        const tree_surface = try createLeftPanel(self, ctx, tree_width, panel_height);
+
+        // Create right panel (plugin widget)
+        const plugin_manager_mod = @import("../plugin/manager.zig");
+        const plugin_manager = plugin_manager_mod.getGlobalPluginManager();
+        const plugin_names = self.config.enabled_plugins orelse &[_][]const u8{};
+        const plugin_idx = self.active_tab_idx - 1;
+
+        var plugin_surface: vxfw.Surface = undefined;
+        var has_plugin = false;
+
+        if (plugin_idx < plugin_names.len) {
+            const plugin_name = plugin_names[plugin_idx];
+            std.log.info("Layout: getting plugin widget for '{s}'", .{plugin_name});
+
+            if (plugin_manager) |pm| {
+                // Get plugin widget - activate plugin first if not already active
+                var plugin_widget = pm.getPluginWidgetByName(plugin_name);
+                if (plugin_widget == null) {
+                    std.log.info("Layout: plugin '{s}' not active, activating now", .{plugin_name});
+                    pm.activatePlugin(plugin_name) catch |err| {
+                        std.log.err("Failed to activate plugin '{s}': {}", .{plugin_name, err});
+                    };
+                    // Try getting widget again after activation
+                    plugin_widget = pm.getPluginWidgetByName(plugin_name);
+                }
+
+                if (plugin_widget) |widget| {
+                    std.log.info("Layout: got plugin widget, drawing...", .{});
+                    // Draw plugin widget with plugin width
+                    const plugin_ctx = ctx.withConstraints(
+                        .{ .width = plugin_width, .height = panel_height },
+                        .{ .width = plugin_width, .height = panel_height },
+                    );
+                    plugin_surface = try widget.drawFn(widget.userdata, plugin_ctx);
+                    has_plugin = true;
+                }
+            }
+        }
+
+        // Allocate children array (tab_bar + tree + plugin + help text)
+        const child_count = if (has_plugin) @as(usize, 4) else @as(usize, 3);
+        const children = try ctx.arena.alloc(vxfw.SubSurface, child_count);
+
+        // Tab bar at top (row 0)
+        children[0] = .{
+            .origin = .{ .row = 0, .col = 0 },
+            .surface = tab_bar_surface,
+        };
+
+        // Tree panel: left side
+        children[1] = .{
+            .origin = .{ .row = tab_bar_height, .col = 0 },
+            .surface = tree_surface,
+        };
+
+        // Plugin panel: right side
+        if (has_plugin) {
+            children[2] = .{
+                .origin = .{ .row = tab_bar_height, .col = tree_width },
+                .surface = plugin_surface,
+            };
+        }
+
+        // Help text at bottom
+        const help_text = try createPluginHelpText(ctx, self);
+        const help_idx = if (has_plugin) @as(usize, 3) else @as(usize, 2);
+        children[help_idx] = .{
+            .origin = .{ .row = tab_bar_height + panel_height, .col = 0 },
+            .surface = help_text,
+        };
+
+        // Return the root surface with children
+        std.log.info("Layout: returning split view with tree ({} wide) + plugin ({} wide)",
+            .{tree_width, if (has_plugin) plugin_width else 0});
+        return .{
+            .size = max,
+            .widget = self.widget(),
+            .buffer = &.{},
+            .children = children,
+        };
+    }
+
     // Render layout based on current view mode
+    std.log.info("Layout: entering switch statement for current_view={}", .{self.current_view});
     return switch (self.current_view) {
         .tree_only => {
+            std.log.info("Layout: creating TREE surface (active_tab_idx={d})", .{self.active_tab_idx});
             // Create full-width tree panel surface
             const tree_surface = try createLeftPanel(self, ctx, max.width, panel_height);
 
@@ -175,8 +269,8 @@ fn createHelpText(ctx: vxfw.DrawContext, view_mode: ViewMode, model: *const Mode
 
     // Build key hints for right side
     const key_hints = switch (view_mode) {
-        .tree_only => "Ctrl+T=Table | Space=Check +/-=Vis /=Search n=NewSignal s=Save Esc=Clear Ctrl+Q=Quit",
-        .table_only => "Ctrl+T=Tree | Space=Check /=Search t=Type c=Comp Esc=Clear Ctrl+Q=Quit",
+        .tree_only => try std.fmt.allocPrint(ctx.arena, "Tab:{d} Ctrl+T=Table | Space=Check +/-=Vis /=Search n=NewSignal s=Save Esc=Clear Ctrl+Q=Quit", .{model.active_tab_idx}),
+        .table_only => try std.fmt.allocPrint(ctx.arena, "Tab:{d} Ctrl+T=Tree | Space=Check /=Search t=Type c=Comp Esc=Clear Ctrl+Q=Quit", .{model.active_tab_idx}),
     };
 
     // Get max width
@@ -222,6 +316,52 @@ fn createHelpText(ctx: vxfw.DrawContext, view_mode: ViewMode, model: *const Mode
 
     // Write key hints on right
     col = key_hints_start;
+    var iter = ctx.graphemeIterator(key_hints);
+    while (iter.next()) |char| {
+        if (col >= max_width) break;
+        const grapheme = char.bytes(key_hints);
+        const grapheme_width: u8 = @intCast(ctx.stringWidth(grapheme));
+        surface.writeCell(col, 0, .{
+            .char = .{ .grapheme = grapheme, .width = grapheme_width },
+            .style = style,
+        });
+        col += grapheme_width;
+    }
+
+    return surface;
+}
+
+/// Create help text for plugin view
+fn createPluginHelpText(ctx: vxfw.DrawContext, model: *const Model) std.mem.Allocator.Error!vxfw.Surface {
+    const max_width = ctx.max.size().width;
+    const height: u16 = 1;
+
+    // Create surface
+    var surface = try vxfw.Surface.init(
+        ctx.arena,
+        @constCast(model).widget(),
+        .{ .width = max_width, .height = height },
+    );
+
+    // Initialize with default cells
+    const base_cell: vaxis.Cell = .{ .default = true };
+    @memset(surface.buffer, base_cell);
+
+    // Style for status line
+    const style = vaxis.Style{ .dim = true };
+
+    // Plugin help text - mention split view
+    const key_hints = "Alt+1..N=Tab | Ctrl+T=View | Ctrl+Q=Quit | ↑↓=Nav Tree";
+
+    // Calculate position for centered text
+    const key_hints_width = ctx.stringWidth(key_hints);
+    const key_hints_start = if (max_width > key_hints_width)
+        @as(u16, @intCast((max_width - key_hints_width) / 2))
+    else
+        0;
+
+    // Write key hints
+    var col: u16 = key_hints_start;
     var iter = ctx.graphemeIterator(key_hints);
     while (iter.next()) |char| {
         if (col >= max_width) break;

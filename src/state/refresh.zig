@@ -27,6 +27,7 @@ const hal_sig_t = @import("../ffi/types.zig").hal_sig_t;
 const hal_param_t = @import("../ffi/types.zig").hal_param_t;
 
 // Remote HAL backend support
+// Import via module name (refresh.zig is used from root module context)
 const HalBackend = @import("backend").HalBackend;
 
 /// Refresh thread manages HAL polling and cache updates

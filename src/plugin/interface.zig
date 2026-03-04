@@ -12,11 +12,11 @@
 const std = @import("std");
 const vxfw = @import("vaxis").vxfw;
 
-// Import backend module (defined in build.zig)
-const HalBackend = @import("backend").HalBackend;
-const HalValue = @import("backend").HalValue;
-const PinType = @import("backend").PinType;
-const PinDir = @import("backend").PinDir;
+// Import backend via module name (interface.zig is imported from root module context)
+pub const HalBackend = @import("backend").HalBackend;
+pub const HalValue = @import("backend").HalValue;
+pub const PinType = @import("backend").PinType;
+pub const PinDir = @import("backend").PinDir;
 
 /// Log function type passed to plugins
 ///
@@ -163,6 +163,12 @@ pub const Plugin = struct {
     /// Optional - if null, plugin has no UI component.
     /// This is called every time the UI is redrawn.
     render: ?*const fn (ctx: vxfw.DrawContext) anyerror!void = null,
+
+    /// Get widget for displaying plugin in TUI
+    ///
+    /// Optional - if null, plugin has no widget.
+    /// This provides a vxfw.Widget that can be displayed in the plugin panel.
+    getWidget: ?*const fn () vxfw.Widget = null,
 
     /// Handle event - called for keyboard/timer events
     ///

@@ -130,12 +130,10 @@ pub fn main(config: Config) !void {
     // Set redraw flag so refresh thread can trigger UI updates when StateStore is populated
     refresh_thread.setRedrawFlag(&model.redraw_flag);
 
-    // Set remote backend if available
-    if (model.remote_backend) |backend| {
-        refresh_thread.setRemoteBackend(backend);
-        plugin_manager.setBackend(backend);
-        std.log.info("Using remote HAL for refresh thread and plugins", .{});
-    }
+    // Set backend for refresh thread and plugins
+    refresh_thread.setRemoteBackend(model.backend);
+    plugin_manager.setBackend(model.backend);
+    std.log.info("Using HAL backend for refresh thread and plugins", .{});
 
     // Start the refresh thread
     _ = try refresh_thread.start();

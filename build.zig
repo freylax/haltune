@@ -145,7 +145,7 @@ pub fn build(b: *std.Build) void {
     toml_write.addImport("toml", toml.module("toml"));
     toml_write.addImport("toml_config", toml_config);
 
-    // Plugin interface module (NO FFI imports - clean separation)
+    // Plugin interface module - imports backend via relative path
     const plugin_interface = b.createModule(.{
         .root_source_file = b.path("src/plugin/interface.zig"),
         .target = target,

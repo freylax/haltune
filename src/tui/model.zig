@@ -51,8 +51,10 @@ const exportHal = @import("../hal/export.zig");
 const ffi = @import("../ffi/safe.zig");
 const HalError = @import("../ffi/errors.zig").HalError;
 
-// Remote backend imports (via module from build.zig)
+// Backend imports (via module from build.zig)
 const HalBackend = @import("backend").HalBackend;
+// NativeBackend is only used by bridge server, not by TUI
+// TUI uses RemoteBackend to connect to bridge server
 const RemoteBackend = @import("../remote_hal/client.zig").RemoteBackend;
 
 /// Global redraw flag pointer for pubsub callbacks
@@ -89,8 +91,8 @@ pub const Model = struct {
     refresh_thread: ?*RefreshThread,
     hal_comp_id: c_int,
 
-    /// Remote HAL backend (null when using local HAL)
-    remote_backend: ?*HalBackend,
+    /// HAL backend (always set - either NativeBackend or RemoteBackend)
+    backend: *HalBackend,
 
     /// Redraw flag for pubsub callbacks
     /// Set to true when any subscribed value changes, triggering a redraw
@@ -125,31 +127,36 @@ pub const Model = struct {
         // Determine if we should use remote HAL
         const use_remote = config.remote.enabled and config.remote.host != null;
 
-        // Initialize HAL component (native or remote)
-        const comp_id: c_int = if (use_remote) blk: {
-            // Remote HAL: create fake comp_id, actual connection handled by refresh thread
-            std.log.info("Using remote HAL server at {s}:{}",
-                .{ config.remote.host.?, config.remote.port });
-            break :blk -1; // No real component for remote HAL
+        // Create HAL backend
+        // NOTE: TUI always uses RemoteBackend, even for "local" access
+        // Local access goes through the bridge server
+        const backend: *HalBackend = if (use_remote) blk: {
+            const host = config.remote.host.?;
+            const port = config.remote.port;
+            std.log.info("Creating remote HAL backend for {s}:{}", .{ host, port });
+            const b = try allocator.create(HalBackend);
+            b.* = try RemoteBackend.create(allocator, host, port);
+            break :blk b;
         } else blk: {
-            // Native HAL: Check if HAL is available before attempting to initialize
-            // This prevents EINTR crashes when LinuxCNC is not running
-            try @import("../ffi/errors.zig").checkHalAvailable(hal_c.hal_init, hal_c.hal_exit);
-
-            // Initialize HAL component
-            // halInit will try "haltune", "haltune1", "haltune2", etc. if there are conflicts
-            const id = try ffi.halInit("haltune");
-            errdefer ffi.halExit(id);
-
-            // Mark HAL component as ready
-            try ffi.halReady(id);
-            break :blk id;
+            // For non-remote mode, try to connect to default bridge server location
+            // This allows development/testing without remote config
+            const host = "127.0.0.1";
+            const port = 5000;
+            std.log.info("Creating remote HAL backend for {s}:{} (default)", .{ host, port });
+            const b = try allocator.create(HalBackend);
+            b.* = try RemoteBackend.create(allocator, host, port);
+            break :blk b;
         };
 
-        // Create TreeView widget
+        // Initialize HAL component
+        // TUI uses remote HAL, so no native HAL component initialization needed
+        // comp_id is -1 for remote mode (actual connection handled by refresh thread)
+        const comp_id: c_int = -1;
+
+        // Create TreeView widget with backend
         const tree_view = try allocator.create(TreeView);
         errdefer allocator.destroy(tree_view);
-        tree_view.* = try TreeView.init(allocator, store);
+        tree_view.* = try TreeView.init(allocator, store, backend);
 
         // Build initial tree (may be empty if StateStore not yet populated)
         try tree_view.buildTree();
@@ -175,16 +182,6 @@ pub const Model = struct {
         // Initialize redraw flag
         const redraw_flag = std.atomic.Value(bool).init(false);
 
-        // Create remote backend if configured
-        const remote_backend: ?*HalBackend = if (use_remote) blk: {
-            const host = config.remote.host.?;
-            const port = config.remote.port;
-            std.log.info("Creating remote HAL backend for {s}:{}", .{ host, port });
-            const backend = try allocator.create(HalBackend);
-            backend.* = try RemoteBackend.create(allocator, host, port);
-            break :blk backend;
-        } else null;
-
         // Create temporary Model instance to parse config files
         var temp_model = Model{
             .allocator = allocator,
@@ -197,7 +194,7 @@ pub const Model = struct {
             .active_tab_idx = 0,
             .refresh_thread = null,
             .hal_comp_id = comp_id,
-            .remote_backend = remote_backend,
+            .backend = backend,
             .redraw_flag = redraw_flag,
             .error_message = null,
             .error_message_owner = null,
@@ -211,12 +208,20 @@ pub const Model = struct {
             const registry = @import("../plugin/registry.zig").getGlobalRegistry() orelse {
                 return error.PluginRegistryNotAvailable;
             };
+            std.log.info("Adding plugin tabs for {d} enabled plugins", .{enabled_plugins.len});
             for (enabled_plugins, 0..) |plugin_name, i| {
+                std.log.info("Looking up plugin: {s}", .{plugin_name});
                 if (registry.getPlugin(plugin_name)) |plugin| {
                     const key_hint = try std.fmt.allocPrint(allocator, "{d}", .{i + 2});
                     try temp_model.tab_bar.addTab(plugin.name, key_hint);
+                    std.log.info("Added tab: {s} with hint {s}", .{plugin.name, key_hint});
+                } else {
+                    std.log.err("Plugin not found in registry: {s}", .{plugin_name});
                 }
             }
+            std.log.info("TabBar now has {d} tabs", .{temp_model.tab_bar.tabs.items.len});
+        } else {
+            std.log.warn("No enabled_plugins in config", .{});
         }
 
         // Parse configuration files for origin tracking
@@ -298,12 +303,10 @@ pub const Model = struct {
             self.allocator.destroy(refresh);
         }
 
-        // Clean up remote backend if present
-        if (self.remote_backend) |backend| {
-            std.log.info("Cleaning up remote HAL backend", .{});
-            backend.deinit();
-            self.allocator.destroy(backend);
-        }
+        // Clean up HAL backend
+        std.log.info("Cleaning up HAL backend", .{});
+        self.backend.deinit();
+        self.allocator.destroy(self.backend);
 
         // Clean up TreeView
         self.tree_view.deinit();
@@ -327,10 +330,12 @@ pub const Model = struct {
         // Free save filename buffer
         self.save_filename.deinit(self.allocator);
 
-        // Exit HAL component
-        std.log.info("Exiting HAL component {d}...", .{self.hal_comp_id});
-        ffi.halExit(self.hal_comp_id);
-        std.log.info("HAL component exited", .{});
+        // Exit HAL component (only for native mode, comp_id = -1 for remote)
+        if (self.hal_comp_id >= 0) {
+            std.log.info("Exiting HAL component {d}...", .{self.hal_comp_id});
+            ffi.halExit(self.hal_comp_id);
+            std.log.info("HAL component exited", .{});
+        }
     }
 
     /// Get list of checked item names
@@ -532,17 +537,25 @@ pub const Model = struct {
 
     /// Switch to a specific tab
     pub fn switchTab(self: *Model, idx: usize) !void {
-        if (idx == self.active_tab_idx) return;
+        std.log.info("switchTab called: idx={d}, active_tab_idx={d}", .{idx, self.active_tab_idx});
+        if (idx == self.active_tab_idx) {
+            std.log.info("switchTab: already on tab {d}, returning", .{idx});
+            return;
+        }
 
         const manager = @import("../plugin/manager.zig").getGlobalPluginManager() orelse {
+            std.log.err("switchTab: PluginManager not available", .{});
             return error.PluginManagerNotAvailable;
         };
+        std.log.info("switchTab: got plugin manager", .{});
 
         const plugin_names = self.config.enabled_plugins orelse &[_][]const u8{};
+        std.log.info("switchTab: plugin_names.len={d}", .{plugin_names.len});
 
         // Deactivate current plugin if leaving plugin tab
         if (self.active_tab_idx > 0 and self.active_tab_idx - 1 < plugin_names.len) {
             const old_plugin = plugin_names[self.active_tab_idx - 1];
+            std.log.info("switchTab: deactivating old plugin '{s}'", .{old_plugin});
             manager.deactivatePlugin(old_plugin) catch |err| {
                 std.log.err("Failed to deactivate plugin '{s}': {}", .{old_plugin, err});
             };
@@ -550,10 +563,12 @@ pub const Model = struct {
 
         self.active_tab_idx = idx;
         self.tab_bar.setSelected(idx);
+        std.log.info("switchTab: set active_tab_idx to {d}", .{idx});
 
         // Activate new plugin if entering plugin tab
         if (idx > 0 and idx - 1 < plugin_names.len) {
             const new_plugin = plugin_names[idx - 1];
+            std.log.info("switchTab: activating new plugin '{s}'", .{new_plugin});
             manager.activatePlugin(new_plugin) catch |err| {
                 std.log.err("Failed to activate plugin '{s}': {}", .{new_plugin, err});
             };
@@ -618,6 +633,17 @@ pub const Model = struct {
 
             // Handle key presses
             .key_press => |key| {
+                // Debug log all key presses - check for Alt+3
+                if (key.matches('3', .{ .alt = true })) {
+                    std.log.info("key_press: Alt+3 detected!", .{});
+                }
+                if (key.matches('1', .{ .alt = true })) {
+                    std.log.info("key_press: Alt+1 detected!", .{});
+                }
+                if (key.matches('2', .{ .alt = true })) {
+                    std.log.info("key_press: Alt+2 detected!", .{});
+                }
+
                 // Check error timeout before handling key press
                 if (self.checkErrorTimeout()) {
                     ctx.consumeAndRedraw();
@@ -676,6 +702,7 @@ pub const Model = struct {
 
                 // Alt+Number for tab switching
                 if (key.matches('1', .{ .alt = true })) {
+                    std.log.info("Alt+1 pressed, switching to tab 0", .{});
                     try self.switchTab(0);
                     ctx.consumeAndRedraw();
                     return;
@@ -684,16 +711,44 @@ pub const Model = struct {
                 for (2..10) |i| {
                     const char = @as(u8, @intCast('0' + i));
                     if (key.matches(char, .{ .alt = true })) {
+                        std.log.info("Alt+{d} pressed, switching to tab {d}", .{i, i - 1});
                         try self.switchTab(i - 1);
                         ctx.consumeAndRedraw();
                         return;
                     }
                 }
 
-                // Ctrl+Q to quit
+                // Ctrl+Q to quit (check before plugin forwarding so it always works)
                 if (key.matches('q', .{ .ctrl = true })) {
                     ctx.quit = true;
                     return;
+                }
+
+                // Forward keyboard events to active plugin widget
+                // When plugin tab is active, send key events to plugin for handling
+                if (self.active_tab_idx > 0) {
+                    const plugin_manager_mod = @import("../plugin/manager.zig");
+                    const plugin_manager = plugin_manager_mod.getGlobalPluginManager();
+                    const plugin_names = self.config.enabled_plugins orelse &[_][]const u8{};
+                    const plugin_idx = self.active_tab_idx - 1;
+
+                    if (plugin_idx < plugin_names.len) {
+                        const plugin_name = plugin_names[plugin_idx];
+                        if (plugin_manager) |pm| {
+                            if (pm.getPluginWidgetByName(plugin_name)) |plugin_w| {
+                                if (plugin_w.eventHandler) |handler| {
+                                    std.log.info("Forwarding key to plugin '{s}'", .{plugin_name});
+                                    const plugin_event: vxfw.Event = .{ .key_press = key };
+                                    handler(plugin_w.userdata, ctx, plugin_event) catch |err| {
+                                        std.log.err("Plugin event handler error: {}", .{err});
+                                    };
+                                    // Always consume and redraw after plugin event
+                                    ctx.consumeAndRedraw();
+                                    return;
+                                }
+                            }
+                        }
+                    }
                 }
 
                 // 'n' to open signal creation dialog
@@ -850,11 +905,17 @@ pub const Model = struct {
         return true;
     }
 
+    // Counter for draw calls (for debugging)
+    var draw_call_count: usize = 0;
+
     /// Draw function - renders the two-panel layout
     fn typeErasedDrawFn(
         ptr: *anyopaque,
         ctx: vxfw.DrawContext,
     ) std.mem.Allocator.Error!vxfw.Surface {
+        const self: *Model = @ptrCast(@alignCast(ptr));
+        draw_call_count += 1;
+        std.log.info("Model.typeErasedDrawFn [{}]: active_tab_idx={d}, current_view={}", .{draw_call_count, self.active_tab_idx, self.current_view});
         // Delegate to layout module for two-panel split
         return drawTwoPanelLayout(ptr, ctx);
     }

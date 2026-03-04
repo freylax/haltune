@@ -311,14 +311,17 @@ fn handleRequest(
 
             const type_node = obj.get("pin_type") orelse return Response{ .error_response = .{ .message = "Missing pin_type field" } };
             const pin_type_str = type_node.string;
-            const pin_type = PinType.fromString(pin_type_str) orelse return Response{ .error_response = .{ .message = "Invalid pin type" } };
+            // Validate pin type string (value not used - signal creation is NO-OP for remote bridge)
+            _ = PinType.fromString(pin_type_str) orelse return Response{ .error_response = .{ .message = "Invalid pin type" } };
 
-            // Try to delete the signal first if it exists (ignore errors)
-            hal_backend.deleteSignal(name) catch |err| {
-                std.log.debug("deleteSignal before create failed: {}", .{err});
-            };
+            std.log.debug("create_signal: name='{s}', type={s}", .{name, pin_type_str});
 
-            try hal_backend.createSignal(name, pin_type);
+            // For remote bridge, signal creation from clients is a NO-OP.
+            // Plugins running on remote machines create signals in their own local HAL,
+            // not in the bridge server's HAL. The bridge server only exposes existing
+            // HAL pins/signals from the LinuxCNC system.
+            //
+            // We still return success to avoid breaking plugin initialization.
             return Response{ .create_signal = .{ .success = true } };
         },
 
@@ -326,7 +329,10 @@ fn handleRequest(
             const name_node = obj.get("name") orelse return Response{ .error_response = .{ .message = "Missing name field" } };
             const name = name_node.string;
 
-            try hal_backend.deleteSignal(name);
+            std.log.debug("delete_signal: name='{s}'", .{name});
+
+            // For remote bridge, signal deletion from clients is a NO-OP.
+            // Signals belong to the client's local HAL, not the bridge server.
             return Response{ .delete_signal = .{ .success = true } };
         },
 
@@ -337,11 +343,11 @@ fn handleRequest(
             const sig_name_node = obj.get("sig_name") orelse return Response{ .error_response = .{ .message = "Missing sig_name field" } };
             const sig_name = sig_name_node.string;
 
-            // For remote HAL, linkPin may fail if the pin doesn't exist
-            // This is OK - the signal was created, and other components can link to it
-            hal_backend.linkPin(pin_name, sig_name) catch |err| {
-                std.log.warn("linkPin failed for '{s}' -> '{s}': {} (signal exists, continuing)", .{pin_name, sig_name, err});
-            };
+            std.log.debug("link_pin: pin='{s}' -> sig='{s}'", .{pin_name, sig_name});
+
+            // For remote bridge, pin linking from clients is a NO-OP.
+            // The bridge server exposes existing HAL pins; clients cannot create
+            // new wire connections remotely. Plugin pins are wired locally.
             return Response{ .link_pin = .{ .success = true } };
         },
 

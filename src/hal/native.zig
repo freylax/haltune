@@ -15,8 +15,7 @@ const PinDir = backend.PinDir;
 const ParamDir = backend.ParamDir;
 
 // HAL FFI imports
-const ffi_c_module = @import("ffi-c");
-const c = ffi_c_module.c;
+const c = @import("ffi/c.zig").c;
 
 // Discovery helpers using halcmd (for now - direct HAL access needs more work)
 const discovery = @import("ffi-safe-discovery");

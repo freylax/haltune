@@ -14,7 +14,7 @@ const vxfw = @import("vaxis").vxfw;
 const interface = @import("interface.zig");
 const registry = @import("registry.zig");
 
-// Import backend module (defined in build.zig)
+// Import backend via module name (manager.zig is imported from root module context)
 const HalBackend = @import("backend").HalBackend;
 
 /// Plugin state - tracks whether a plugin is active
@@ -105,10 +105,15 @@ pub const PluginManager = struct {
     /// Activate a plugin by name
     pub fn activatePlugin(self: *PluginManager, name: []const u8) !void {
         // Check if already active
-        for (self.active_plugins.items) |*p| {
+        for (self.active_plugins.items, 0..) |*p, i| {
             if (std.mem.eql(u8, p.plugin.name, name)) {
-                if (p.state == .active) return; // Already active
+                if (p.state == .active) {
+                    // Already active - just set as focused
+                    self.focused_plugin = i;
+                    return;
+                }
                 p.state = .active;
+                self.focused_plugin = i;
                 return;
             }
         }
@@ -139,7 +144,11 @@ pub const PluginManager = struct {
             .lifecycle = .deactivate,
         });
 
-        std.log.info("Activated plugin: {s}", .{name});
+        // Set as focused plugin
+        self.focused_plugin = self.active_plugins.items.len - 1;
+
+        std.log.info("Activated plugin: {s}, focused_plugin={any}, active_count={d}",
+            .{name, self.focused_plugin, self.active_plugins.items.len});
     }
 
     /// Deactivate a plugin by name
@@ -234,6 +243,35 @@ pub const PluginManager = struct {
     pub fn getFocusedPlugin(self: *const PluginManager) ?*const interface.Plugin {
         const focused = self.focused_plugin orelse return null;
         return self.active_plugins.items[focused].plugin;
+    }
+
+    /// Get widget for the focused plugin (null if no widget available)
+    pub fn getFocusedPluginWidget(self: *const PluginManager) ?vxfw.Widget {
+        const focused = self.focused_plugin orelse {
+            std.log.info("getFocusedPluginWidget: focused_plugin is null", .{});
+            return null;
+        };
+        const plugin = &self.active_plugins.items[focused];
+        std.log.info("getFocusedPluginWidget: focused={d}, plugin={s}, has_widget={any}",
+            .{focused, plugin.plugin.name, plugin.plugin.getWidget != null});
+
+        if (plugin.plugin.getWidget) |get_widget_fn| {
+            return get_widget_fn();
+        }
+        return null;
+    }
+
+    /// Get widget for a plugin by name (null if plugin not found or has no widget)
+    pub fn getPluginWidgetByName(self: *const PluginManager, name: []const u8) ?vxfw.Widget {
+        for (self.active_plugins.items) |plugin| {
+            if (std.mem.eql(u8, plugin.plugin.name, name)) {
+                if (plugin.plugin.getWidget) |get_widget_fn| {
+                    return get_widget_fn();
+                }
+                return null;
+            }
+        }
+        return null;
     }
 };
 

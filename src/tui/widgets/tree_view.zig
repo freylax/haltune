@@ -18,8 +18,11 @@ const StateStore = cache.StateStore;
 const HalValue = cache.HalValue;
 const NameKey = cache.NameKey;
 const glob = @import("glob");
-const safe = @import("../../ffi/safe.zig");
+const HalBackend = @import("backend").HalBackend;
+const PinType = @import("backend").PinType;
+const BackendHalValue = @import("backend").HalValue;
 const hal_value = @import("hal_value.zig");
+const safe = @import("../../ffi/safe.zig"); // For read-only helpers (getPinDir, getParamDir)
 
 /// Node type enumeration
 pub const NodeType = enum {
@@ -129,6 +132,9 @@ pub const TreeView = struct {
     /// State store for reading HAL data
     store: *StateStore,
 
+    /// HAL backend for writing values
+    backend: *const HalBackend,
+
     /// Root level component nodes
     root: std.ArrayList(*Node),
 
@@ -175,8 +181,19 @@ pub const TreeView = struct {
     signal_delete_prompt: bool = false,
     pending_signal_delete: ?[]const u8 = null, // Owned memory, must free
 
+    /// Helper: Convert cache.HalValue to backend.HalValue
+    /// Both types have identical structure, so we convert field-by-field
+    fn toBackendHalValue(v: HalValue) BackendHalValue {
+        return switch (v) {
+            .bit => |b| BackendHalValue{ .bit = b },
+            .float => |f| BackendHalValue{ .float = f },
+            .s32 => |s| BackendHalValue{ .s32 = s },
+            .u32 => |u| BackendHalValue{ .u32 = u },
+        };
+    }
+
     /// Initialize a new TreeView
-    pub fn init(allocator: std.mem.Allocator, store: *StateStore) !TreeView {
+    pub fn init(allocator: std.mem.Allocator, store: *StateStore, backend: *const HalBackend) !TreeView {
         // Initialize ArrayLists using initCapacity
         // Note: initCapacity(allocator, 0) never fails in practice
         const root_list = std.ArrayList(*Node).initCapacity(allocator, 0) catch return error.OutOfMemory;
@@ -188,6 +205,7 @@ pub const TreeView = struct {
         const tree_view = TreeView{
             .allocator = allocator,
             .store = store,
+            .backend = backend,
             .root = root_list,
             .expanded_nodes = std.StringHashMap(void).init(allocator),
             .checked_items = std.StringHashMap(VisibilityState).init(allocator),
@@ -889,16 +907,13 @@ pub const TreeView = struct {
                     if (key.matches('y', .{})) {
                         // User confirmed deletion
                         if (self.pending_signal_delete) |sig_name| {
-                            const sig_name_z = try self.allocator.dupeZ(u8, sig_name);
-                            defer self.allocator.free(sig_name_z);
-
-                            const ffi = @import("../../ffi/safe.zig");
-                            if (ffi.halSignalDelete(sig_name_z)) |_| {
-                                try self.store.removeSignal(sig_name);
-                                std.log.err("Deleted signal '{s}'", .{sig_name});
-                            } else |err| {
+                            // Delete signal via backend (works for both native and remote)
+                            self.backend.deleteSignal(sig_name) catch |err| {
                                 std.log.err("Delete failed: {}", .{err});
-                            }
+                            };
+
+                            try self.store.removeSignal(sig_name);
+                            std.log.err("Deleted signal '{s}'", .{sig_name});
 
                             self.allocator.free(self.pending_signal_delete.?);
                             self.pending_signal_delete = null;
@@ -930,8 +945,6 @@ pub const TreeView = struct {
 
                 // Signal edit mode handling (Ctrl+S on pin)
                 if (self.signal_edit_mode) {
-                    const ffi = @import("../../ffi/safe.zig");
-
                     // Escape: cancel
                     if (key.matches(vaxis.Key.escape, .{})) {
                         self.signal_edit_mode = false;
@@ -951,7 +964,7 @@ pub const TreeView = struct {
                                 // Disconnect: Unlink pin from signal
                                 const old_signal = self.store.pin_links.get(NameKey.fromStr(pin_name));
 
-                                ffi.halUnlink(try self.allocator.dupeZ(u8, pin_name)) catch |err| {
+                                self.backend.unlinkPin(pin_name) catch |err| {
                                     std.log.err("Disconnect failed: {}", .{err});
                                     ctx.consumeAndRedraw();
                                     return;
@@ -988,24 +1001,20 @@ pub const TreeView = struct {
                                     return;
                                 };
 
-                                // 2. Determine HAL type from value
-                                const hal_type_t = @import("../../ffi/types.zig").hal_type_t;
-                                const hal_type: hal_type_t = switch (pin_value) {
-                                    .bit => .HAL_BIT,
-                                    .float => .HAL_FLOAT,
-                                    .s32 => .HAL_S32,
-                                    .u32 => .HAL_U32,
+                                // 2. Determine PinType from value
+                                const pin_type: PinType = switch (pin_value) {
+                                    .bit => .bit,
+                                    .float => .float,
+                                    .s32 => .s32,
+                                    .u32 => .u32,
                                 };
 
                                 // 3. Check if signal exists
                                 const signal_exists = self.store.getSignal(signal_name) catch null != null;
 
                                 if (!signal_exists) {
-                                    // Create new signal with inferred type
-                                    const signal_name_z = try self.allocator.dupeZ(u8, signal_name);
-                                    defer self.allocator.free(signal_name_z);
-
-                                    ffi.halSignalNew(signal_name_z, hal_type) catch |err| {
+                                    // Create new signal with inferred type (via backend)
+                                    self.backend.createSignal(signal_name, pin_type) catch |err| {
                                         std.log.err("Signal creation failed: {}", .{err});
                                         ctx.consumeAndRedraw();
                                         return;
@@ -1015,13 +1024,8 @@ pub const TreeView = struct {
                                     try self.store.addSignal(signal_name, pin_value);
                                 }
 
-                                // 4. Link pin to signal
-                                const pin_name_z = try self.allocator.dupeZ(u8, pin_name);
-                                defer self.allocator.free(pin_name_z);
-                                const signal_name_z = try self.allocator.dupeZ(u8, signal_name);
-                                defer self.allocator.free(signal_name_z);
-
-                                ffi.halLink(pin_name_z, signal_name_z) catch |err| {
+                                // 4. Link pin to signal (via backend)
+                                self.backend.linkPin(pin_name, signal_name) catch |err| {
                                     std.log.err("Link failed: {}", .{err});
                                     ctx.consumeAndRedraw();
                                     return;
@@ -1135,29 +1139,22 @@ pub const TreeView = struct {
                                     }
                                 };
 
-                                // Write to HAL for pins only (params and signals are read-only in ULAPI)
-                                // IMPORTANT: FFI write must happen BEFORE store.updatePin to ensure
+                                // Write to HAL via backend (works for both native and remote)
+                                // IMPORTANT: Backend write must happen BEFORE store.updatePin to ensure
                                 // HAL value is written before cache update matches it
                                 const hal_write_ok = blk: {
                                     if (node.item_type == .pin) {
-                                        // Use setPinValueByName which uses hal_get_pin_value_by_name
-                                        // to get the data pointer, then writes to it
-                                        const name_z = try self.allocator.dupeZ(u8, node.full_name);
-                                        defer self.allocator.free(name_z);
-
-                                        safe.setPinValueByName(name_z, new_value) catch |err| {
-                                            std.debug.print("FFI write failed: setPinValueByName '{s}' error {}\n", .{ node.full_name, err });
+                                        const backend_value = toBackendHalValue(new_value);
+                                        self.backend.setPinValue(node.full_name, backend_value) catch |err| {
+                                            std.debug.print("Backend write failed: setPinValue '{s}' error {}\n", .{ node.full_name, err });
                                             // Stay in edit mode on error so user can retry
                                             ctx.consumeAndRedraw();
                                             return;
                                         };
                                     } else if (node.item_type == .param) {
-                                        // Params are writable too
-                                        const name_z = try self.allocator.dupeZ(u8, node.full_name);
-                                        defer self.allocator.free(name_z);
-
-                                        safe.setParamValueByName(name_z, new_value) catch |err| {
-                                            std.debug.print("FFI write failed: setParamValueByName '{s}' error {}\n", .{ node.full_name, err });
+                                        const backend_value = toBackendHalValue(new_value);
+                                        self.backend.setParamValue(node.full_name, backend_value) catch |err| {
+                                            std.debug.print("Backend write failed: setParamValue '{s}' error {}\n", .{ node.full_name, err });
                                             ctx.consumeAndRedraw();
                                             return;
                                         };
@@ -1348,13 +1345,9 @@ pub const TreeView = struct {
 
                                 // Write to HAL for pins only (signals are read-only)
                                 if (node.item_type == .pin) {
-                                    // Use setPinValueByName which uses hal_get_pin_value_by_name
-                                    // to get the data pointer, then writes to it
-                                    const name_z = try self.allocator.dupeZ(u8, node.full_name);
-                                    defer self.allocator.free(name_z);
-
-                                    safe.setPinValueByName(name_z, HalValue{ .bit = new_value }) catch |err| {
-                                        std.debug.print("FFI write failed: setPinValueByName '{s}' error {}\n", .{ node.full_name, err });
+                                    const backend_value = BackendHalValue{ .bit = new_value };
+                                    self.backend.setPinValue(node.full_name, backend_value) catch |err| {
+                                        std.debug.print("Backend write failed: setPinValue '{s}' error {}\n", .{ node.full_name, err });
                                         // Even if HAL write fails, update cache and continue
                                     };
                                 }
