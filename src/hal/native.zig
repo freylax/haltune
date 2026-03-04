@@ -121,19 +121,19 @@ pub const NativeBackend = struct {
     }
 
     /// Find a pin by name using halpr_find_pin_by_name
-    fn findPinByName(name: [*:0]const u8) ?*const ffi_c_module.hal_pin_t {
-        const pin_opaque = ffi_c_module.halpr_find_pin_by_name(name);
+    fn findPinByName(name: [*:0]const u8) ?*const c.hal_pin_t {
+        const pin_opaque = c.halpr_find_pin_by_name(name);
         if (pin_opaque == null) {
             std.log.err("DEBUG: halpr_find_pin_by_name('{s}') returned null", .{name});
             return null;
         }
-        return @as(*const ffi_c_module.hal_pin_t, @alignCast(@ptrCast(pin_opaque)));
+        return @as(*const c.hal_pin_t, @alignCast(@ptrCast(pin_opaque)));
     }
 
     /// Read pin value using direct structure access
     /// When pin is linked, value is at data_ptr_addr
     /// When pin is unlinked, value is in dummysig field
-    fn readPinValue(pin: *const ffi_c_module.hal_pin_t, pin_type: c_int) HalValue {
+    fn readPinValue(pin: *const c.hal_pin_t, pin_type: c_int) HalValue {
         // Check if pin is linked to a signal (signal field is non-null)
         const is_linked = pin.signal != null;
 
@@ -244,10 +244,10 @@ pub const NativeBackend = struct {
             defer allocator.free(name_z);
 
             // Use halpr_find_sig_by_name to get signal structure
-            const sig_ptr = ffi_c_module.halpr_find_sig_by_name(name_z.ptr);
+            const sig_ptr = c.halpr_find_sig_by_name(name_z.ptr);
 
             const sig_value: HalValue = if (sig_ptr) |p| blk: {
-                const sig = @as(*const ffi_c_module.hal_sig_t, @alignCast(@ptrCast(p)));
+                const sig = @as(*const c.hal_sig_t, @alignCast(@ptrCast(p)));
                 // Signal value is stored directly in the data union
                 break :blk switch (sig.type) {
                     c.HAL_BIT => HalValue{ .bit = sig.data.b },
@@ -259,7 +259,7 @@ pub const NativeBackend = struct {
             } else HalValue{ .float = 0.0 };
 
             const sig_type: PinType = if (sig_ptr) |p| blk: {
-                const sig = @as(*const ffi_c_module.hal_sig_t, @alignCast(@ptrCast(p)));
+                const sig = @as(*const c.hal_sig_t, @alignCast(@ptrCast(p)));
                 break :blk switch (sig.type) {
                     c.HAL_BIT => .bit,
                     c.HAL_FLOAT => .float,
@@ -306,10 +306,10 @@ pub const NativeBackend = struct {
             defer allocator.free(name_z);
 
             // Use halpr_find_param_by_name to get param structure
-            const param_ptr = ffi_c_module.halpr_find_param_by_name(name_z.ptr);
+            const param_ptr = c.halpr_find_param_by_name(name_z.ptr);
 
             const param_value: HalValue = if (param_ptr) |p| blk: {
-                const param = @as(*const ffi_c_module.hal_param_t, @alignCast(@ptrCast(p)));
+                const param = @as(*const c.hal_param_t, @alignCast(@ptrCast(p)));
                 if (param.data_ptr) |data_ptr| {
                     const data = @as(*c.hal_data_u, @alignCast(@ptrCast(data_ptr)));
                     break :blk switch (param.type) {
@@ -323,7 +323,7 @@ pub const NativeBackend = struct {
             } else HalValue{ .float = 0.0 };
 
             const param_type: PinType = if (param_ptr) |p| blk: {
-                const param = @as(*const ffi_c_module.hal_param_t, @alignCast(@ptrCast(p)));
+                const param = @as(*const c.hal_param_t, @alignCast(@ptrCast(p)));
                 break :blk switch (param.type) {
                     c.HAL_BIT => .bit,
                     c.HAL_FLOAT => .float,
@@ -335,10 +335,10 @@ pub const NativeBackend = struct {
 
             // Get direction from param structure
             const param_dir: ParamDir = if (param_ptr) |p| blk: {
-                const param = @as(*const ffi_c_module.hal_param_t, @alignCast(@ptrCast(p)));
+                const param = @as(*const c.hal_param_t, @alignCast(@ptrCast(p)));
                 break :blk switch (param.dir) {
-                    ffi_c_module.HAL_RO => .in,
-                    ffi_c_module.HAL_RW => .out,
+                    c.HAL_RO => .in,
+                    c.HAL_RW => .out,
                     else => .in,
                 };
             } else .in;
@@ -407,10 +407,10 @@ pub const NativeBackend = struct {
         defer self.allocator.free(name_z);
 
         // Use halpr_find_pin_by_name to get pin structure
-        const pin_ptr = ffi_c_module.halpr_find_pin_by_name(name_z.ptr);
+        const pin_ptr = c.halpr_find_pin_by_name(name_z.ptr);
         if (pin_ptr == null) return error.PinNotFound;
 
-        const pin = @as(*const ffi_c_module.hal_pin_t, @alignCast(@ptrCast(pin_ptr)));
+        const pin = @as(*const c.hal_pin_t, @alignCast(@ptrCast(pin_ptr)));
         return readPinValue(pin, pin.type);
     }
 
@@ -421,10 +421,10 @@ pub const NativeBackend = struct {
         defer self.allocator.free(name_z);
 
         // Use halpr_find_pin_by_name to get pin structure
-        const pin_ptr = ffi_c_module.halpr_find_pin_by_name(name_z.ptr);
+        const pin_ptr = c.halpr_find_pin_by_name(name_z.ptr);
         if (pin_ptr == null) return error.PinNotFound;
 
-        const pin = @as(*ffi_c_module.hal_pin_t, @alignCast(@ptrCast(pin_ptr)));
+        const pin = @as(*c.hal_pin_t, @alignCast(@ptrCast(pin_ptr)));
 
         // Check if pin is linked
         const is_linked = pin.signal != null;
@@ -456,10 +456,10 @@ pub const NativeBackend = struct {
         defer self.allocator.free(name_z);
 
         // Use halpr_find_param_by_name to get param structure
-        const param_ptr = ffi_c_module.halpr_find_param_by_name(name_z.ptr);
+        const param_ptr = c.halpr_find_param_by_name(name_z.ptr);
         if (param_ptr == null) return error.ParamNotFound;
 
-        const param = @as(*const ffi_c_module.hal_param_t, @alignCast(@ptrCast(param_ptr)));
+        const param = @as(*const c.hal_param_t, @alignCast(@ptrCast(param_ptr)));
         const data_ptr = param.data_ptr orelse return error.ParamNotFound;
 
         const data = @as(*c.hal_data_u, @alignCast(@ptrCast(data_ptr)));
@@ -480,10 +480,10 @@ pub const NativeBackend = struct {
         defer self.allocator.free(name_z);
 
         // Use halpr_find_param_by_name to get param structure
-        const param_ptr = ffi_c_module.halpr_find_param_by_name(name_z.ptr);
+        const param_ptr = c.halpr_find_param_by_name(name_z.ptr);
         if (param_ptr == null) return error.ParamNotFound;
 
-        const param = @as(*ffi_c_module.hal_param_t, @alignCast(@ptrCast(param_ptr)));
+        const param = @as(*c.hal_param_t, @alignCast(@ptrCast(param_ptr)));
         const data_ptr = param.data_ptr orelse return error.ParamNotFound;
 
         const data = @as(*c.hal_data_u, @alignCast(@ptrCast(data_ptr)));
