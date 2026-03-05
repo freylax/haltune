@@ -30,6 +30,13 @@ const hal_param_t = @import("../ffi/types.zig").hal_param_t;
 // Import via module name (refresh.zig is used from root module context)
 const HalBackend = @import("backend").HalBackend;
 
+/// Filter for visible pin names
+/// Used to restrict which pins are refreshed from the backend
+pub const PinNameFilter = struct {
+    names: []const []const u8,
+    mutex: std.Thread.Mutex,
+};
+
 /// Refresh thread manages HAL polling and cache updates
 ///
 /// This struct maintains a background thread that periodically polls HAL
@@ -82,10 +89,16 @@ pub const RefreshThread = struct {
     /// If set, only these pins will be refreshed from the backend
     visible_pin_names: ?PinNameFilter = null,
 
-    pub const PinNameFilter = struct {
-        names: []const []const u8,
-        mutex: std.Thread.Mutex,
-    };
+    /// Discovery: when to next scan for new pins (manual or time-based)
+    /// Separate from value refresh which happens every interval_ns
+    discovery_requested: std.atomic.Value(bool) = std.atomic.Value(bool).init(true), // Request discovery on startup
+    last_discovery_ms: u64 = 0,
+    discovery_interval_ms: u64 = 30_000, // Default 30 seconds between automatic discoveries
+
+    /// Manual discovery trigger (set by UI when user presses 'R')
+    pub fn triggerDiscovery(self: *RefreshThread) void {
+        self.discovery_requested.store(true, .release);
+    }
 
     /// Initialize a new RefreshThread
     ///
@@ -327,6 +340,12 @@ pub const RefreshThread = struct {
             self.store.updatePin(pin.name, value) catch |err| {
                 std.log.err("refreshPinsRemote: updatePin({s}) failed: {}", .{ pin.name, err });
             };
+
+            // Clear dirty flag if HAL value now matches the edited (dirty) value
+            // This confirms the write succeeded and HAL has the new value
+            self.store.clearPinDirtyIfMatch(pin.name, value) catch |err| {
+                std.log.err("refreshPinsRemote: clearPinDirtyIfMatch({s}) failed: {}", .{ pin.name, err });
+            };
         }
 
         // Only do stale detection if we're not filtering (otherwise we'd remove pins that are just hidden)
@@ -482,12 +501,81 @@ pub const RefreshThread = struct {
         }
     }
 
+    /// Refresh pin VALUES from remote HAL backend (fast path - no discovery)
+    fn refreshPinValuesRemote(self: *RefreshThread, backend_ptr: *const anyopaque) !void {
+        const backend: *const HalBackend = @ptrCast(@alignCast(backend_ptr));
+
+        // Get list of pins from remote backend
+        const pin_infos = backend.listPins(self.allocator) catch |err| {
+            std.log.err("refreshPinValuesRemote: listPins failed: {}", .{err});
+            return;
+        };
+        defer {
+            for (pin_infos) |pin| {
+                self.allocator.free(pin.name);
+            }
+            self.allocator.free(pin_infos);
+        }
+
+        // Process each pin - just update values, no stale detection
+        for (pin_infos) |pin| {
+            // Filter to visible pins if filter is active
+            if (self.visible_pin_names) |*f| {
+                f.mutex.lock();
+                defer f.mutex.unlock();
+                var is_visible = false;
+                for (f.names) |visible_name| {
+                    if (std.mem.eql(u8, pin.name, visible_name)) {
+                        is_visible = true;
+                        break;
+                    }
+                }
+                if (!is_visible) continue;
+            }
+
+            // Convert backend.HalValue to cache.HalValue
+            const value: HalValue = switch (pin.value) {
+                .bit => |v| HalValue{ .bit = v },
+                .float => |v| HalValue{ .float = v },
+                .s32 => |v| HalValue{ .s32 = v },
+                .u32 => |v| HalValue{ .u32 = v },
+            };
+
+            self.store.updatePin(pin.name, value) catch |err| {
+                std.log.err("refreshPinValuesRemote: updatePin({s}) failed: {}", .{ pin.name, err });
+            };
+
+            // Clear dirty flag if HAL value matches edited value
+            self.store.clearPinDirtyIfMatch(pin.name, value) catch |err| {
+                std.log.err("refreshPinValuesRemote: clearPinDirtyIfMatch({s}) failed: {}", .{ pin.name, err });
+            };
+        }
+    }
+
+    /// Discover pins from remote HAL backend (slow path - includes stale detection)
+    fn discoverPinsRemote(self: *RefreshThread, backend_ptr: *const anyopaque) !void {
+        // Reuse refreshPinsRemote - it already does discovery + stale detection
+        return self.refreshPinsRemote(backend_ptr);
+    }
+
+    /// Discover signals from remote HAL backend (slow path - includes stale detection)
+    fn discoverSignalsRemote(self: *RefreshThread, backend_ptr: *const anyopaque) !void {
+        // Reuse refreshSignalsRemote - it already does discovery + stale detection
+        return self.refreshSignalsRemote(backend_ptr);
+    }
+
+    /// Discover params from remote HAL backend (slow path - includes stale detection)
+    fn discoverParamsRemote(self: *RefreshThread, backend_ptr: *const anyopaque) !void {
+        // Reuse refreshParamsRemote - it already does discovery + stale detection
+        return self.refreshParamsRemote(backend_ptr);
+    }
+
     /// Refresh HAL state and update cache
     ///
     /// This function performs a complete refresh cycle:
-    /// 1. Discovery: Enumerate ALL pins/signals/params from HAL
+    /// 1. Discovery: Enumerate ALL pins/signals/params from HAL (only if requested)
     /// 2. Snapshot: Get current cache keys
-    /// 3. Comparison: Add new pins, remove stale entries
+    /// 3. Comparison: Add new pins, remove stale entries (only during discovery)
     /// 4. Update: Read current values and update cache
     ///
     /// Thread safety:
@@ -502,10 +590,37 @@ pub const RefreshThread = struct {
     ///   - Discovers pins/signals/params from newly loaded components (halcmd loadusr)
     ///   - Removes pins/signals/params from unloaded components (stale cleanup)
     fn refreshHal(self: *RefreshThread) !void {
-        // Refresh all HAL data types
-        try self.refreshPins();
-        try self.refreshSignals();
-        try self.refreshParams();
+        // Check if we should do discovery (find new/remove stale pins)
+        const should_discover = blk: {
+            const requested = self.discovery_requested.load(.acquire);
+            if (requested) {
+                // Clear the request flag
+                self.discovery_requested.store(false, .release);
+                break :blk true;
+            }
+
+            // Check time-based discovery
+            const now_ms = std.time.milliTimestamp();
+            if (now_ms - self.last_discovery_ms >= self.discovery_interval_ms) {
+                self.last_discovery_ms = now_ms;
+                break :blk true;
+            }
+
+            break :blk false;
+        };
+
+        if (should_discover) {
+            std.log.info("Running pin discovery (new pins, stale cleanup)...", .{});
+            // Full refresh with discovery
+            try self.discoverPins();
+            try self.discoverSignals();
+            try self.discoverParams();
+        } else {
+            // Value refresh only - faster, no new pin discovery
+            try self.refreshPinValues();
+            // Note: we don't refresh signals/params on every cycle since they change less frequently
+            // Signals/params can be refreshed during discovery or manually
+        }
 
         // Trigger redraw on first successful population (after ALL types are loaded)
         // Check if we have any data now
@@ -513,8 +628,8 @@ pub const RefreshThread = struct {
             self.store.rwlock.lockShared();
             defer self.store.rwlock.unlockShared();
             break :blk self.store.pins.count() > 0 or
-                      self.store.signals.count() > 0 or
-                      self.store.params.count() > 0;
+                self.store.signals.count() > 0 or
+                self.store.params.count() > 0;
         };
 
         if (has_data and !self.populated.load(.acquire)) {
@@ -742,6 +857,58 @@ pub const RefreshThread = struct {
                 self.store.removeParam(name) catch {};
             }
         }
+    }
+
+    /// Refresh pin VALUES only (no discovery of new pins)
+    /// This is the fast path - just read current values for known pins
+    fn refreshPinValues(self: *RefreshThread) !void {
+        if (self.remote_backend) |backend_ptr| {
+            return self.refreshPinValuesRemote(backend_ptr);
+        }
+
+        // For local HAL, we still need to iterate through known pins
+        self.store.rwlock.lockShared();
+        const pin_names = self.store.pins.keys();
+        self.store.rwlock.unlockShared();
+
+        for (pin_names) |pin_key| {
+            const pin_name = pin_key.slice();
+            // Create null-terminated version for FFI call
+            const pin_name_z = try self.allocator.dupeZ(u8, pin_name);
+            defer self.allocator.free(pin_name_z);
+
+            if (ffi.getPinValueByName(pin_name_z)) |v| {
+                self.store.updatePin(pin_name, v) catch {};
+            }
+        }
+    }
+
+    /// Discover pins (find new, remove stale) and update values
+    /// This is the slow path - does full enumeration
+    fn discoverPins(self: *RefreshThread) !void {
+        if (self.remote_backend) |backend_ptr| {
+            return self.discoverPinsRemote(backend_ptr);
+        }
+        // Use the original refreshPins for local HAL
+        return self.refreshPins();
+    }
+
+    /// Discover signals (find new, remove stale) and update values
+    fn discoverSignals(self: *RefreshThread) !void {
+        if (self.remote_backend) |backend_ptr| {
+            return self.discoverSignalsRemote(backend_ptr);
+        }
+        // Use the original refreshSignals for local HAL
+        return self.refreshSignals();
+    }
+
+    /// Discover params (find new, remove stale) and update values
+    fn discoverParams(self: *RefreshThread) !void {
+        if (self.remote_backend) |backend_ptr| {
+            return self.discoverParamsRemote(backend_ptr);
+        }
+        // Use the original refreshParams for local HAL
+        return self.refreshParams();
     }
 };
 

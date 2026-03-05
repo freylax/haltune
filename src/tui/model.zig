@@ -857,6 +857,17 @@ pub const Model = struct {
                     return;
                 }
 
+                // 'R' to trigger pin discovery (find new pins, remove stale)
+                if (key.matches('R', .{}) and !self.save_dialog_visible and !self.signal_dialog.visible) {
+                    if (self.refresh_thread) |rt| {
+                        rt.triggerDiscovery();
+                        self.setError("Discovering pins...") catch {};
+                        std.log.info("Manual pin discovery triggered by user", .{});
+                    }
+                    ctx.consumeAndRedraw();
+                    return;
+                }
+
                 // Ctrl+T to cycle view mode
                 if (key.matches('t', .{ .ctrl = true })) {
                     // Block view switching when dialogs are open

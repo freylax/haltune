@@ -269,8 +269,8 @@ fn createHelpText(ctx: vxfw.DrawContext, view_mode: ViewMode, model: *const Mode
 
     // Build key hints for right side
     const key_hints = switch (view_mode) {
-        .tree_only => try std.fmt.allocPrint(ctx.arena, "Tab:{d} Ctrl+T=Table | Space=Check +/-=Vis /=Search n=NewSignal s=Save Esc=Clear Ctrl+Q=Quit", .{model.active_tab_idx}),
-        .table_only => try std.fmt.allocPrint(ctx.arena, "Tab:{d} Ctrl+T=Tree | Space=Check /=Search t=Type c=Comp Esc=Clear Ctrl+Q=Quit", .{model.active_tab_idx}),
+        .tree_only => try std.fmt.allocPrint(ctx.arena, "Tab:{d} Ctrl+T=Table | Space=Check +/-=Vis /=Search n=NewSignal s=Save R=Discover Esc=Clear Ctrl+Q=Quit", .{model.active_tab_idx}),
+        .table_only => try std.fmt.allocPrint(ctx.arena, "Tab:{d} Ctrl+T=Tree | Space=Check /=Search t=Type c=Comp R=Discover Esc=Clear Ctrl+Q=Quit", .{model.active_tab_idx}),
     };
 
     // Get max width

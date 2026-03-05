@@ -72,6 +72,19 @@ pub const HalValue = union(enum) {
     u32: u32,
 };
 
+/// Compare two HalValues for equality
+pub fn halValueEq(a: HalValue, b: HalValue) bool {
+    if (@as(std.meta.Tag(HalValue), a) != @as(std.meta.Tag(HalValue), b)) {
+        return false;
+    }
+    return switch (a) {
+        .bit => |v| v == b.bit,
+        .float => |v| v == b.float,
+        .s32 => |v| v == b.s32,
+        .u32 => |v| v == b.u32,
+    };
+}
+
 /// Thread-safe state store for HAL values
 ///
 /// StateStore maintains three separate HashMaps for pins, signals, and parameters.
@@ -111,6 +124,10 @@ pub const StateStore = struct {
     /// HashMap storing pin -> signal mappings (pin_name -> signal_name)
     pin_links: std.AutoHashMap(NameKey, NameKey),
 
+    /// HashMap tracking dirty pins (edited but not yet confirmed from HAL)
+    /// When user edits a pin, it's marked dirty. Refresh clears dirty flag when HAL value matches.
+    dirty_pins: std.AutoHashMap(NameKey, HalValue),
+
     /// Reader-writer lock for concurrent access
     /// Multiple threads can hold shared lock for reading
     /// Only one thread can hold exclusive lock for writing
@@ -146,6 +163,7 @@ pub const StateStore = struct {
             .params = std.AutoHashMap(NameKey, HalValue).init(allocator),
             .param_names = std.ArrayList([]const u8).initCapacity(allocator, 0) catch unreachable,
             .pin_links = std.AutoHashMap(NameKey, NameKey).init(allocator),
+            .dirty_pins = std.AutoHashMap(NameKey, HalValue).init(allocator),
             .origin_tracker = OriginTracker.init(allocator),
         };
 
@@ -156,6 +174,7 @@ pub const StateStore = struct {
         store.signals.ensureUnusedCapacity(64) catch unreachable;
         store.params.ensureUnusedCapacity(64) catch unreachable;
         store.pin_links.ensureUnusedCapacity(256) catch unreachable;
+        store.dirty_pins.ensureUnusedCapacity(64) catch unreachable;
 
         return store;
     }
@@ -778,6 +797,73 @@ pub const StateStore = struct {
                     _ = self.pin_names.orderedRemove(i);
                     break;
                 }
+            }
+        }
+    }
+
+    /// Mark a pin as dirty (edited but not yet confirmed from HAL)
+    ///
+    /// Called when user edits a pin value. The dirty value is stored
+    /// separately from the cached HAL value. When refresh confirms the
+    /// HAL value matches, the dirty flag is cleared.
+    ///
+    /// Parameters:
+    ///   - name: Pin name to mark as dirty
+    ///   - value: The edited value (what user wants it to be)
+    ///
+    /// Thread safety:
+    ///   - Acquires exclusive lock
+    pub fn markPinDirty(self: *StateStore, name: []const u8, value: HalValue) !void {
+        self.rwlock.lock();
+        defer self.rwlock.unlock();
+
+        const key = NameKey.fromStr(name);
+        try self.dirty_pins.put(key, value);
+    }
+
+    /// Check if a pin is dirty and get its dirty value
+    ///
+    /// Returns the edited (dirty) value if the pin is marked dirty,
+    /// otherwise returns the cached HAL value.
+    ///
+    /// Parameters:
+    ///   - name: Pin name to check
+    ///
+    /// Returns:
+    ///   - The dirty value if pin is dirty, null otherwise
+    ///
+    /// Thread safety:
+    ///   - Acquires shared lock
+    pub fn getPinDirtyValue(self: *StateStore, name: []const u8) ?HalValue {
+        self.rwlock.lockShared();
+        defer self.rwlock.unlockShared();
+
+        const key = NameKey.fromStr(name);
+        return self.dirty_pins.get(key);
+    }
+
+    /// Clear dirty flag if HAL value matches expected value
+    ///
+    /// Called by refresh thread after reading HAL value. If the HAL
+    /// value matches the dirty value, the pin is no longer dirty.
+    ///
+    /// Parameters:
+    ///   - name: Pin name to check
+    ///   - hal_value: Current value read from HAL
+    ///
+    /// Thread safety:
+    ///   - Acquires exclusive lock
+    pub fn clearPinDirtyIfMatch(self: *StateStore, name: []const u8, hal_value: HalValue) !void {
+        self.rwlock.lock();
+        defer self.rwlock.unlock();
+
+        const key = NameKey.fromStr(name);
+        if (self.dirty_pins.get(key)) |dirty_value| {
+            // Check if HAL value now matches the dirty (edited) value
+            if (halValueEq(dirty_value, hal_value)) {
+                // Values match - clear dirty flag
+                _ = self.dirty_pins.fetchRemove(key);
+                std.log.debug("Cleared dirty flag for {s} (HAL confirmed)", .{name});
             }
         }
     }

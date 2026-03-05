@@ -747,19 +747,41 @@ pub const TreeView = struct {
                 }
 
                 // Get display string: edit buffer if editing, otherwise current value
+                // Use tristate: dot (•) for dirty, TRUE/FALSE for confirmed, value for other types
                 const value_str = blk: {
                     if (self.edit_mode and self.edit_item == node) {
                         // Show edit buffer (empty string when buffer is empty, not placeholder)
                         break :blk self.edit_buffer.items;
                     } else {
-                        // Show current value from store
-                        const value = self.store.getPin(node.full_name) catch
-                            self.store.getSignal(node.full_name) catch
-                            self.store.getParam(node.full_name) catch null;
-                        if (value) |v| {
-                            break :blk hal_value.formatHalValue(v, ctx.arena) catch "ERR";
+                        // Check if pin is dirty (edited but not yet confirmed from HAL)
+                        const dirty_value = if (node.item_type == .pin)
+                            self.store.getPinDirtyValue(node.full_name)
+                        else
+                            null;
+
+                        if (dirty_value) |dv| {
+                            // Show dot (•) for dirty values to indicate "pending confirmation"
+                            // For bit pins, also show the intended state in parentheses
+                            if (dv == .bit) {
+                                break :blk if (dv.bit) "•(TRUE)" else "•(FALSE)";
+                            } else {
+                                break :blk "•"; // For non-bit types, just show dot
+                            }
                         } else {
-                            break :blk "";
+                            // Show confirmed value from HAL
+                            const value = self.store.getPin(node.full_name) catch
+                                self.store.getSignal(node.full_name) catch
+                                self.store.getParam(node.full_name) catch null;
+                            if (value) |v| {
+                                // For bit pins, show TRUE/FALSE for clarity
+                                if (v == .bit) {
+                                    break :blk if (v.bit) "TRUE" else "FALSE";
+                                } else {
+                                    break :blk hal_value.formatHalValue(v, ctx.arena) catch "ERR";
+                                }
+                            } else {
+                                break :blk "";
+                            }
                         }
                     }
                 };
@@ -1139,6 +1161,11 @@ pub const TreeView = struct {
                                     }
                                 };
 
+                                // Mark as dirty (edited but not yet confirmed from HAL)
+                                if (node.item_type == .pin) {
+                                    try self.store.markPinDirty(node.full_name, new_value);
+                                }
+
                                 // Write to HAL via backend (works for both native and remote)
                                 // IMPORTANT: Backend write must happen BEFORE store.updatePin to ensure
                                 // HAL value is written before cache update matches it
@@ -1342,6 +1369,11 @@ pub const TreeView = struct {
                             .bit => {
                                 // BIT: Toggle value directly (no edit mode)
                                 const new_value = !v.bit;
+
+                                // Mark as dirty (edited but not yet confirmed from HAL)
+                                if (node.item_type == .pin) {
+                                    try self.store.markPinDirty(node.full_name, HalValue{ .bit = new_value });
+                                }
 
                                 // Write to HAL for pins only (signals are read-only)
                                 if (node.item_type == .pin) {
