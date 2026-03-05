@@ -1547,6 +1547,24 @@ pub const TreeView = struct {
     pub fn isEditMode(self: *const TreeView) bool {
         return self.edit_mode or self.signal_edit_mode or self.signal_delete_prompt;
     }
+
+    /// Get list of visible pin names
+    /// Returns pins that are currently visible in the tree (i.e., their parent component is expanded)
+    /// This is used to optimize refresh to only query visible pins from the backend
+    pub fn getVisiblePinNames(self: *const TreeView, allocator: std.mem.Allocator) ![][]const u8 {
+        var visible_pins = std.ArrayList([]const u8).initCapacity(allocator, 0) catch return error.OutOfMemory;
+        defer visible_pins.deinit(allocator);
+
+        // Iterate through visible nodes and collect pin names
+        for (self.visible_nodes.items) |node| {
+            if (node.item_type == .pin) {
+                const name_copy = try allocator.dupe(u8, node.full_name);
+                try visible_pins.append(allocator, name_copy);
+            }
+        }
+
+        return visible_pins.toOwnedSlice(allocator);
+    }
 };
 
 /// Helper struct to group HAL items by component

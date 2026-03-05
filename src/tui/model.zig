@@ -78,6 +78,31 @@ fn valueChangedCallback(
     }
 }
 
+/// Visible pin names for refresh optimization
+/// Thread-safe container for pin name list that can be shared between UI and refresh thread
+pub const VisiblePinNames = struct {
+    names: std.ArrayList([]const u8),
+    mutex: std.Thread.Mutex,
+    allocator: std.mem.Allocator,
+
+    pub fn init(allocator: std.mem.Allocator) VisiblePinNames {
+        return .{
+            .names = std.ArrayList([]const u8).initCapacity(allocator, 0) catch unreachable,
+            .mutex = std.Thread.Mutex{},
+            .allocator = allocator,
+        };
+    }
+
+    pub fn deinit(self: *VisiblePinNames) void {
+        self.mutex.lock();
+        defer self.mutex.unlock();
+        for (self.names.items) |n| {
+            self.allocator.free(n);
+        }
+        self.names.deinit(self.allocator);
+    }
+};
+
 /// Model holds all application state for the TUI
 pub const Model = struct {
     allocator: std.mem.Allocator,
@@ -110,6 +135,10 @@ pub const Model = struct {
     /// Save dialog state
     save_dialog_visible: bool = false,
     save_filename: std.ArrayList(u8),
+
+    /// Visible pin names for refresh optimization
+    /// When set, refresh thread only polls these specific pins
+    visible_pin_names: ?*VisiblePinNames = null,
 
     /// Current view mode for single-panel layout
     current_view: ViewMode = .tree_only,
@@ -330,12 +359,63 @@ pub const Model = struct {
         // Free save filename buffer
         self.save_filename.deinit(self.allocator);
 
+        // Clean up visible pin names filter
+        if (self.visible_pin_names) |vpn| {
+            vpn.deinit();
+            self.allocator.destroy(vpn);
+        }
+
         // Exit HAL component (only for native mode, comp_id = -1 for remote)
         if (self.hal_comp_id >= 0) {
             std.log.info("Exiting HAL component {d}...", .{self.hal_comp_id});
             ffi.halExit(self.hal_comp_id);
             std.log.info("HAL component exited", .{});
         }
+    }
+
+    /// Update the visible pins filter on the refresh thread
+    /// This optimizes polling to only request pins that are currently visible
+    pub fn updateVisiblePinsFilter(self: *Model) !void {
+        if (self.refresh_thread == null) return;
+
+        // Get current visible pin names from tree view
+        const pin_names = try self.tree_view.getVisiblePinNames(self.allocator);
+        defer {
+            for (pin_names) |n| self.allocator.free(n);
+            self.allocator.free(pin_names);
+        }
+
+        // Initialize VisiblePinNames if needed
+        if (self.visible_pin_names == null) {
+            const vpn = try self.allocator.create(VisiblePinNames);
+            vpn.* = VisiblePinNames.init(self.allocator);
+            self.visible_pin_names = vpn;
+        }
+
+        // Update the filter with new names
+        const vpn = self.visible_pin_names.?;
+        vpn.mutex.lock();
+        defer vpn.mutex.unlock();
+
+        // Clear old names
+        for (vpn.names.items) |n| {
+            self.allocator.free(n);
+        }
+        vpn.names.clearRetainingCapacity();
+
+        // Add new names
+        for (pin_names) |n| {
+            try vpn.names.append(self.allocator, try self.allocator.dupe(u8, n));
+        }
+
+        // Update refresh thread filter
+        const filter = RefreshThread.PinNameFilter{
+            .names = vpn.names.items,
+            .mutex = vpn.mutex,
+        };
+        self.refresh_thread.?.setVisiblePinNames(filter);
+
+        std.log.debug("Updated visible pins filter: {d} pins", .{pin_names.len});
     }
 
     /// Get list of checked item names
@@ -696,6 +776,13 @@ pub const Model = struct {
                                 std.log.err("TreeView event handler error: {}", .{err});
                             };
                         }
+
+                        // Update visible pins filter after tree navigation/expand/collapse
+                        // This optimizes the refresh thread to only poll visible pins
+                        self.updateVisiblePinsFilter() catch |err| {
+                            std.log.err("updateVisiblePinsFilter failed: {}", .{err});
+                        };
+
                         return;
                     }
                 }

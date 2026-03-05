@@ -78,6 +78,15 @@ pub const RefreshThread = struct {
     /// Optional remote HAL backend (null = use local HAL)
     remote_backend: ?*const anyopaque = null,
 
+    /// Optional visible pin names filter (null = request all pins)
+    /// If set, only these pins will be refreshed from the backend
+    visible_pin_names: ?PinNameFilter = null,
+
+    pub const PinNameFilter = struct {
+        names: []const []const u8,
+        mutex: std.Thread.Mutex,
+    };
+
     /// Initialize a new RefreshThread
     ///
     /// Creates a refresh thread instance with default 100ms interval.
@@ -123,6 +132,12 @@ pub const RefreshThread = struct {
     /// Set the remote HAL backend (null = use local HAL)
     pub fn setRemoteBackend(self: *RefreshThread, backend: ?*const anyopaque) void {
         self.remote_backend = backend;
+    }
+
+    /// Set the visible pin names filter (null = request all pins)
+    /// The names slice is owned by the caller and must remain valid until cleared
+    pub fn setVisiblePinNames(self: *RefreshThread, filter: ?PinNameFilter) void {
+        self.visible_pin_names = filter;
     }
 
     /// Clean up RefreshThread resources
@@ -279,6 +294,21 @@ pub const RefreshThread = struct {
 
         // Process each pin
         for (pin_infos) |pin| {
+            // Filter: only process pins that are visible (if filter is set)
+            if (self.visible_pin_names) |*f| {
+                f.mutex.lock();
+                defer f.mutex.unlock();
+                // Check if pin is in visible list (linear search - OK for small pin counts)
+                var is_visible = false;
+                for (f.names) |visible_name| {
+                    if (std.mem.eql(u8, pin.name, visible_name)) {
+                        is_visible = true;
+                        break;
+                    }
+                }
+                if (!is_visible) continue; // Skip non-visible pins
+            }
+
             // Create a copy for discovered_names tracking (needed for stale detection)
             const name_copy = try self.allocator.dupe(u8, pin.name);
             try discovered_names.append(self.allocator, name_copy);
@@ -299,24 +329,27 @@ pub const RefreshThread = struct {
             };
         }
 
-        // Remove stale pins (linear search is fine for typical pin counts)
-        const cached_names = try self.store.listPins(self.allocator);
-        defer {
-            for (cached_names) |n| self.allocator.free(n);
-            self.allocator.free(cached_names);
-        }
-
-        for (cached_names) |name| {
-            // Check if this name was discovered
-            var found = false;
-            for (discovered_names.items) |discovered| {
-                if (std.mem.eql(u8, name, discovered)) {
-                    found = true;
-                    break;
-                }
+        // Only do stale detection if we're not filtering (otherwise we'd remove pins that are just hidden)
+        if (self.visible_pin_names == null) {
+            // Remove stale pins (linear search is fine for typical pin counts)
+            const cached_names = try self.store.listPins(self.allocator);
+            defer {
+                for (cached_names) |n| self.allocator.free(n);
+                self.allocator.free(cached_names);
             }
-            if (!found) {
-                self.store.removePin(name) catch {};
+
+            for (cached_names) |name| {
+                // Check if this name was discovered
+                var found = false;
+                for (discovered_names.items) |discovered| {
+                    if (std.mem.eql(u8, name, discovered)) {
+                        found = true;
+                        break;
+                    }
+                }
+                if (!found) {
+                    self.store.removePin(name) catch {};
+                }
             }
         }
     }
